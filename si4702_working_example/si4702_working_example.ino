@@ -52,15 +52,15 @@ for (int i = 0; i < 0x0f; i++) {
 }
   Serial.println("done");
 
-  fm.setVolume(15); // max volume
+  fm.setVolume(0); // max volume
   delay(500);
   Serial.println("volume set");
-  fm.setFrequency(8870); // MHz * 100, 88.7 is clear in Boston
+  fm.setFrequency(8850); // MHz * 100, 88.7 is clear in Boston
   Serial.println("printf next");
 }
 
 void loop() {
   // put your main code here, to run repeatedly:
-  Serial.printf("You are tuned to %u MHz | RSSI: %3.3u dbUv | Vol: %2.2u | Stereo: %s\n", fm.getFrequency(), fm.getRssi(), fm.getVolume(), (fm.isStereo()) ? "Yes" : "No");
+  Serial.printf("You are tuned to %u0 kHz | RSSI: %3.3u dbUv | Vol: %2.2u | Stereo: %s\n", fm.getFrequency(), fm.getRssi(), fm.getVolume(), (fm.isStereo()) ? "Yes" : "No");
   delay(10);
 }
