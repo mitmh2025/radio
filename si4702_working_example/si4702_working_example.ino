@@ -46,16 +46,16 @@ void setup() {
 
   Serial.println("Starting fm setup");
   fm.setup(FM_RST, -1,-1,-1, 0);
+  fm.setVolume(5); // max volume
   fm.getAllRegisters();
 for (int i = 0; i < 0x0f; i++) {
   Serial.printf("Register 0x%02X: 0x%04X\n", i, fm.getShadownRegister(i));
 }
   Serial.println("done");
 
-  fm.setVolume(0); // max volume
   delay(500);
   Serial.println("volume set");
-  fm.setFrequency(8850); // MHz * 100, 88.7 is clear in Boston
+  fm.setFrequency(9290); // MHz * 100, 88.7 is clear in Boston
   Serial.println("printf next");
 }
 

@@ -29,19 +29,19 @@
 #define I2S_BCLK 47
 
 #define ERR_CHECK(expr) do { \
-  int error = (expr); \
-  if (error > 0) { \
-    Serial.printf("%s:%s: Error on I2C: %d", __FILE__, __LINE__, error); \
+  bool success = (expr); \
+  if (!success) { \
+    Serial.printf("%s:%s: Error on I2C", __FILE__, __LINE__); \
     abort(); \
   } \
 } while (0)
 
-uint8_t write(uint8_t reg, uint8_t data) {
-  uint8_t msg[2] = { reg, data };
-  Wire.beginTransmission(TAS2505_I2C_ADDR);
-  Wire.write(msg, sizeof(msg) / sizeof(msg[0]));
-  return Wire.endTransmission();
-}
+// uint8_t write(uint8_t reg, uint8_t data) {
+//   uint8_t msg[2] = { reg, data };
+//   Wire.beginTransmission(TAS2505_I2C_ADDR);
+//   Wire.write(msg, sizeof(msg) / sizeof(msg[0]));
+//   return Wire.endTransmission();
+// }
 
 Audio audio;
 
@@ -92,6 +92,7 @@ class TAS2505 : Adafruit_I2CDevice {
     bool writeReg(uint16_t reg, uint8_t data) {
       uint8_t page = reg >> 8;
       uint8_t ureg = reg & 0xFF;
+      Serial.printf("TAS2505 R%02xP%02x = %02x\n", page, ureg, data);
       setPage(page);
       return write(&data, 1, true, &ureg, 1);
     }
@@ -138,36 +139,36 @@ class TAS2505 : Adafruit_I2CDevice {
       // Trigger software reset (likely redundant but just for safety)
       ERR_CHECK(writeReg(TAS2505_REG_SOFTWARE_RESET, 0x1));
       // Power up HP level shifters (probably unnecessary)
-      ERR_CHECK(writeReg(TAS2505_REG_LDO_CONTROL, 0x0));
+      //ERR_CHECK(writeReg(TAS2505_REG_LDO_CONTROL, 0x0));
       // Set PLL_CLKIN=BCLK, CODEC_CLKIN=PLL_CLK
       ERR_CHECK(writeReg(TAS2505_REG_CLOCK1, 0x7));
       // Power up PLL, set P, R
-      ERR_CHECK(writeReg(TAS2505_REG_CLOCK2, 0x80 | (PLL_P << 4) | (PLL_R << 0)));
+      //ERR_CHECK(writeReg(TAS2505_REG_CLOCK2, 0x80 | (PLL_P << 4) | (PLL_R << 0)));
       // Set J
-      ERR_CHECK(writeReg(TAS2505_REG_CLOCK3, PLL_J));
+      //ERR_CHECK(writeReg(TAS2505_REG_CLOCK3, PLL_J));
       // Set D=0
-      ERR_CHECK(writeReg(TAS2505_REG_CLOCK4, 0x0));
-      ERR_CHECK(writeReg(TAS2505_REG_CLOCK5, 0x0));
+      //ERR_CHECK(writeReg(TAS2505_REG_CLOCK4, 0x0));
+      //ERR_CHECK(writeReg(TAS2505_REG_CLOCK5, 0x0));
 
       // Wait 15ms for PLL to lock
       delay(15);
 
       // Power up NDAC
-      ERR_CHECK(writeReg(TAS2505_REG_CLOCK6, NDAC | 0x80));
+      //ERR_CHECK(writeReg(TAS2505_REG_CLOCK6, NDAC | 0x80));
       // Power up MDAC
-      ERR_CHECK(writeReg(TAS2505_REG_CLOCK7, MDAC | 0x80));
+      //ERR_CHECK(writeReg(TAS2505_REG_CLOCK7, MDAC | 0x80));
       // Configure OSR
-      ERR_CHECK(writeReg(TAS2505_REG_DOSR1, (0x300 & DOSR) > 8));
-      ERR_CHECK(writeReg(TAS2505_REG_DOSR2, DOSR & 0xff));
+      //ERR_CHECK(writeReg(TAS2505_REG_DOSR1, (0x300 & DOSR) > 8));
+      //ERR_CHECK(writeReg(TAS2505_REG_DOSR2, DOSR & 0xff));
       // Set processing block PRB_P2 (simplest, lowest power)
-      ERR_CHECK(writeReg(TAS2505_REG_DAC_INSTRUCTION_SET, 0x2));
+      //ERR_CHECK(writeReg(TAS2505_REG_DAC_INSTRUCTION_SET, 0x2));
 
       // Power up DAC channel, set to average L+R channel, enable volume soft-stepping
-      ERR_CHECK(writeReg(TAS2505_REG_DAC_SETUP1, 0xb0));
+      //ERR_CHECK(writeReg(TAS2505_REG_DAC_SETUP1, 0xb0));
       // Set digital gain to 0dB
-      setDACVolume(0);
+      //setDACVolume(0);
       // Unmute DAC channel
-      ERR_CHECK(writeReg(TAS2505_REG_DAC_SETUP2, 0x4));
+      //ERR_CHECK(writeReg(TAS2505_REG_DAC_SETUP2, 0x4));
 
       // Enable master reference
       ERR_CHECK(writeReg(TAS2505_REG_POWER_CONTROL, 0x10));
@@ -175,7 +176,8 @@ class TAS2505 : Adafruit_I2CDevice {
       // Enable AINL and AINR (P1, R9, D1-D0=11)
       ERR_CHECK(writeReg(TAS2505_REG_OUTPUT_CONTROL, 0x03));
       // AINL/R to speaker + HP driver via Mixer P (P1, R12, D7-D6=11, D2=1)
-      ERR_CHECK(writeReg(TAS2505_REG_OUTPUT_ROUTING, AINLR_TO_MIXERP | MIXERP_TO_HP));
+      //ERR_CHECK(writeReg(TAS2505_REG_OUTPUT_ROUTING, AINLR_TO_MIXERP | MIXERP_TO_HP));
+      ERR_CHECK(writeReg(TAS2505_REG_OUTPUT_ROUTING, AINR_TO_MIXERP | MIXERP_TO_HP));
 
       // HP Voulme, 0dB Gain (P1, R22, D6-D0=0000000)
       //W 30 16 00
@@ -189,8 +191,8 @@ class TAS2505 : Adafruit_I2CDevice {
 
       // Set analog speaker gain to 0dB
       setSpeakerVolume(0);
-      // Set driver volume to 6dB gain
-      ERR_CHECK(writeReg(TAS2505_REG_SPEAKER_VOLUME_RANGE, 0x10));
+      // Set driver volume to 18dB gain
+      ERR_CHECK(writeReg(TAS2505_REG_SPEAKER_VOLUME_RANGE, 0x30));
       // Power up driver
       setSpeakerPower(true);
     }
@@ -225,10 +227,10 @@ void setup() {
 
   Serial.println("Connecting to wifi...");
   WiFi.disconnect();
-  WiFi.mode(WIFI_STA);
-  WiFi.begin("moonhilda", "whatnot-pooh");
-  while (WiFi.status() != WL_CONNECTED) delay(1500);
-  Serial.println("Connected");
+  //WiFi.mode(WIFI_STA);
+  //WiFi.begin("moonhilda", "whatnot-pooh");
+  //while (WiFi.status() != WL_CONNECTED) delay(1500);
+  //Serial.println("Connected");
 
   pinMode(TAS2505_RST, OUTPUT);
   pinMode(FM_RST, OUTPUT);
@@ -242,7 +244,7 @@ void setup() {
 
   // We're using BCLK as the clock input for the TAS2505, and it needs to be on
   // and stable before initializing
-  audio.setPinout(I2S_BCLK, I2S_WCLK, I2S_DIN);
+  //audio.setPinout(I2S_BCLK, I2S_WCLK, I2S_DIN);
 
   // Re-initialize TAS2505 by pulling RST low briefly, just in case there was
   // power weirdness. 10ns is sufficient (1µs is excessive). Register
@@ -252,7 +254,9 @@ void setup() {
   digitalWrite(TAS2505_RST, HIGH);
   delay(1);
 
+  Serial.println("Initializing TAS2505");
   tas2505.initialize();
+  Serial.println("done");
 
   // Fully initialized, now we can play audio
   //audio.connecttohost("https://ebroder.net/assets/take5.mp3");
@@ -268,10 +272,10 @@ void setup() {
   }
   Serial.println("done");
 
-  fm.setVolume(0); // max volume
+  fm.setVolume(5); // max volume
   delay(500);
   Serial.println("volume set");
-  fm.setFrequency(8850); // MHz * 100, 88.7 is clear in Boston
+  fm.setFrequency(9290); // MHz * 100, 88.7 is clear in Boston
   Serial.println("printf next");
 }
 
