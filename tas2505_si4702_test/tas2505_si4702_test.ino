@@ -3,6 +3,7 @@
 #include <Wire.h>
 #include <Adafruit_I2CDevice.h>
 #include <Adafruit_I2CRegister.h>
+#include <SI470X.h>
 
 #define I2C_SDA 42
 #define I2C_SCL 41
@@ -12,6 +13,7 @@
 #define TOUCH13 13
 #define TOUCH14 14
 
+#define FM_I2C_ADDR 0b0010000
 #define FM_RST 3
 #define FM_SEN 4
 #define FM_GPIO1 40
@@ -215,6 +217,9 @@ class TAS2505 : Adafruit_I2CDevice {
     }
 };
 
+TAS2505 tas2505;
+SI470X fm;
+
 void setup() {
   Serial.begin(115200);
 
@@ -228,6 +233,9 @@ void setup() {
   pinMode(TAS2505_RST, OUTPUT);
   pinMode(FM_RST, OUTPUT);
   pinMode(FM_SEN, OUTPUT);
+  pinMode(FM_GPIO1, OUTPUT);
+  pinMode(FM_GPIO3, OUTPUT);
+
 
   // Initialize I2C
   Wire.begin(I2C_SDA, I2C_SCL, 400000);
@@ -244,14 +252,31 @@ void setup() {
   digitalWrite(TAS2505_RST, HIGH);
   delay(1);
 
-  TAS2505 tas2505;
-
   tas2505.initialize();
 
   // Fully initialized, now we can play audio
-  audio.connecttohost("https://ebroder.net/assets/take5.mp3");
+  //audio.connecttohost("https://ebroder.net/assets/take5.mp3");
+
+  digitalWrite(FM_GPIO3, HIGH);
+  digitalWrite(FM_GPIO1, HIGH);
+
+  Serial.println("Starting fm setup");
+  fm.setup(FM_RST, -1,-1,-1, 0);
+  fm.getAllRegisters();
+  for (int i = 0; i < 0x0f; i++) {
+    Serial.printf("Register 0x%02X: 0x%04X\n", i, fm.getShadownRegister(i));
+  }
+  Serial.println("done");
+
+  fm.setVolume(0); // max volume
+  delay(500);
+  Serial.println("volume set");
+  fm.setFrequency(8850); // MHz * 100, 88.7 is clear in Boston
+  Serial.println("printf next");
 }
 
 void loop() {
-  audio.loop();
+  //audio.loop();
+  Serial.printf("You are tuned to %u0 kHz | RSSI: %3.3u dbUv | Vol: %2.2u | Stereo: %s\n", fm.getFrequency(), fm.getRssi(), fm.getVolume(), (fm.isStereo()) ? "Yes" : "No");
+  delay(10);
 }
