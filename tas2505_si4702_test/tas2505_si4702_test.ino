@@ -60,6 +60,20 @@ Audio audio;
 #define TAS2505_REG_DAC_VOLUME 0x0041
 #define TAS2505_REG_POWER_CONTROL 0x0101
 #define TAS2505_REG_LDO_CONTROL 0x0102
+#define TAS2505_REG_OUTPUT_CONTROL 0x0109
+#define TAS2505_REG_OUTPUT_ROUTING 0x010C
+#define AINR_TO_HP 0x01
+#define AINL_TO_HP 0x02
+#define MIXERP_TO_HP 0x04
+#define DAC_TO_HP 0x08
+#define AINR_TO_MIXERP 0x40
+#define AINLR_TO_SPEAKER_INV 0x60
+#define AINL_TO_MIXERP 0x80
+#define AINLR_TO_SPEAKER 0x90
+#define AINLR_TO_MIXERP 0xC0
+#define TAS2505_REG_HP_VOLUME 0x0116
+#define TAS2505_REG_AINL_VOLUME 0x0118
+#define MIXERPM_FORCE_ENABLE 0x80
 #define TAS2505_REG_SPEAKER_CONTROL 0x012D
 #define TAS2505_REG_SPEAKER_VOLUME 0x012E
 #define TAS2505_REG_SPEAKER_VOLUME_RANGE 0x0130
@@ -75,9 +89,9 @@ class TAS2505 : Adafruit_I2CDevice {
   
     bool writeReg(uint16_t reg, uint8_t data) {
       uint8_t page = reg >> 8;
-      uint8_t reg = reg & 0xFF;
-      setPage(reg >> 8);
-      return write(&data, 1, true, &reg, 1);
+      uint8_t ureg = reg & 0xFF;
+      setPage(page);
+      return write(&data, 1, true, &ureg, 1);
     }
 
     bool setPage(uint8_t page) {
@@ -155,12 +169,28 @@ class TAS2505 : Adafruit_I2CDevice {
 
       // Enable master reference
       ERR_CHECK(writeReg(TAS2505_REG_POWER_CONTROL, 0x10));
+
+      // Enable AINL and AINR (P1, R9, D1-D0=11)
+      ERR_CHECK(writeReg(TAS2505_REG_OUTPUT_CONTROL, 0x03));
+      // AINL/R to speaker + HP driver via Mixer P (P1, R12, D7-D6=11, D2=1)
+      ERR_CHECK(writeReg(TAS2505_REG_OUTPUT_ROUTING, AINLR_TO_MIXERP | MIXERP_TO_HP));
+
+      // HP Voulme, 0dB Gain (P1, R22, D6-D0=0000000)
+      //W 30 16 00
+      // Enable Mixer P and Mixer M, AINL Voulme, 0dB Gain (P1, R24, D7=1, D6-D0=0000000)
+      ERR_CHECK(writeReg(TAS2505_REG_AINL_VOLUME, MIXERPM_FORCE_ENABLE | 0));
+      // Enable AINL and AINR and Power up HP (P1, R9, D5=1, D1-D0=11)
+      // writeReg(0x0109, 0x23)
+
+      // Unmute HP with 0dB gain (P1, R16, D4=1)
+      // writeReg(0x0110, 0)
+
       // Set analog speaker gain to 0dB
       setSpeakerVolume(0);
       // Set driver volume to 6dB gain
       ERR_CHECK(writeReg(TAS2505_REG_SPEAKER_VOLUME_RANGE, 0x10));
       // Power up driver
-      ERR_CHECK(writeReg(TAS2505_REG_SPEAKER_CONTROL, 0x2));
+      setSpeakerPower(true);
     }
 
     // Set digital volume in 0.5 dB steps from -127 (-63.5 dB) to +48 (+24 dB).
@@ -168,10 +198,10 @@ class TAS2505 : Adafruit_I2CDevice {
       if (volume > 48) {
         volume = 48;
       }
-      ERR_CHECK(writeReg(TAS2505_REG_DAC_VOLUME, (uint8_t)volume))
+      ERR_CHECK(writeReg(TAS2505_REG_DAC_VOLUME, (uint8_t)volume));
     }
 
-    // Set speaker volume in 0.5 dB steps from +0 (0 dB) to -116 (-72.3 dB).
+    // Set speaker volume in ~0.5 dB steps from +0 (0 dB) to -116 (-72.3 dB).
     void setSpeakerVolume(int8_t volume) {
       if (volume > 0) volume = 0;
       uint8_t value = (uint8_t) -volume;
@@ -180,7 +210,10 @@ class TAS2505 : Adafruit_I2CDevice {
       }
       ERR_CHECK(writeReg(TAS2505_REG_SPEAKER_VOLUME, value));
     }
-}
+    void setSpeakerPower(bool power) {
+      ERR_CHECK(writeReg(TAS2505_REG_SPEAKER_CONTROL, power ? 0x02 : 0));
+    }
+};
 
 void setup() {
   Serial.begin(115200);
