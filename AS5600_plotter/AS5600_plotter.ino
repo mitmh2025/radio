@@ -7,8 +7,10 @@
   #define SERIAL Serial
   #define SYS_VOL   5
 #endif
-#define I2C_SDA 42
-#define I2C_SCL 41
+
+#define BOARD_VERSION_0_2
+#include "boardconfig.h"
+
 AMS_5600 ams5600;
 
 int ang, lang = 0;

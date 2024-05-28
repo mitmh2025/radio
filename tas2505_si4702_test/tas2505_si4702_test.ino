@@ -5,28 +5,10 @@
 #include <Adafruit_I2CRegister.h>
 #include <SI470X.h>
 
-#define I2C_SDA 42
-#define I2C_SCL 41
+#define BOARD_VERSION_0_2
+#include "boardconfig.h"
 
-#define POT1 1
-#define POT2 2
-#define TOUCH13 13
-#define TOUCH14 14
-
-#define FM_I2C_ADDR 0b0010000
-#define FM_RST 3
-#define FM_SEN 4
-#define FM_GPIO1 40
-#define FM_GPIO2 39
-#define FM_GPIO3 38
-
-#define TAS2505_I2C_ADDR 0b0011000
-#define TAS2505_GPIO 33
-#define TAS2505_RST 26
-
-#define I2S_DIN 21
-#define I2S_WCLK 48
-#define I2S_BCLK 47
+#include "localconfig.h"
 
 #define ERR_CHECK(expr) do { \
   bool success = (expr); \
@@ -228,15 +210,21 @@ void setup() {
   Serial.println("Connecting to wifi...");
   WiFi.disconnect();
   //WiFi.mode(WIFI_STA);
-  //WiFi.begin("moonhilda", "whatnot-pooh");
+  //WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   //while (WiFi.status() != WL_CONNECTED) delay(1500);
   //Serial.println("Connected");
 
   pinMode(TAS2505_RST, OUTPUT);
   pinMode(FM_RST, OUTPUT);
+  #ifdef FM_SEN
   pinMode(FM_SEN, OUTPUT);
+  #endif
+  #ifdef FM_GPIO1
   pinMode(FM_GPIO1, OUTPUT);
+  #endif
+  #ifdef FM_GPIO3
   pinMode(FM_GPIO3, OUTPUT);
+  #endif
 
 
   // Initialize I2C
@@ -261,8 +249,12 @@ void setup() {
   // Fully initialized, now we can play audio
   //audio.connecttohost("https://ebroder.net/assets/take5.mp3");
 
+  #ifdef FM_GPIO3
   digitalWrite(FM_GPIO3, HIGH);
+  #endif
+  #ifdef FM_GPIO1
   digitalWrite(FM_GPIO1, HIGH);
+  #endif
 
   Serial.println("Starting fm setup");
   fm.setup(FM_RST, -1,-1,-1, 0);
@@ -275,7 +267,7 @@ void setup() {
   fm.setVolume(5); // max volume
   delay(500);
   Serial.println("volume set");
-  fm.setFrequency(9290); // MHz * 100, 88.7 is clear in Boston
+  fm.setFrequency(10610); // MHz * 100
   Serial.println("printf next");
 }
 

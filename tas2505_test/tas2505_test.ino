@@ -2,27 +2,10 @@
 #include <Audio.h>
 #include <Wire.h>
 
-#define I2C_SDA 42
-#define I2C_SCL 41
+#define BOARD_VERSION_0_2
+#include "boardconfig.h"
 
-#define POT1 1
-#define POT2 2
-#define TOUCH13 13
-#define TOUCH14 14
-
-#define FM_RST 3
-#define FM_SEN 4
-#define FM_GPIO1 40
-#define FM_GPIO2 39
-#define FM_GPIO3 38
-
-#define TAS2505_I2C_ADDR 0b0011000
-#define TAS2505_GPIO 33
-#define TAS2505_RST 26
-
-#define I2S_DIN 21
-#define I2S_WCLK 48
-#define I2S_BCLK 47
+#include "localconfig.h"
 
 #define ERR_CHECK(expr) do { \
   int error = (expr); \
@@ -47,13 +30,15 @@ void setup() {
   Serial.println("Connecting to wifi...");
   WiFi.disconnect();
   WiFi.mode(WIFI_STA);
-  WiFi.begin("moonhilda", "whatnot-pooh");
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   while (WiFi.status() != WL_CONNECTED) delay(1500);
   Serial.println("Connected");
 
   pinMode(TAS2505_RST, OUTPUT);
   pinMode(FM_RST, OUTPUT);
+  #ifdef FM_SEN
   pinMode(FM_SEN, OUTPUT);
+  #endif
 
   // Initialize I2C
   Wire.begin(I2C_SDA, I2C_SCL, 400000);

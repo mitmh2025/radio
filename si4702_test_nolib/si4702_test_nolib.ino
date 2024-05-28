@@ -2,15 +2,8 @@
 //#include <Audio.h>
 #include <Wire.h>
 
-#define I2C_SDA 42
-#define I2C_SCL 41
-
-#define FM_I2C_ADDR 0b0010000
-#define FM_RST 3
-#define FM_SEN 4
-#define FM_GPIO1 40
-#define FM_GPIO2 39
-#define FM_GPIO3 38
+#define BOARD_VERSION_0_2
+#include "boardconfig.h"
 
 void setup()
 {
