@@ -27,12 +27,12 @@ Audio audio;
 void setup() {
   Serial.begin(115200);
 
-  Serial.println("Connecting to wifi...");
+  Serial.print("Connecting to wifi...");
   WiFi.disconnect();
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  while (WiFi.status() != WL_CONNECTED) delay(1500);
-  Serial.println("Connected");
+  WiFi.waitForConnectResult();
+  Serial.println("connected");
 
   pinMode(TAS2505_RST, OUTPUT);
   pinMode(FM_RST, OUTPUT);
@@ -133,10 +133,16 @@ void setup() {
   // Power up driver
   ERR_CHECK(tas2505I2CWrite(0x2d, 0x2));
 
+  Serial.println("TAS2505 initialized; starting audio stream");
+
   // Fully initialized, now we can play audio
   audio.connecttohost("https://ebroder.net/assets/take5.mp3");
 }
 
 void loop() {
   audio.loop();
+}
+
+void audio_info(const char *info){
+    Serial.print("info        "); Serial.println(info);
 }
