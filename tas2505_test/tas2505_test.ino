@@ -129,18 +129,27 @@ void setup() {
   // Set analog speaker gain to 0dB
   ERR_CHECK(tas2505I2CWrite(0x2e, 0x0));
   // Set driver volume to 6dB gain
-  ERR_CHECK(tas2505I2CWrite(0x30, 0x10));
+  ERR_CHECK(tas2505I2CWrite(0x30, 0b101 << 4));
   // Power up driver
   ERR_CHECK(tas2505I2CWrite(0x2d, 0x2));
 
   Serial.println("TAS2505 initialized; starting audio stream");
 
   // Fully initialized, now we can play audio
-  audio.connecttohost("https://ebroder.net/assets/take5.mp3");
+  while (!audio.connecttohost("https://ebroder.net/assets/take5.mp3")) {};
 }
 
 void loop() {
   audio.loop();
+  uint16_t volumePot = analogRead(POT1);
+  // ADC reads between 0 (muted) and 4095 (max volume), but we need to scale
+  // that to the values that the TAS2505 expects (i.e. 0 for max volume and 127
+  // for muted, with anything higher than 117 clamped to 127)
+  uint8_t volume = 127 - (volumePot >> 5);
+  if (volume > 117) {
+    volume = 127;
+  }
+  ERR_CHECK(tas2505I2CWrite(0x2E, volume));
 }
 
 void audio_info(const char *info){
