@@ -1,0 +1,6 @@
+menu "Radio Firmware Configuration"
+  config RADIO_WIFI_SSID
+    string "Default WiFi SSID"
+  config RADIO_WIFI_PASSWORD
+    string "Default WiFi Password"
+endmenu
