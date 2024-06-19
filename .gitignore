@@ -1,1 +1,4 @@
-localconfig.h
+/localconfig.h
+.theia
+.vscode
+build
