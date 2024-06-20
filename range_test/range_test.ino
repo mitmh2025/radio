@@ -196,5 +196,12 @@ void loop()
     display.print("    ");
   }
 
+  uint32_t batt_mv = analogReadMilliVolts(9);
+  display.setFont(u8x8_font_open_iconic_embedded_2x2);
+  display.drawGlyph(9, 2, 0x49);
+  display.setFont(u8x8_font_8x13_1x2_r);
+  display.setCursor(11, 2);
+  display.printf("%.2fV", (float)batt_mv * 3 / (2 * 1000));
+
   delay(50);
 }
