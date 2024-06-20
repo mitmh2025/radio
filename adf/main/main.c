@@ -17,8 +17,8 @@
 
 static const char *TAG = "radio";
 
-extern const uint8_t music_start[] asm("_binary_big_country_mp3_start");
-extern const uint8_t music_end[] asm("_binary_big_country_mp3_end");
+extern const uint8_t music_start[] asm("_binary_song_mp3_start");
+extern const uint8_t music_end[] asm("_binary_song_mp3_end");
 
 static size_t music_pos = 0;
 
