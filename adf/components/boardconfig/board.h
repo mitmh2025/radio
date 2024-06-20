@@ -4,6 +4,10 @@
 #include "board_pins_config.h"
 #include "freertos/semphr.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 // ESP-ADF uses the same #defines for both SDIO and SPI, but we didn't wire all
 // of the pins for SDIO
 #define SDCARD_OPEN_FILE_NUM_MAX (5)
@@ -32,3 +36,7 @@ i2c_master_bus_handle_t board_i2c_get_handle(void);
 
 #define BOARD_I2C_MUTEX_LOCK() xSemaphoreTake(i2c_mutex, portMAX_DELAY)
 #define BOARD_I2C_MUTEX_UNLOCK() xSemaphoreGive(i2c_mutex)
+
+#ifdef __cplusplus
+}
+#endif

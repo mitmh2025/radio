@@ -7,6 +7,14 @@
 #define WIFI_EVENT_GROUP_STA_CONNECTED BIT1
 #define WIFI_EVENT_GROUP_STA_GOT_IP BIT2
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 extern EventGroupHandle_t wifi_event_group;
 
 void wifi_setup();
+
+#ifdef __cplusplus
+}
+#endif
