@@ -10,10 +10,35 @@ const char *TAG = "radio:tas2505";
 
 static i2c_master_dev_handle_t i2c_device;
 
-#define TAS2505_CFG_META_DELAY (255)
+#define TAS2505_CFG_META_DELAY(delay) {0xff, 0xff, (delay)}
+#define TAS2505_CFG_REG_SOFTWARE_RESET 0x0, 0x1
+#define TAS2505_CFG_REG_CLOCK1 0x0, 0x4
+#define TAS2505_CFG_REG_CLOCK2 0x0, 0x5
+#define TAS2505_CFG_REG_CLOCK3 0x0, 0x6
+#define TAS2505_CFG_REG_CLOCK4 0x0, 0x7
+#define TAS2505_CFG_REG_CLOCK5 0x0, 0x8
+#define TAS2505_CFG_REG_CLOCK6 0x0, 0xb
+#define TAS2505_CFG_REG_CLOCK7 0x0, 0xc
+#define TAS2505_CFG_REG_DOSR1 0x0, 0xd
+#define TAS2505_CFG_REG_DOSR2 0x0, 0xe
+#define TAS2505_CFG_REG_DAC_INSTRUCTION_SET 0x0, 0x3c
+#define TAS2505_CFG_REG_DAC_SETUP1 0x0, 0x3f
+#define TAS2505_CFG_REG_DAC_SETUP2 0x0, 0x40
+#define TAS2505_CFG_REG_DAC_VOLUME 0x0, 0x41
+#define TAS2505_CFG_REG_POWER_CONTROL 0x1, 0x1
+#define TAS2505_CFG_REG_LDO_CONTROL 0x1, 0x2
+#define TAS2505_CFG_REG_OUTPUT_CONTROL 0x1, 0x9
+#define TAS2505_CFG_REG_OUTPUT_ROUTING 0x1, 0xc
+#define TAS2505_CFG_REG_HP_GAIN 0x1, 0x10
+#define TAS2505_CFG_REG_HP_VOLUME 0x1, 0x16
+#define TAS2505_CFG_REG_AINL_VOLUME 0x1, 0x18
+#define TAS2505_CFG_REG_SPEAKER_CONTROL 0x1, 0x2d
+#define TAS2505_CFG_REG_SPEAKER_VOLUME 0x1, 0x2e
+#define TAS2505_CFG_REG_SPEAKER_VOLUME_RANGE 0x1, 0x30
 
 typedef struct
 {
+  uint8_t page;
   uint8_t offset;
   uint8_t value;
 } tas2505_cfg_reg_t;
@@ -25,50 +50,84 @@ typedef struct
 // Specific values are DOSR=128, MDAC=2, NDAC=8, PLL_P=1, PLL_D=0, PLL_J=32, and
 // PLL_R=2
 static tas2505_cfg_reg_t tas2505_init_registers[] = {
-    {0x0, 0x0},
-    {0x1, 0x1},
-    {0x0, 0x1},
-    {0x2, 0x0},
-    {0x0, 0x0},
-    {0x4, 0x7},
-    {0x5, 0x92},
-    {0x6, 32},
-    {0x7, 0x0},
-    {0x8, 0x0},
-    {TAS2505_CFG_META_DELAY, 15},
-    {0xb, 0x88},
-    {0xc, 0x82},
-    {0xd, 0x0},
-    {0xe, 0x80},
-    {0x3c, 0x2},
-    {0x3f, 0xb0},
-    {0x41, 0x0},
-    {0x40, 0x4},
-    {0x0, 0x1},
-    {0x1, 0x10},
-    {0x2e, 0x0},
-    {0x30, 0x30},
-    {0x2d, 0x2},
+    {TAS2505_CFG_REG_SOFTWARE_RESET, 0x1},
+    {TAS2505_CFG_REG_LDO_CONTROL, 0x0},
+    {TAS2505_CFG_REG_CLOCK1, 0x7},
+    {TAS2505_CFG_REG_CLOCK2, 0x92},
+    {TAS2505_CFG_REG_CLOCK3, 32},
+    {TAS2505_CFG_REG_CLOCK4, 0x0},
+    {TAS2505_CFG_REG_CLOCK5, 0x0},
+    TAS2505_CFG_META_DELAY(15),
+    {TAS2505_CFG_REG_CLOCK6, 0x88},
+    {TAS2505_CFG_REG_CLOCK7, 0x82},
+    {TAS2505_CFG_REG_DOSR1, 0x0},
+    {TAS2505_CFG_REG_DOSR2, 0x80},
+    {TAS2505_CFG_REG_DAC_INSTRUCTION_SET, 0x2},
+    {TAS2505_CFG_REG_DAC_SETUP1, 0xb0},
+    {TAS2505_CFG_REG_DAC_VOLUME, 0x0},
+    {TAS2505_CFG_REG_DAC_SETUP2, 0x4},
+    {TAS2505_CFG_REG_POWER_CONTROL, 0x10},
+    {TAS2505_CFG_REG_SPEAKER_VOLUME, 0x0},
+    {TAS2505_CFG_REG_SPEAKER_VOLUME_RANGE, 0x30},
+    {TAS2505_CFG_REG_HP_GAIN, 0x0},
+    {TAS2505_CFG_REG_OUTPUT_CONTROL, 0x23},
 };
+
+static tas2505_output_t current_output = TAS2505_OUTPUT_SPEAKER;
+
+// Note that we can't (easily) disable the HP driver with our static sequences
+// of register values by setting register 0x1/0x9 because that is also used to
+// control if the analog inputs are enabled. Instead we assume that the output
+// driver doesn't use much power and just leave it on but muted
+static tas2505_cfg_reg_t tas2505_speaker_output_registers[] = {
+    {TAS2505_CFG_REG_OUTPUT_ROUTING, 0xc0},
+    {TAS2505_CFG_REG_AINL_VOLUME, 0x80},
+    {TAS2505_CFG_REG_HP_VOLUME, 0x75 /* mute */},
+    {TAS2505_CFG_REG_SPEAKER_CONTROL, 0x2},
+};
+
+static tas2505_cfg_reg_t tas2505_headphone_output_registers[] = {
+    {TAS2505_CFG_REG_OUTPUT_ROUTING, 0xb},
+    {TAS2505_CFG_REG_AINL_VOLUME, 0x0},
+    {TAS2505_CFG_REG_HP_VOLUME, 0x0},
+    {TAS2505_CFG_REG_SPEAKER_CONTROL, 0x0},
+};
+
+static tas2505_cfg_reg_t tas2505_both_output_registers[] = {
+    {TAS2505_CFG_REG_OUTPUT_ROUTING, 0xc4},
+    {TAS2505_CFG_REG_AINL_VOLUME, 0x80},
+    {TAS2505_CFG_REG_HP_VOLUME, 0x0},
+    {TAS2505_CFG_REG_SPEAKER_CONTROL, 0x2},
+};
+
+static esp_err_t tas2505_write_register(uint8_t offset, uint8_t value)
+{
+  uint8_t data[2] = {offset, value};
+  BOARD_I2C_MUTEX_LOCK();
+  esp_err_t ret = i2c_master_transmit(i2c_device, data, sizeof(data) / sizeof(data[0]), -1);
+  BOARD_I2C_MUTEX_UNLOCK();
+  return ret;
+}
 
 static esp_err_t tas2505_write_registers(tas2505_cfg_reg_t *registers, size_t len)
 {
   esp_err_t ret = ESP_OK;
-  uint8_t data[2];
+  uint8_t current_page = 0xff;
 
   for (size_t i = 0; i < len; i++)
   {
-    switch (registers[i].offset)
+    switch (registers[i].page)
     {
-    case TAS2505_CFG_META_DELAY:
+    case 0xff:
       vTaskDelay(registers[i].value / portTICK_PERIOD_MS);
       break;
     default:
-      data[0] = registers[i].offset;
-      data[1] = registers[i].value;
-      BOARD_I2C_MUTEX_LOCK();
-      ret = i2c_master_transmit(i2c_device, data, sizeof(data) / sizeof(data[0]), -1);
-      BOARD_I2C_MUTEX_UNLOCK();
+      if (current_page != registers[i].page) {
+        ret = tas2505_write_register(0x0, registers[i].page);
+        ESP_RETURN_ON_ERROR(ret, TAG, "i2c_bus_write_bytes: page=%d (idx=%d)", registers[i].page, i);
+        current_page = registers[i].page;
+      }
+      ret = tas2505_write_register(registers[i].offset, registers[i].value);
       ESP_RETURN_ON_ERROR(
           ret,
           TAG,
@@ -148,6 +207,8 @@ esp_err_t tas2505_enable_pa(bool enable)
     vTaskDelay(1);
 
     esp_err_t ret = tas2505_write_registers(tas2505_init_registers, sizeof(tas2505_init_registers) / sizeof(tas2505_init_registers[0]));
+    ESP_RETURN_ON_ERROR(ret, TAG, "Writing initial registers failed");
+    ret = tas2505_set_output(current_output);
     return ret;
   }
   else
@@ -156,4 +217,34 @@ esp_err_t tas2505_enable_pa(bool enable)
     vTaskDelay(1);
   }
   return ESP_OK;
+}
+
+esp_err_t tas2505_set_output(tas2505_output_t output)
+{
+  esp_err_t ret = ESP_OK;
+
+  switch (output)
+  {
+  case TAS2505_OUTPUT_SPEAKER:
+    ESP_LOGI(TAG, "Setting output to speaker");
+    ret = tas2505_write_registers(tas2505_speaker_output_registers, sizeof(tas2505_speaker_output_registers) / sizeof(tas2505_speaker_output_registers[0]));
+    break;
+  case TAS2505_OUTPUT_HEADPHONE:
+    ESP_LOGI(TAG, "Setting output to headphone");
+    ret = tas2505_write_registers(tas2505_headphone_output_registers, sizeof(tas2505_headphone_output_registers) / sizeof(tas2505_headphone_output_registers[0]));
+    break;
+  case TAS2505_OUTPUT_BOTH:
+    ESP_LOGI(TAG, "Setting output to both");
+    ret = tas2505_write_registers(tas2505_both_output_registers, sizeof(tas2505_both_output_registers) / sizeof(tas2505_both_output_registers[0]));
+    break;
+  default:
+    return ESP_ERR_INVALID_ARG;
+  }
+
+  if (ret == ESP_OK)
+  {
+    current_output = output;
+  }
+
+  return ret;
 }
