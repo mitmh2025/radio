@@ -1,21 +1,22 @@
 #include <atomic>
 #include <inttypes.h>
+#include <arpa/inet.h>
 #include <WiFi.h>
 #include <Wire.h>
 #include <HTTPClient.h>
-#include <BLEDevice.h>
-#include <BLEUtils.h>
-#include <BLEScan.h>
-#include <BLEAdvertisedDevice.h>
-#include <BLEEddystoneURL.h>
-#include <BLEEddystoneTLM.h>
-#include <BLEBeacon.h>
 #include <U8x8lib.h>
 #include "esp_wifi.h"
 #include "esp_err.h"
 #include "ping/ping_sock.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
+#include "esp_bt.h"
+#include "esp_gap_ble_api.h"
+#include "esp_gattc_api.h"
+#include "esp_gatt_defs.h"
+#include "esp_bt_main.h"
+#include "esp_bt_defs.h"
+#include "esp_log.h"
 
 #define BOARD_VERSION_0_2
 #include "boardconfig.h"
@@ -35,8 +36,17 @@ std::atomic<int16_t> ping_latency(-1);
 
 void on_ping_success(esp_ping_handle_t hdl, void *args)
 {
-  uint32_t elapsed_time;
+  uint8_t ttl;
+  uint16_t seqno;
+  uint32_t elapsed_time, recv_len;
+  ip_addr_t target_addr;
+  esp_ping_get_profile(hdl, ESP_PING_PROF_SEQNO, &seqno, sizeof(seqno));
+  esp_ping_get_profile(hdl, ESP_PING_PROF_TTL, &ttl, sizeof(ttl));
+  esp_ping_get_profile(hdl, ESP_PING_PROF_IPADDR, &target_addr, sizeof(target_addr));
+  esp_ping_get_profile(hdl, ESP_PING_PROF_SIZE, &recv_len, sizeof(recv_len));
   esp_ping_get_profile(hdl, ESP_PING_PROF_TIMEGAP, &elapsed_time, sizeof(elapsed_time));
+  Serial.printf("%d bytes from %s icmp_seq=%d ttl=%d time=%d ms\n",
+                recv_len, inet_ntoa(target_addr.u_addr.ip4), seqno, ttl, elapsed_time);
   ping_latency.store(elapsed_time > INT16_MAX ? INT16_MAX : elapsed_time);
 }
 
@@ -61,33 +71,65 @@ void ping_setup()
 }
 
 std::atomic<int> bluetooth_rssi(INT_MIN);
-BLEAddress bluetooth_beacon_address(BLUETOOTH_BEACON_MAC);
+esp_bd_addr_t bluetooth_beacon_address = {};
+esp_timer_handle_t bluetooth_scan_timeout_timer;
+uint64_t bluetooth_scan_timeout_us = 1000000;
 
-void bluetooth_loop(void *arg)
+static void bluetooth_scan_timeout(void *arg)
 {
-  BLEDevice::init("");
-  BLEScan *scan = BLEDevice::getScan();
-  scan->setInterval(3);
-  scan->setWindow(3);
-  while (true)
+  bluetooth_rssi.store(INT_MIN);
+}
+
+static void esp_gap_cb(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param)
+{
+  switch (event)
   {
-    BLEScanResults *results = scan->start(1, false);
-    bool found = false;
-    for (int i = 0; i < results->getCount(); i++)
+  case ESP_GAP_BLE_SCAN_PARAM_SET_COMPLETE_EVT:
+    esp_ble_gap_start_scanning(0);
+    esp_timer_start_once(bluetooth_scan_timeout_timer, bluetooth_scan_timeout_us);
+    break;
+  case ESP_GAP_BLE_SCAN_RESULT_EVT:
+    if (memcmp(param->scan_rst.bda, bluetooth_beacon_address, ESP_BD_ADDR_LEN) == 0)
     {
-      if (results->getDevice(i).getAddress() == bluetooth_beacon_address)
+      bluetooth_rssi.store(param->scan_rst.rssi);
+      esp_err_t err = esp_timer_restart(bluetooth_scan_timeout_timer, bluetooth_scan_timeout_us);
+      if (err == ESP_ERR_INVALID_STATE)
       {
-        found = true;
-        bluetooth_rssi.store(results->getDevice(i).getRSSI());
-        break;
+        esp_timer_start_once(bluetooth_scan_timeout_timer, bluetooth_scan_timeout_us);
       }
     }
-    if (!found)
-    {
-      bluetooth_rssi.store(INT_MIN);
-    }
-    scan->clearResults();
+    break;
   }
+}
+
+void bluetooth_setup()
+{
+  sscanf(BLUETOOTH_BEACON_MAC, "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
+         &bluetooth_beacon_address[0], &bluetooth_beacon_address[1], &bluetooth_beacon_address[2],
+         &bluetooth_beacon_address[3], &bluetooth_beacon_address[4], &bluetooth_beacon_address[5]);
+
+  esp_timer_create_args_t timer_config = {
+      .callback = bluetooth_scan_timeout,
+      .name = "bluetooth_scan_timeout",
+  };
+  ESP_ERROR_CHECK(esp_timer_create(&timer_config, &bluetooth_scan_timeout_timer));
+  ESP_ERROR_CHECK(esp_bt_controller_mem_release(ESP_BT_MODE_CLASSIC_BT));
+  esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
+  esp_bt_controller_init(&bt_cfg);
+  esp_bt_controller_enable(ESP_BT_MODE_BLE);
+
+  esp_bluedroid_init();
+  esp_bluedroid_enable();
+  ESP_ERROR_CHECK(esp_ble_gap_register_callback(esp_gap_cb));
+  esp_ble_scan_params_t ble_scan_params = {
+      .scan_type = BLE_SCAN_TYPE_PASSIVE,
+      .own_addr_type = BLE_ADDR_TYPE_PUBLIC,
+      .scan_filter_policy = BLE_SCAN_FILTER_ALLOW_ALL,
+      .scan_interval = 0x50,
+      .scan_window = 0x30,
+      .scan_duplicate = BLE_SCAN_DUPLICATE_DISABLE,
+  };
+  esp_ble_gap_set_scan_params(&ble_scan_params);
 }
 
 void setup()
@@ -100,8 +142,9 @@ void setup()
   display.begin();
 
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  esp_wifi_set_ps(WIFI_PS_NONE);
   ping_setup();
-  xTaskCreatePinnedToCore(bluetooth_loop, "bluetooth_loop", 4096, NULL, 1, NULL, 1);
+  bluetooth_setup();
 }
 
 void loop()
