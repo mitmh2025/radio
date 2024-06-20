@@ -67,11 +67,11 @@ void bluetooth_loop(void *arg)
 {
   BLEDevice::init("");
   BLEScan *scan = BLEDevice::getScan();
-  scan->setInterval(100);
-  scan->setWindow(99);
+  scan->setInterval(3);
+  scan->setWindow(3);
   while (true)
   {
-    BLEScanResults *results = scan->start(5, false);
+    BLEScanResults *results = scan->start(1, false);
     bool found = false;
     for (int i = 0; i < results->getCount(); i++)
     {
