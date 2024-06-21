@@ -38,6 +38,17 @@ int mp3_read_cb(audio_element_handle_t el, char *buf, int len, TickType_t wait_t
   return read_size;
 }
 
+void input_loop(void *arg)
+{
+  while (true)
+  {
+    vTaskDelay(5000 / portTICK_PERIOD_MS);
+    tas2505_set_input(TAS2505_INPUT_LINE);
+    vTaskDelay(5000 / portTICK_PERIOD_MS);
+    tas2505_set_input(TAS2505_INPUT_DAC);
+  }
+}
+
 void app_main(void)
 {
   // esp_log_level_set("*", ESP_LOG_INFO);
@@ -96,6 +107,8 @@ void app_main(void)
   // audio_element_set_uri(http_stream_reader, "https://ebroder.net/assets/take5.mp3");
 
   ESP_ERROR_CHECK(audio_pipeline_run(pipeline));
+
+  xTaskCreate(input_loop, "input_loop", 2048, NULL, 5, NULL);
 
   while (1)
   {

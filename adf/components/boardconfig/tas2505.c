@@ -43,12 +43,6 @@ typedef struct
   uint8_t value;
 } tas2505_cfg_reg_t;
 
-// These initialization values were calculated assuming 44.1kHz or 48kHz sample
-// rate, stereo, 16-bit I2S (so byte clock of either 1.4112MHz or 1.536MHz), but
-// in practice they seem to work fine with lower sample/clock rates too
-//
-// Specific values are DOSR=128, MDAC=2, NDAC=8, PLL_P=1, PLL_D=0, PLL_J=32, and
-// PLL_R=2
 static tas2505_cfg_reg_t tas2505_init_registers[] = {
     {TAS2505_CFG_REG_SOFTWARE_RESET, 0x1},
     {TAS2505_CFG_REG_LDO_CONTROL, 0x0},
@@ -63,14 +57,12 @@ static tas2505_cfg_reg_t tas2505_init_registers[] = {
     {TAS2505_CFG_REG_DOSR1, 0x0},
     {TAS2505_CFG_REG_DOSR2, 0x80},
     {TAS2505_CFG_REG_DAC_INSTRUCTION_SET, 0x2},
-    {TAS2505_CFG_REG_DAC_SETUP1, 0xb0},
     {TAS2505_CFG_REG_DAC_VOLUME, 0x0},
     {TAS2505_CFG_REG_DAC_SETUP2, 0x4},
     {TAS2505_CFG_REG_POWER_CONTROL, 0x10},
     {TAS2505_CFG_REG_SPEAKER_VOLUME, 0x0},
     {TAS2505_CFG_REG_SPEAKER_VOLUME_RANGE, 0x30},
     {TAS2505_CFG_REG_HP_GAIN, 0x0},
-    {TAS2505_CFG_REG_OUTPUT_CONTROL, 0x23},
 };
 
 static tas2505_output_t current_output = TAS2505_OUTPUT_SPEAKER;
@@ -98,6 +90,30 @@ static tas2505_cfg_reg_t tas2505_both_output_registers[] = {
     {TAS2505_CFG_REG_AINL_VOLUME, 0x80},
     {TAS2505_CFG_REG_HP_VOLUME, 0x0},
     {TAS2505_CFG_REG_SPEAKER_CONTROL, 0x2},
+};
+
+static tas2505_input_t current_input = TAS2505_INPUT_DAC;
+
+// These initialization values were calculated assuming 44.1kHz or 48kHz sample
+// rate, stereo, 16-bit I2S (so byte clock of either 1.4112MHz or 1.536MHz), but
+// in practice they seem to work fine with lower sample/clock rates too
+//
+// Specific values are DOSR=128, MDAC=2, NDAC=8, PLL_P=1, PLL_D=0, PLL_J=32, and
+// PLL_R=2
+static tas2505_cfg_reg_t tas2505_dac_on_registers[] = {
+    {TAS2505_CFG_REG_DAC_SETUP1, 0xb0},
+};
+
+static tas2505_cfg_reg_t tas2505_dac_off_registers[] = {
+    {TAS2505_CFG_REG_DAC_SETUP1, 0x00},
+};
+
+static tas2505_cfg_reg_t tas2505_line_on_registers[] = {
+    {TAS2505_CFG_REG_OUTPUT_CONTROL, 0x23},
+};
+
+static tas2505_cfg_reg_t tas2505_line_off_registers[] = {
+    {TAS2505_CFG_REG_OUTPUT_CONTROL, 0x20},
 };
 
 static esp_err_t tas2505_write_register(uint8_t offset, uint8_t value)
@@ -209,6 +225,9 @@ esp_err_t tas2505_enable_pa(bool enable)
     esp_err_t ret = tas2505_write_registers(tas2505_init_registers, sizeof(tas2505_init_registers) / sizeof(tas2505_init_registers[0]));
     ESP_RETURN_ON_ERROR(ret, TAG, "Writing initial registers failed");
     ret = tas2505_set_output(current_output);
+    ESP_RETURN_ON_ERROR(ret, TAG, "Setting output failed");
+    ret = tas2505_set_input(current_input);
+    ESP_RETURN_ON_ERROR(ret, TAG, "Setting input failed");
     return ret;
   }
   else
@@ -244,6 +263,42 @@ esp_err_t tas2505_set_output(tas2505_output_t output)
   if (ret == ESP_OK)
   {
     current_output = output;
+  }
+
+  return ret;
+}
+
+esp_err_t tas2505_set_input(tas2505_input_t input)
+{
+  esp_err_t ret = ESP_OK;
+
+  switch (input)
+  {
+    case TAS2505_INPUT_DAC:
+      ESP_LOGI(TAG, "Setting input to DAC");
+      ret = tas2505_write_registers(tas2505_line_off_registers, sizeof(tas2505_line_off_registers) / sizeof(tas2505_line_off_registers[0]));
+      ESP_RETURN_ON_ERROR(ret, TAG, "Setting input to DAC failed");
+      ret = tas2505_write_registers(tas2505_dac_on_registers, sizeof(tas2505_dac_on_registers) / sizeof(tas2505_dac_on_registers[0]));
+      break;
+    case TAS2505_INPUT_LINE:
+      ESP_LOGI(TAG, "Setting input to line");
+      ret = tas2505_write_registers(tas2505_dac_off_registers, sizeof(tas2505_dac_off_registers) / sizeof(tas2505_dac_off_registers[0]));
+      ESP_RETURN_ON_ERROR(ret, TAG, "Setting input to line failed");
+      ret = tas2505_write_registers(tas2505_line_on_registers, sizeof(tas2505_line_on_registers) / sizeof(tas2505_line_on_registers[0]));
+      break;
+    case TAS2505_INPUT_BOTH:
+      ESP_LOGI(TAG, "Setting input to both");
+      ret = tas2505_write_registers(tas2505_dac_on_registers, sizeof(tas2505_dac_on_registers) / sizeof(tas2505_dac_on_registers[0]));
+      ESP_RETURN_ON_ERROR(ret, TAG, "Setting input to both failed");
+      ret = tas2505_write_registers(tas2505_line_on_registers, sizeof(tas2505_line_on_registers) / sizeof(tas2505_line_on_registers[0]));
+      break;
+    default:
+      return ESP_ERR_INVALID_ARG;
+  }
+
+  if (ret == ESP_OK)
+  {
+    current_input = input;
   }
 
   return ret;
