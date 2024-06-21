@@ -10,42 +10,43 @@ const char *TAG = "radio:tas2505";
 
 static i2c_master_dev_handle_t i2c_device;
 
-#define TAS2505_CFG_META_DELAY(delay) {0xff, 0xff, (delay)}
-#define TAS2505_CFG_REG_SOFTWARE_RESET 0x0, 0x1
-#define TAS2505_CFG_REG_CLOCK1 0x0, 0x4
-#define TAS2505_CFG_REG_CLOCK2 0x0, 0x5
-#define TAS2505_CFG_REG_CLOCK3 0x0, 0x6
-#define TAS2505_CFG_REG_CLOCK4 0x0, 0x7
-#define TAS2505_CFG_REG_CLOCK5 0x0, 0x8
-#define TAS2505_CFG_REG_CLOCK6 0x0, 0xb
-#define TAS2505_CFG_REG_CLOCK7 0x0, 0xc
-#define TAS2505_CFG_REG_DOSR1 0x0, 0xd
-#define TAS2505_CFG_REG_DOSR2 0x0, 0xe
-#define TAS2505_CFG_REG_DAC_INSTRUCTION_SET 0x0, 0x3c
-#define TAS2505_CFG_REG_DAC_SETUP1 0x0, 0x3f
-#define TAS2505_CFG_REG_DAC_SETUP2 0x0, 0x40
-#define TAS2505_CFG_REG_DAC_VOLUME 0x0, 0x41
-#define TAS2505_CFG_REG_POWER_CONTROL 0x1, 0x1
-#define TAS2505_CFG_REG_LDO_CONTROL 0x1, 0x2
-#define TAS2505_CFG_REG_OUTPUT_CONTROL 0x1, 0x9
-#define TAS2505_CFG_REG_OUTPUT_ROUTING 0x1, 0xc
-#define TAS2505_CFG_REG_HP_GAIN 0x1, 0x10
-#define TAS2505_CFG_REG_HP_VOLUME 0x1, 0x16
-#define TAS2505_CFG_REG_AINL_VOLUME 0x1, 0x18
-#define TAS2505_CFG_REG_SPEAKER_CONTROL 0x1, 0x2d
-#define TAS2505_CFG_REG_SPEAKER_VOLUME 0x1, 0x2e
-#define TAS2505_CFG_REG_SPEAKER_VOLUME_RANGE 0x1, 0x30
+#define TAS2505_CFG_META_DELAY(delay) {0xffff, (delay)}
+#define TAS2505_CFG_REG_SOFTWARE_RESET 0x001
+#define TAS2505_CFG_REG_CLOCK1 0x004
+#define TAS2505_CFG_REG_CLOCK2 0x005
+#define TAS2505_CFG_REG_CLOCK3 0x006
+#define TAS2505_CFG_REG_CLOCK4 0x007
+#define TAS2505_CFG_REG_CLOCK5 0x008
+#define TAS2505_CFG_REG_CLOCK6 0x00b
+#define TAS2505_CFG_REG_CLOCK7 0x00c
+#define TAS2505_CFG_REG_DOSR1 0x00d
+#define TAS2505_CFG_REG_DOSR2 0x00e
+#define TAS2505_CFG_REG_GPIO_CONTROL 0x034
+#define TAS2505_CFG_REG_DAC_INSTRUCTION_SET 0x03c
+#define TAS2505_CFG_REG_DAC_SETUP1 0x03f
+#define TAS2505_CFG_REG_DAC_SETUP2 0x040
+#define TAS2505_CFG_REG_DAC_VOLUME 0x041
+#define TAS2505_CFG_REG_POWER_CONTROL 0x101
+#define TAS2505_CFG_REG_LDO_CONTROL 0x102
+#define TAS2505_CFG_REG_OUTPUT_CONTROL 0x109
+#define TAS2505_CFG_REG_OUTPUT_ROUTING 0x10c
+#define TAS2505_CFG_REG_HP_GAIN 0x110
+#define TAS2505_CFG_REG_HP_VOLUME 0x116
+#define TAS2505_CFG_REG_AINL_VOLUME 0x118
+#define TAS2505_CFG_REG_SPEAKER_CONTROL 0x12d
+#define TAS2505_CFG_REG_SPEAKER_VOLUME 0x12e
+#define TAS2505_CFG_REG_SPEAKER_VOLUME_RANGE 0x130
 
 typedef struct
 {
-  uint8_t page;
-  uint8_t offset;
+  uint16_t reg;
   uint8_t value;
 } tas2505_cfg_reg_t;
 
 static tas2505_cfg_reg_t tas2505_init_registers[] = {
     {TAS2505_CFG_REG_SOFTWARE_RESET, 0x1},
     {TAS2505_CFG_REG_LDO_CONTROL, 0x0},
+    {TAS2505_CFG_REG_GPIO_CONTROL, 0x8},
     {TAS2505_CFG_REG_CLOCK1, 0x7},
     {TAS2505_CFG_REG_CLOCK2, 0x92},
     {TAS2505_CFG_REG_CLOCK3, 32},
@@ -119,9 +120,7 @@ static tas2505_cfg_reg_t tas2505_line_off_registers[] = {
 static esp_err_t tas2505_write_register(uint8_t offset, uint8_t value)
 {
   uint8_t data[2] = {offset, value};
-  BOARD_I2C_MUTEX_LOCK();
   esp_err_t ret = i2c_master_transmit(i2c_device, data, sizeof(data) / sizeof(data[0]), -1);
-  BOARD_I2C_MUTEX_UNLOCK();
   return ret;
 }
 
@@ -130,30 +129,38 @@ static esp_err_t tas2505_write_registers(tas2505_cfg_reg_t *registers, size_t le
   esp_err_t ret = ESP_OK;
   uint8_t current_page = 0xff;
 
+  BOARD_I2C_MUTEX_LOCK();
+
   for (size_t i = 0; i < len; i++)
   {
-    switch (registers[i].page)
+    switch (registers[i].reg)
     {
-    case 0xff:
+    case 0xffff:
       vTaskDelay(registers[i].value / portTICK_PERIOD_MS);
       break;
-    default:
-      if (current_page != registers[i].page) {
-        ret = tas2505_write_register(0x0, registers[i].page);
-        ESP_RETURN_ON_ERROR(ret, TAG, "i2c_bus_write_bytes: page=%d (idx=%d)", registers[i].page, i);
-        current_page = registers[i].page;
+    default: {
+      uint8_t page = registers[i].reg >> 8;
+      uint8_t offset = registers[i].reg & 0xff;
+      if (current_page != page) {
+        ret = tas2505_write_register(0x0, page);
+        ESP_GOTO_ON_ERROR(ret, end, TAG, "i2c_bus_write_bytes: page=%d (idx=%d)", page, i);
+        current_page = page;
       }
-      ret = tas2505_write_register(registers[i].offset, registers[i].value);
-      ESP_RETURN_ON_ERROR(
+      ret = tas2505_write_register(offset, registers[i].value);
+      ESP_GOTO_ON_ERROR(
           ret,
+          end,
           TAG,
           "i2c_bus_write_bytes: reg=%d val=%d (idx=%d)",
-          registers[i].offset,
+          offset,
           registers[i].value,
           i);
     }
+    }
   }
 
+end:
+  BOARD_I2C_MUTEX_UNLOCK();
   return ret;
 }
 
@@ -301,5 +308,24 @@ esp_err_t tas2505_set_input(tas2505_input_t input)
     current_input = input;
   }
 
+  return ret;
+}
+
+esp_err_t tas2505_read_gpio(bool *val)
+{
+  esp_err_t ret = 0;
+  uint8_t page = TAS2505_CFG_REG_GPIO_CONTROL >> 8;
+  uint8_t offset = TAS2505_CFG_REG_GPIO_CONTROL & 0xff;
+  uint8_t register_value = 0;
+
+  BOARD_I2C_MUTEX_LOCK();
+  ret = tas2505_write_register(0x0, page);
+  ESP_GOTO_ON_ERROR(ret, end, TAG, "i2c_bus_write_bytes: switch to page=%d", page);
+  ret = i2c_master_transmit_receive(i2c_device, &offset, 1, &register_value, 1, -1);
+  ESP_GOTO_ON_ERROR(ret, end, TAG, "i2c_bus_read_bytes: reg=%d", offset);
+  *val = !!(register_value & 0x2);
+
+end:
+  BOARD_I2C_MUTEX_UNLOCK();
   return ret;
 }
