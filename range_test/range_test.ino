@@ -52,6 +52,9 @@ void on_ping_success(esp_ping_handle_t hdl, void *args)
 
 void on_ping_timeout(esp_ping_handle_t hdl, void *args)
 {
+  if (WiFi.isConnected() && ping_latency.load() != -1) {
+    WiFi.reconnect();
+  }
   ping_latency.store(-1);
 }
 
