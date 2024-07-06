@@ -9,11 +9,15 @@
 #include "esp_log.h"
 
 #ifndef CONFIG_RADIO_WIFI_SSID
-#error "CONFIG_RADIO_WIFI_SSID must be set in menuconfig"
+#error "CONFIG_RADIO_WIFI_SSID is not defined"
+#else
+static_assert(strlen(CONFIG_RADIO_WIFI_SSID) > 0, "CONFIG_RADIO_WIFI_SSID is empty");
 #endif
 
 #ifndef CONFIG_RADIO_WIFI_PASSWORD
-#error "CONFIG_RADIO_WIFI_PASSWORD must be set in menuconfig"
+#error "CONFIG_RADIO_WIFI_PASSWORD is not defined"
+#else
+static_assert(strlen(CONFIG_RADIO_WIFI_PASSWORD) > 0, "CONFIG_RADIO_WIFI_PASSWORD is empty");
 #endif
 
 EventGroupHandle_t wifi_event_group;
