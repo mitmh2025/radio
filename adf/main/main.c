@@ -1,3 +1,5 @@
+#include "wifi.h"
+
 #include <stdio.h>
 #include <string.h>
 #include "freertos/FreeRTOS.h"
@@ -12,8 +14,6 @@
 #include "esp_crt_bundle.h"
 #include "board.h"
 #include "tas2505.h"
-
-#include "wifi.h"
 
 static const char *TAG = "radio";
 

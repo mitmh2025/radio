@@ -1,3 +1,4 @@
+#include "../config.h"
 #include "wifi.h"
 
 #include <string.h>
@@ -8,16 +9,15 @@
 #include "esp_event.h"
 #include "esp_log.h"
 
-#ifndef CONFIG_RADIO_WIFI_SSID
-#error "CONFIG_RADIO_WIFI_SSID is not defined"
+#ifndef RADIO_WIFI_SSID
+#error "RADIO_WIFI_SSID is not defined"
 #else
-static_assert(strlen(CONFIG_RADIO_WIFI_SSID) > 0, "CONFIG_RADIO_WIFI_SSID is empty");
+static_assert(strlen(RADIO_WIFI_SSID) > 0, "RADIO_WIFI_SSID is empty");
 #endif
-
-#ifndef CONFIG_RADIO_WIFI_PASSWORD
-#error "CONFIG_RADIO_WIFI_PASSWORD is not defined"
+#ifndef RADIO_WIFI_PASSWORD
+#error "RADIO_WIFI_PASSWORD is not defined"
 #else
-static_assert(strlen(CONFIG_RADIO_WIFI_PASSWORD) > 0, "CONFIG_RADIO_WIFI_PASSWORD is empty");
+static_assert(strlen(RADIO_WIFI_PASSWORD) > 0, "RADIO_WIFI_PASSWORD is empty");
 #endif
 
 EventGroupHandle_t wifi_event_group;
@@ -91,8 +91,8 @@ void wifi_setup()
 
   wifi_config_t wifi_config = {
       .sta = {
-          .ssid = CONFIG_RADIO_WIFI_SSID,
-          .password = CONFIG_RADIO_WIFI_PASSWORD,
+          .ssid = RADIO_WIFI_SSID,
+          .password = RADIO_WIFI_PASSWORD,
           .threshold = {
               .authmode = WIFI_AUTH_WPA_PSK,
           }}};

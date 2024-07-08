@@ -5,3 +5,4 @@ sdkconfig.old
 sdkconfig.esp32dev
 sdkconfig.esp32dev.old
 managed_components
+config.h
