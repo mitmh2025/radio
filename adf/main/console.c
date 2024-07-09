@@ -47,6 +47,18 @@ static void console_task(void *arg)
   }
 }
 
+static int restart_func(int argc, char **argv)
+{
+  esp_restart();
+  return 0;
+}
+
+static int heap_func(int argc, char **argv)
+{
+  heap_caps_print_heap_info(MALLOC_CAP_DEFAULT);
+  return 0;
+}
+
 static struct
 {
   struct arg_str *token;
@@ -119,7 +131,36 @@ esp_err_t console_init()
   linenoiseSetCompletionCallback(&esp_console_get_completion);
   linenoiseSetHintsCallback((linenoiseHintsCallback *)&esp_console_get_hint);
 
-  esp_console_register_help_command();
+  err = esp_console_register_help_command();
+  if (err != ESP_OK)
+  {
+    ESP_LOGE(RADIO_TAG, "Failed to register help command: %s", esp_err_to_name(err));
+    return err;
+  }
+
+  esp_console_cmd_t cmd_restart = {
+      .command = "restart",
+      .help = "Restart the device",
+      .func = &restart_func,
+  };
+  err = esp_console_cmd_register(&cmd_restart);
+  if (err != ESP_OK)
+  {
+    ESP_LOGE(RADIO_TAG, "Failed to register restart command: %s", esp_err_to_name(err));
+    return err;
+  }
+
+  esp_console_cmd_t cmd_heap = {
+      .command = "heap",
+      .help = "Print heap usage",
+      .func = &heap_func,
+  };
+  err = esp_console_cmd_register(&cmd_heap);
+  if (err != ESP_OK)
+  {
+    ESP_LOGE(RADIO_TAG, "Failed to register heap command: %s", esp_err_to_name(err));
+    return err;
+  }
 
   provision_args.token = arg_str1(NULL, NULL, "<token>", "ThingsBoard device token");
   provision_args.end = arg_end(1);
@@ -130,14 +171,24 @@ esp_err_t console_init()
       .func = &provision_func,
       .argtable = &provision_args,
   };
-  esp_console_cmd_register(&cmd_provision);
+  err = esp_console_cmd_register(&cmd_provision);
+  if (err != ESP_OK)
+  {
+    ESP_LOGE(RADIO_TAG, "Failed to register provision command: %s", esp_err_to_name(err));
+    return err;
+  }
 
   esp_console_cmd_t cmd_deprovision = {
       .command = "deprovision",
       .help = "Erase the ThingsBoard device token. (Note that this will have no effect until reset.)",
       .func = &deprovision_func,
   };
-  esp_console_cmd_register(&cmd_deprovision);
+  err = esp_console_cmd_register(&cmd_deprovision);
+  if (err != ESP_OK)
+  {
+    ESP_LOGE(RADIO_TAG, "Failed to register deprovision command: %s", esp_err_to_name(err));
+    return err;
+  }
 
   xTaskCreatePinnedToCore(console_task, "console", 4096, NULL, 5, NULL, APP_CPU_NUM);
 
