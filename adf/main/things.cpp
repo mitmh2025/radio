@@ -142,7 +142,9 @@ extern "C" esp_err_t things_init()
       return err;
     }
     xEventGroupSetBits(radio_event_group, RADIO_EVENT_GROUP_THINGS_PROVISIONED);
-  } else if (err != ESP_ERR_NVS_NOT_FOUND) {
+  }
+  else if (err != ESP_ERR_NVS_NOT_FOUND)
+  {
     ESP_LOGE(RADIO_TAG, "Failed to check device token: %s", esp_err_to_name(err));
     return err;
   }

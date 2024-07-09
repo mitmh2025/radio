@@ -133,9 +133,9 @@ esp_err_t console_init()
   esp_console_cmd_register(&cmd_provision);
 
   esp_console_cmd_t cmd_deprovision = {
-    .command = "deprovision",
-    .help = "Erase the ThingsBoard device token. (Note that this will have no effect until reset.)",
-    .func = &deprovision_func,
+      .command = "deprovision",
+      .help = "Erase the ThingsBoard device token. (Note that this will have no effect until reset.)",
+      .func = &deprovision_func,
   };
   esp_console_cmd_register(&cmd_deprovision);
 
