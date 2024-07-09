@@ -1,4 +1,5 @@
 #include "../config.h"
+#include "main.h"
 #include "wifi.h"
 
 #include <string.h>
@@ -8,6 +9,7 @@
 #include "esp_wifi.h"
 #include "esp_event.h"
 #include "esp_log.h"
+#include "esp_check.h"
 
 #ifndef RADIO_WIFI_SSID
 #error "RADIO_WIFI_SSID is not defined"
@@ -20,9 +22,13 @@ static_assert(strlen(RADIO_WIFI_SSID) > 0, "RADIO_WIFI_SSID is empty");
 static_assert(strlen(RADIO_WIFI_PASSWORD) > 0, "RADIO_WIFI_PASSWORD is empty");
 #endif
 
-EventGroupHandle_t wifi_event_group;
+static esp_netif_t *wifi_netif = NULL;
 
-static const char *TAG = "radio:wifi";
+esp_err_t wifi_get_mac(uint8_t *mac)
+{
+  ESP_RETURN_ON_FALSE(wifi_netif != NULL, ESP_ERR_INVALID_STATE, RADIO_TAG, "Wifi is not initialized");
+  return esp_netif_get_mac(wifi_netif, mac);
+}
 
 static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
 {
@@ -31,23 +37,23 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
     switch (event_id)
     {
     case WIFI_EVENT_STA_START:
-      ESP_LOGI(TAG, "Wifi started");
-      xEventGroupSetBits(wifi_event_group, WIFI_EVENT_GROUP_STA_STARTED);
+      ESP_LOGI(RADIO_TAG, "Wifi started");
       ESP_ERROR_CHECK(esp_wifi_connect());
       break;
     case WIFI_EVENT_STA_STOP:
-      ESP_LOGI(TAG, "Wifi stopped");
-      xEventGroupClearBits(wifi_event_group, WIFI_EVENT_GROUP_STA_STARTED | WIFI_EVENT_GROUP_STA_CONNECTED | WIFI_EVENT_GROUP_STA_GOT_IP);
+      ESP_LOGI(RADIO_TAG, "Wifi stopped");
+      xEventGroupClearBits(radio_event_group, RADIO_EVENT_GROUP_WIFI_CONNECTED);
+      xEventGroupSetBits(radio_event_group, RADIO_EVENT_GROUP_WIFI_DISCONNECTED);
       break;
     case WIFI_EVENT_STA_CONNECTED:
     {
       wifi_event_sta_connected_t *event = (wifi_event_sta_connected_t *)event_data;
-      ESP_LOGI(TAG, "Wifi connected ssid='%.*s' channel=%u", event->ssid_len, event->ssid, event->channel);
-      xEventGroupSetBits(wifi_event_group, WIFI_EVENT_GROUP_STA_CONNECTED);
+      ESP_LOGI(RADIO_TAG, "Wifi connected ssid='%.*s' channel=%u", event->ssid_len, event->ssid, event->channel);
       break;
     }
     case WIFI_EVENT_STA_DISCONNECTED:
-      xEventGroupClearBits(wifi_event_group, WIFI_EVENT_GROUP_STA_CONNECTED | WIFI_EVENT_GROUP_STA_GOT_IP);
+      xEventGroupClearBits(radio_event_group, RADIO_EVENT_GROUP_WIFI_CONNECTED);
+      xEventGroupSetBits(radio_event_group, RADIO_EVENT_GROUP_WIFI_DISCONNECTED);
       break;
     }
   }
@@ -58,36 +64,57 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
     case IP_EVENT_STA_GOT_IP:
     {
       ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
-      ESP_LOGI(TAG, "Got IP address ip=" IPSTR, IP2STR(&event->ip_info.ip));
-      xEventGroupSetBits(wifi_event_group, WIFI_EVENT_GROUP_STA_GOT_IP);
+      ESP_LOGI(RADIO_TAG, "Got IP address ip=" IPSTR, IP2STR(&event->ip_info.ip));
+      xEventGroupClearBits(radio_event_group, RADIO_EVENT_GROUP_WIFI_DISCONNECTED);
+      xEventGroupSetBits(radio_event_group, RADIO_EVENT_GROUP_WIFI_CONNECTED);
       break;
     }
+    case IP_EVENT_STA_LOST_IP:
+      xEventGroupClearBits(radio_event_group, RADIO_EVENT_GROUP_WIFI_CONNECTED);
+      xEventGroupSetBits(radio_event_group, RADIO_EVENT_GROUP_WIFI_DISCONNECTED);
+      break;
     }
   }
   else
   {
-    ESP_LOGI(TAG, "Unknown event base %s", event_base);
+    ESP_LOGI(RADIO_TAG, "Unknown event base %s", event_base);
   }
 }
 
-void wifi_setup()
+esp_err_t wifi_init()
 {
-  wifi_event_group = xEventGroupCreate();
-  if (wifi_event_group == NULL)
-  {
-    ESP_LOGE(TAG, "Failed to create event group");
-    abort();
-    return;
-  }
+  ESP_LOGI(RADIO_TAG, "Setting up wifi");
 
-  ESP_ERROR_CHECK(esp_netif_init());
-  esp_netif_create_default_wifi_sta();
+  xEventGroupSetBits(radio_event_group, RADIO_EVENT_GROUP_WIFI_DISCONNECTED);
 
   wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-  ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+  esp_err_t err = esp_wifi_init(&cfg);
+  if (err != ESP_OK)
+  {
+    ESP_LOGE(RADIO_TAG, "Failed to initialize wifi: %s", esp_err_to_name(err));
+    return err;
+  }
 
-  esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL, NULL);
-  esp_event_handler_instance_register(IP_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL, NULL);
+  err = esp_netif_init();
+  if (err != ESP_OK)
+  {
+    ESP_LOGE(RADIO_TAG, "Failed to initialize netif: %s", esp_err_to_name(err));
+    return err;
+  }
+  wifi_netif = esp_netif_create_default_wifi_sta();
+
+  err = esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL, NULL);
+  if (err != ESP_OK)
+  {
+    ESP_LOGE(RADIO_TAG, "Failed to register wifi event handler: %s", esp_err_to_name(err));
+    return err;
+  }
+  err = esp_event_handler_instance_register(IP_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL, NULL);
+  if (err != ESP_OK)
+  {
+    ESP_LOGE(RADIO_TAG, "Failed to register ip event handler: %s", esp_err_to_name(err));
+    return err;
+  }
 
   wifi_config_t wifi_config = {
       .sta = {
@@ -97,8 +124,25 @@ void wifi_setup()
               .authmode = WIFI_AUTH_WPA_PSK,
           }}};
 
-  // TODO: AP/captive portal mode
-  ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-  ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
-  ESP_ERROR_CHECK(esp_wifi_start());
+  // TODO: AP/captive portal mode, retries, etc.
+  err = esp_wifi_set_mode(WIFI_MODE_STA);
+  if (err != ESP_OK)
+  {
+    ESP_LOGE(RADIO_TAG, "Failed to set wifi mode: %s", esp_err_to_name(err));
+    return err;
+  }
+  err = esp_wifi_set_config(WIFI_IF_STA, &wifi_config);
+  if (err != ESP_OK)
+  {
+    ESP_LOGE(RADIO_TAG, "Failed to set wifi config: %s", esp_err_to_name(err));
+    return err;
+  }
+  err = esp_wifi_start();
+  if (err != ESP_OK)
+  {
+    ESP_LOGE(RADIO_TAG, "Failed to start wifi: %s", esp_err_to_name(err));
+    return err;
+  }
+
+  return ESP_OK;
 }

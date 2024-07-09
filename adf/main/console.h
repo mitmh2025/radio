@@ -7,8 +7,7 @@ extern "C"
 {
 #endif
 
-  esp_err_t wifi_get_mac(uint8_t *mac);
-  esp_err_t wifi_init();
+  esp_err_t console_init();
 
 #ifdef __cplusplus
 }
