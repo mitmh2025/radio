@@ -120,9 +120,7 @@ esp_err_t wifi_init()
       .sta = {
           .ssid = RADIO_WIFI_SSID,
           .password = RADIO_WIFI_PASSWORD,
-          .threshold = {
-              .authmode = WIFI_AUTH_WPA_PSK,
-          }}};
+      }};
 
   // TODO: AP/captive portal mode, retries, etc.
   err = esp_wifi_set_mode(WIFI_MODE_STA);
