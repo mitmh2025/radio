@@ -21,6 +21,7 @@ static_assert(strlen(RADIO_THINGSBOARD_SERVER) > 0, "RADIO_THINGSBOARD_SERVER is
 #endif
 
 static constexpr char CURRENT_FIRMWARE_TITLE[] = "radio";
+// TODO: figure out how to generate this as a compile thing
 static constexpr char CURRENT_FIRMWARE_VERSION[] = "0.0.0";
 
 static constexpr uint8_t FIRMWARE_FAILURE_RETRIES = 12U;
