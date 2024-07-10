@@ -1,6 +1,7 @@
 #include "../config.h"
 #include "main.h"
 #include "wifi.h"
+#include "things.h"
 
 #include <string.h>
 
@@ -23,6 +24,21 @@ static_assert(strlen(RADIO_WIFI_PASSWORD) > 0, "RADIO_WIFI_PASSWORD is empty");
 #endif
 
 static esp_netif_t *wifi_netif = NULL;
+
+static void wifi_report_telemetry()
+{
+  wifi_ap_record_t ap_info;
+  esp_err_t err = esp_wifi_sta_get_ap_info(&ap_info);
+  if (err != ESP_OK)
+  {
+    ESP_LOGE(RADIO_TAG, "Failed to get AP info: %s", esp_err_to_name(err));
+    return;
+  }
+
+  things_send_telemetry_string("wifi_ssid", (const char *)ap_info.ssid);
+  things_send_telemetry_int("wifi_rssi", ap_info.rssi);
+  things_send_telemetry_int("wifi_channel", ap_info.primary);
+}
 
 esp_err_t wifi_get_mac(uint8_t *mac)
 {
@@ -141,6 +157,8 @@ esp_err_t wifi_init()
     ESP_LOGE(RADIO_TAG, "Failed to start wifi: %s", esp_err_to_name(err));
     return err;
   }
+
+  things_register_telemetry_generator(&wifi_report_telemetry);
 
   return ESP_OK;
 }

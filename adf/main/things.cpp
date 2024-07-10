@@ -40,6 +40,7 @@ static nvs_handle_t things_nvs_handle;
 
 static TaskHandle_t things_task_handle = NULL;
 static std::string things_token;
+static std::vector<void (*)(void)> telemetry_generators;
 
 static constexpr TickType_t CONNECT_TIMEOUT = pdMS_TO_TICKS(5000);
 
@@ -104,7 +105,23 @@ static void things_task(void *arg)
       continue;
     }
 
-    xEventGroupWaitBits(radio_event_group, RADIO_EVENT_GROUP_WIFI_DISCONNECTED, pdFALSE, pdTRUE, portMAX_DELAY);
+    // TODO: setup OTA
+
+    while (true)
+    {
+      for (auto generator : telemetry_generators)
+      {
+        generator();
+      }
+
+      // If the wifi disconnect bit remains unset after 30 seconds, send telemetry again
+      EventBits_t bits = xEventGroupWaitBits(radio_event_group, RADIO_EVENT_GROUP_WIFI_DISCONNECTED, pdTRUE, pdFALSE, pdMS_TO_TICKS(30000));
+      if (bits & RADIO_EVENT_GROUP_WIFI_DISCONNECTED)
+      {
+        break;
+      }
+    }
+    tb.disconnect();
   }
 
   vTaskDelete(NULL);
@@ -186,4 +203,45 @@ extern "C" esp_err_t things_deprovision()
   }
 
   return ESP_OK;
+}
+
+extern "C" bool things_send_telemetry_string(char const *const key, char const *const value)
+{
+  if (!tb.connected())
+  {
+    return false;
+  }
+  return tb.sendTelemetryData(key, value);
+}
+
+extern "C" bool things_send_telemetry_double(char const *const key, double value)
+{
+  if (!tb.connected())
+  {
+    return false;
+  }
+  return tb.sendTelemetryData(key, value);
+}
+
+extern "C" bool things_send_telemetry_int(char const *const key, long long value)
+{
+  if (!tb.connected())
+  {
+    return false;
+  }
+  return tb.sendTelemetryData(key, value);
+}
+
+extern "C" bool things_send_telemetry_bool(char const *const key, bool value)
+{
+  if (!tb.connected())
+  {
+    return false;
+  }
+  return tb.sendTelemetryData(key, value);
+}
+
+extern "C" void things_register_telemetry_generator(void (*generator)(void))
+{
+  telemetry_generators.push_back(generator);
 }
