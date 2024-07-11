@@ -51,6 +51,24 @@ static void things_connect_callback(void)
     xTaskNotifyGive(things_task_handle);
 }
 
+static void things_progress_callback(const size_t &currentChunk, const size_t &totalChuncks)
+{
+  ESP_LOGV(RADIO_TAG, "Firmware update progress %d/%d chunks (%.2f%%)", currentChunk, totalChuncks, static_cast<float>(100 * currentChunk) / totalChuncks);
+}
+
+static void things_updated_callback(const bool &success)
+{
+  if (!success)
+  {
+    ESP_LOGE(RADIO_TAG, "Failed to update firmware");
+    abort();
+  }
+
+  // TODO: setup r/w lock to allow blocking updates
+  ESP_LOGI(RADIO_TAG, "Successfully updated firmware; restarting now");
+  esp_restart();
+}
+
 static void things_task(void *arg)
 {
   // First, block until we're provisioned
@@ -106,7 +124,35 @@ static void things_task(void *arg)
       continue;
     }
 
-    // TODO: setup OTA
+    const OTA_Update_Callback callback(
+        things_progress_callback,
+        things_updated_callback,
+        CURRENT_FIRMWARE_TITLE,
+        CURRENT_FIRMWARE_VERSION,
+        &updater,
+        FIRMWARE_FAILURE_RETRIES,
+        FIRMWARE_PACKET_SIZE);
+
+    // First subscribe to updates, in case there's not one already pending
+    success = tb.Subscribe_Firmware_Update(callback);
+    if (!success)
+    {
+      ESP_LOGE(RADIO_TAG, "Failed to subscribe to firmware updates from ThingsBoard. Waiting and trying again...");
+      vTaskDelay(pdMS_TO_TICKS(5000));
+      tb.disconnect();
+      continue;
+    }
+
+    // Then manually request an update, since Subscribe_Firmware_Update is
+    // edge-triggered not level-triggered
+    success = tb.Start_Firmware_Update(callback);
+    if (!success)
+    {
+      ESP_LOGE(RADIO_TAG, "Failed to request an immediate firmware updates from ThingsBoard. Waiting and trying again...");
+      vTaskDelay(pdMS_TO_TICKS(5000));
+      tb.disconnect();
+      continue;
+    }
 
     while (true)
     {
