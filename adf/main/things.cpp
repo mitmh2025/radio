@@ -9,6 +9,7 @@
 #include "nvs_flash.h"
 #include "nvs_handle.hpp"
 #include "esp_crt_bundle.h"
+#include "esp_app_desc.h"
 
 #include <Espressif_MQTT_Client.h>
 #include <Espressif_Updater.h>
@@ -19,10 +20,6 @@
 #else
 static_assert(strlen(RADIO_THINGSBOARD_SERVER) > 0, "RADIO_THINGSBOARD_SERVER is empty");
 #endif
-
-static constexpr char CURRENT_FIRMWARE_TITLE[] = "radio";
-// TODO: figure out how to generate this as a compile thing
-static constexpr char CURRENT_FIRMWARE_VERSION[] = "0.0.0";
 
 static constexpr uint8_t FIRMWARE_FAILURE_RETRIES = 12U;
 static constexpr uint16_t FIRMWARE_PACKET_SIZE = 4096U;
@@ -107,7 +104,14 @@ static void things_task(void *arg)
 
     ESP_LOGI(RADIO_TAG, "Connected to ThingsBoard");
 
-    success = tb.Firmware_Send_Info(CURRENT_FIRMWARE_TITLE, CURRENT_FIRMWARE_VERSION);
+    // Note that the project name is generated from the top-level CMakeLists.txt
+    // file; the version is automatically generated, most likely from git
+    // describe - see
+    // https://docs.espressif.com/projects/esp-idf/en/v5.2.2/esp32s3/api-guides/build-system.html#build-project-variables
+    // for details
+    const esp_app_desc_t *app = esp_app_get_description();
+
+    success = tb.Firmware_Send_Info(app->project_name, app->version);
     if (!success)
     {
       ESP_LOGE(RADIO_TAG, "Failed to send firmware info to ThingsBoard. Waiting and trying again...");
@@ -127,8 +131,8 @@ static void things_task(void *arg)
     const OTA_Update_Callback callback(
         things_progress_callback,
         things_updated_callback,
-        CURRENT_FIRMWARE_TITLE,
-        CURRENT_FIRMWARE_VERSION,
+        app->project_name,
+        app->version,
         &updater,
         FIRMWARE_FAILURE_RETRIES,
         FIRMWARE_PACKET_SIZE);

@@ -4,4 +4,4 @@ include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 
 list(APPEND EXTRA_COMPONENT_DIRS "esp-adf/components")
 
-project(radio-firmware)
+project(radio)
