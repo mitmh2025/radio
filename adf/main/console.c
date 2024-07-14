@@ -16,6 +16,10 @@ static void console_task(void *arg)
   // TODO: support starting/stopping the console when radio is in/out of debug
   // mode by dup'ing stdin and closing/reopening the original fd as needed
 
+  // TODO: Also detect when USB gets connected by polling
+  // usb_serial_jtag_is_connected and print a warning message when first
+  // connected
+
   const char *prompt = LOG_COLOR_I "radio> " LOG_RESET_COLOR;
   while (true)
   {
