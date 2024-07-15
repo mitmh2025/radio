@@ -10,6 +10,7 @@
 #include "nvs_handle.hpp"
 #include "esp_crt_bundle.h"
 #include "esp_app_desc.h"
+#include "esp_check.h"
 
 #include <Espressif_MQTT_Client.h>
 #include <Espressif_Updater.h>
@@ -187,11 +188,7 @@ extern "C" esp_err_t things_init()
   }
 
   esp_err_t err = nvs_open(THINGS_NVS_NAMESPACE, NVS_READWRITE, &things_nvs_handle);
-  if (err != ESP_OK)
-  {
-    ESP_LOGE(RADIO_TAG, "Failed to open NVS handle: %s", esp_err_to_name(err));
-    return err;
-  }
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to open NVS handle: %s", esp_err_to_name(err));
 
   mqtt_client.set_connect_callback(things_connect_callback);
   mqtt_client.set_server_crt_bundle_attach(esp_crt_bundle_attach);
@@ -204,11 +201,7 @@ extern "C" esp_err_t things_init()
   {
     things_token.resize(length);
     err = nvs_get_str(things_nvs_handle, THINGS_NVS_TOKEN_KEY, things_token.data(), &length);
-    if (err != ESP_OK)
-    {
-      ESP_LOGE(RADIO_TAG, "Failed to get device token: %s", esp_err_to_name(err));
-      return err;
-    }
+    ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to get device token: %s", esp_err_to_name(err));
     xEventGroupSetBits(radio_event_group, RADIO_EVENT_GROUP_THINGS_PROVISIONED);
   }
   else if (err != ESP_ERR_NVS_NOT_FOUND)
@@ -228,11 +221,7 @@ extern "C" esp_err_t things_provision(const char *token)
   }
 
   esp_err_t err = nvs_set_str(things_nvs_handle, THINGS_NVS_TOKEN_KEY, token);
-  if (err != ESP_OK)
-  {
-    ESP_LOGE(RADIO_TAG, "Failed to set device token: %s", esp_err_to_name(err));
-    return err;
-  }
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to set device token: %s", esp_err_to_name(err));
   things_token = token;
   xEventGroupSetBits(radio_event_group, RADIO_EVENT_GROUP_THINGS_PROVISIONED);
 

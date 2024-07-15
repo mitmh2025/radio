@@ -105,32 +105,16 @@ esp_err_t wifi_init()
 
   wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
   esp_err_t err = esp_wifi_init(&cfg);
-  if (err != ESP_OK)
-  {
-    ESP_LOGE(RADIO_TAG, "Failed to initialize wifi: %s", esp_err_to_name(err));
-    return err;
-  }
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to initialize wifi: %s", esp_err_to_name(err));
 
   err = esp_netif_init();
-  if (err != ESP_OK)
-  {
-    ESP_LOGE(RADIO_TAG, "Failed to initialize netif: %s", esp_err_to_name(err));
-    return err;
-  }
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to initialize netif: %s", esp_err_to_name(err));
   wifi_netif = esp_netif_create_default_wifi_sta();
 
   err = esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL, NULL);
-  if (err != ESP_OK)
-  {
-    ESP_LOGE(RADIO_TAG, "Failed to register wifi event handler: %s", esp_err_to_name(err));
-    return err;
-  }
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register wifi event handler: %s", esp_err_to_name(err));
   err = esp_event_handler_instance_register(IP_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL, NULL);
-  if (err != ESP_OK)
-  {
-    ESP_LOGE(RADIO_TAG, "Failed to register ip event handler: %s", esp_err_to_name(err));
-    return err;
-  }
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register ip event handler: %s", esp_err_to_name(err));
 
   wifi_config_t wifi_config = {
       .sta = {
@@ -140,23 +124,11 @@ esp_err_t wifi_init()
 
   // TODO: AP/captive portal mode, retries, etc.
   err = esp_wifi_set_mode(WIFI_MODE_STA);
-  if (err != ESP_OK)
-  {
-    ESP_LOGE(RADIO_TAG, "Failed to set wifi mode: %s", esp_err_to_name(err));
-    return err;
-  }
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to set wifi mode: %s", esp_err_to_name(err));
   err = esp_wifi_set_config(WIFI_IF_STA, &wifi_config);
-  if (err != ESP_OK)
-  {
-    ESP_LOGE(RADIO_TAG, "Failed to set wifi config: %s", esp_err_to_name(err));
-    return err;
-  }
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to set wifi config: %s", esp_err_to_name(err));
   err = esp_wifi_start();
-  if (err != ESP_OK)
-  {
-    ESP_LOGE(RADIO_TAG, "Failed to start wifi: %s", esp_err_to_name(err));
-    return err;
-  }
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to start wifi: %s", esp_err_to_name(err));
 
   things_register_telemetry_generator(&wifi_report_telemetry);
 

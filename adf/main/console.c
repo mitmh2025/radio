@@ -5,6 +5,7 @@
 #include <fcntl.h>
 
 #include "esp_log.h"
+#include "esp_check.h"
 #include "esp_console.h"
 #include "esp_vfs_dev.h"
 #include "linenoise/linenoise.h"
@@ -116,32 +117,20 @@ esp_err_t console_init()
 
   usb_serial_jtag_driver_config_t usb_serial_jtag_config = USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
   esp_err_t err = usb_serial_jtag_driver_install(&usb_serial_jtag_config);
-  if (err != ESP_OK)
-  {
-    ESP_LOGE(RADIO_TAG, "Failed to install USB serial JTAG driver: %s", esp_err_to_name(err));
-    return err;
-  }
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to install USB serial JTAG driver: %s", esp_err_to_name(err));
 
   esp_vfs_usb_serial_jtag_use_driver();
 
   esp_console_config_t cfg = ESP_CONSOLE_CONFIG_DEFAULT();
   cfg.hint_color = atoi(LOG_COLOR_CYAN);
   err = esp_console_init(&cfg);
-  if (err != ESP_OK)
-  {
-    ESP_LOGE(RADIO_TAG, "Failed to initialize console: %s", esp_err_to_name(err));
-    return err;
-  }
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to initialize console: %s", esp_err_to_name(err));
 
   linenoiseSetCompletionCallback(&esp_console_get_completion);
   linenoiseSetHintsCallback((linenoiseHintsCallback *)&esp_console_get_hint);
 
   err = esp_console_register_help_command();
-  if (err != ESP_OK)
-  {
-    ESP_LOGE(RADIO_TAG, "Failed to register help command: %s", esp_err_to_name(err));
-    return err;
-  }
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register help command: %s", esp_err_to_name(err));
 
   esp_console_cmd_t cmd_restart = {
       .command = "restart",
@@ -149,11 +138,7 @@ esp_err_t console_init()
       .func = &restart_func,
   };
   err = esp_console_cmd_register(&cmd_restart);
-  if (err != ESP_OK)
-  {
-    ESP_LOGE(RADIO_TAG, "Failed to register restart command: %s", esp_err_to_name(err));
-    return err;
-  }
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register restart command: %s", esp_err_to_name(err));
 
   esp_console_cmd_t cmd_heap = {
       .command = "heap",
@@ -161,11 +146,7 @@ esp_err_t console_init()
       .func = &heap_func,
   };
   err = esp_console_cmd_register(&cmd_heap);
-  if (err != ESP_OK)
-  {
-    ESP_LOGE(RADIO_TAG, "Failed to register heap command: %s", esp_err_to_name(err));
-    return err;
-  }
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register heap command: %s", esp_err_to_name(err));
 
   provision_args.token = arg_str1(NULL, NULL, "<token>", "ThingsBoard device token");
   provision_args.end = arg_end(1);
@@ -177,11 +158,7 @@ esp_err_t console_init()
       .argtable = &provision_args,
   };
   err = esp_console_cmd_register(&cmd_provision);
-  if (err != ESP_OK)
-  {
-    ESP_LOGE(RADIO_TAG, "Failed to register provision command: %s", esp_err_to_name(err));
-    return err;
-  }
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register provision command: %s", esp_err_to_name(err));
 
   esp_console_cmd_t cmd_deprovision = {
       .command = "deprovision",
@@ -189,11 +166,7 @@ esp_err_t console_init()
       .func = &deprovision_func,
   };
   err = esp_console_cmd_register(&cmd_deprovision);
-  if (err != ESP_OK)
-  {
-    ESP_LOGE(RADIO_TAG, "Failed to register deprovision command: %s", esp_err_to_name(err));
-    return err;
-  }
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register deprovision command: %s", esp_err_to_name(err));
 
   xTaskCreatePinnedToCore(console_task, "console", 4096, NULL, 5, NULL, APP_CPU_NUM);
 
