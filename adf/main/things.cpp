@@ -11,6 +11,7 @@
 #include "esp_crt_bundle.h"
 #include "esp_app_desc.h"
 #include "esp_check.h"
+#include "esp_core_dump.h"
 
 #include <Espressif_MQTT_Client.h>
 #include <Espressif_Updater.h>
@@ -104,6 +105,24 @@ static void things_task(void *arg)
     }
 
     ESP_LOGI(RADIO_TAG, "Connected to ThingsBoard");
+
+    size_t core_addr, core_size;
+    esp_err_t err = esp_core_dump_image_get(&core_addr, &core_size);
+    if (err == ESP_OK)
+    {
+      ESP_LOGW(RADIO_TAG, "Core dump detected at 0x%08x, size %d bytes", core_addr, core_size);
+      // TODO: upload core dump to thingsboard
+    }
+    else if (err != ESP_ERR_NOT_FOUND && err != ESP_ERR_INVALID_SIZE)
+    {
+      ESP_LOGE(RADIO_TAG, "Failed to get core dump: %s", esp_err_to_name(err));
+    }
+    // No matter what happened, erase the coredump so we don't re-upload it
+    err = esp_core_dump_image_erase();
+    if (err != ESP_OK)
+    {
+      ESP_LOGE(RADIO_TAG, "Failed to erase core dump: %s", esp_err_to_name(err));
+    }
 
     // Note that the project name is generated from the top-level CMakeLists.txt
     // file; the version is automatically generated, most likely from git
