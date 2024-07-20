@@ -25,6 +25,8 @@
 #include "driver/usb_serial_jtag.h"
 #include "esp_ota_ops.h"
 
+#include "peer.h"
+
 const char *RADIO_TAG = "radio";
 
 extern const uint8_t music_start[] asm("_binary_song_mp3_start");
@@ -157,6 +159,7 @@ void app_main(void)
   }
 
   ESP_ERROR_CHECK(console_init());
+  peer_init();
 
   // If we make it this far, mark the firmware as good
   ESP_ERROR_CHECK_WITHOUT_ABORT(esp_ota_mark_app_valid_cancel_rollback());

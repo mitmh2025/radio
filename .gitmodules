@@ -1,0 +1,6 @@
+[submodule "adf/components/peer/libpeer"]
+	path = adf/components/peer/libpeer
+	url = git@github.com:mitmh2025/libpeer
+[submodule "adf/components/srtp"]
+	path = adf/components/srtp
+	url = https://github.com/sepfy/esp_ports.git
