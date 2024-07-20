@@ -1,1 +1,6 @@
-dependencies: {}
+dependencies:
+  thingsboard/ThingsBoard:
+    git: https://github.com/ebroder/thingsboard-client-sdk
+    version: 2a476796fb877cd8726648360aa89440a10ca43e
+  idf:
+    version: ">=5.2.0"

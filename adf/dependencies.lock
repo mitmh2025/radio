@@ -1,4 +1,10 @@
 dependencies:
+  bblanchon/arduinojson:
+    component_hash: 463812931f99cb7a554d64311288f537b43daaca3eed2427557b907af393447c
+    source:
+      service_url: https://api.components.espressif.com/
+      type: service
+    version: 6.21.5
   espressif/esp-dsp:
     component_hash: 3e7bbd487f1357a1d4944d0c85966d049501ea281b8a4c7f93f7cfedd5b7f23d
     source:
@@ -21,7 +27,14 @@ dependencies:
     component_hash: null
     source:
       type: idf
-    version: 5.2.1
-manifest_hash: d2da0d169eccce19a1213d5cd97032f78c49e4c5d619cfba7eda786cb2c3feae
+    version: 5.2.0
+  thingsboard/ThingsBoard:
+    component_hash: fbf7e33a396ad42649346ba62449b13cb305aceda4261bb684ac813e9c074117
+    source:
+      git: https://github.com/ebroder/thingsboard-client-sdk
+      path: .
+      type: git
+    version: 2a476796fb877cd8726648360aa89440a10ca43e
+manifest_hash: e3d878286a847be057440e2e46e37b850f5b96fc1a380229afe2bf42a2116d0c
 target: esp32s3
 version: 1.0.0
