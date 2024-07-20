@@ -1,8 +1,8 @@
-FROM espressif/idf
+FROM espressif/idf:v5.2
 
 ARG DEBIAN_FRONTEND=nointeractive
 ARG CONTAINER_USER=esp
-ARG USER_UID=1000
+ARG USER_UID=1001
 ARG USER_GID=$USER_UID
 
 RUN apt-get update \
@@ -30,6 +30,10 @@ RUN wget --no-verbose ${QEMU_URL} \
 
 ENV PATH=/opt/qemu/bin:${PATH}
 
+RUN git clone --recursive https://github.com/espressif/esp-adf.git /opt/esp/adf
+ENV ADF_PATH=/opt/esp/adf
+RUN sed -e '\,IDF_PATH/export.sh,a. $ADF_PATH/export.sh' -i /opt/esp/entrypoint.sh
+
 RUN groupadd --gid $USER_GID $CONTAINER_USER \
   && adduser --uid $USER_UID --gid $USER_GID --disabled-password --gecos "" ${CONTAINER_USER} \
   && usermod -a -G root $CONTAINER_USER && usermod -a -G dialout $CONTAINER_USER
@@ -40,7 +44,7 @@ USER ${CONTAINER_USER}
 ENV USER=${CONTAINER_USER}
 WORKDIR /home/${CONTAINER_USER}
 
-RUN echo "source /opt/esp/idf/export.sh > /dev/null 2>&1" >> ~/.bashrc
+RUN echo "source /opt/esp/idf/export.sh > /dev/null 2>&1 && source /opt/esp/adf/export.sh > /dev/null 2>&1" >> ~/.bashrc
 
 ENTRYPOINT [ "/opt/esp/entrypoint.sh" ]
 

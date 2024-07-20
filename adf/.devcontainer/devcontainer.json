@@ -25,7 +25,7 @@
 			},
 			"extensions": [
 				"espressif.esp-idf-extension"
-			],
+			]
 		},
 		"codespaces": {
 			"settings": {
@@ -38,7 +38,7 @@
 			},
 			"extensions": [
 				"espressif.esp-idf-extension"
-			],
+			]
 		}
 	},
 	"runArgs": ["--privileged"]
