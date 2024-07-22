@@ -11,6 +11,7 @@
 #include "linenoise/linenoise.h"
 #include "argtable3/argtable3.h"
 #include "driver/usb_serial_jtag.h"
+#include "freertos/FreeRTOS.h"
 
 static void console_task(void *arg)
 {
@@ -62,6 +63,24 @@ static int restart_func(int argc, char **argv)
 static int heap_func(int argc, char **argv)
 {
   heap_caps_print_heap_info(MALLOC_CAP_DEFAULT);
+  return 0;
+}
+
+static int tasks_func(int argc, char **argv)
+{
+  const size_t bytes_per_task = 40; /* see vTaskList description */
+  char *task_list_buffer = malloc(uxTaskGetNumberOfTasks() * bytes_per_task);
+  if (task_list_buffer == NULL)
+  {
+    ESP_LOGE(RADIO_TAG, "failed to allocate buffer for vTaskList output");
+    return 1;
+  }
+  fputs("Task Name\tStatus\tPrio\tHWM\tTask#", stdout);
+  fputs("\tAffinity", stdout);
+  fputs("\n", stdout);
+  vTaskList(task_list_buffer);
+  fputs(task_list_buffer, stdout);
+  free(task_list_buffer);
   return 0;
 }
 
@@ -147,6 +166,14 @@ esp_err_t console_init()
   };
   err = esp_console_cmd_register(&cmd_heap);
   ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register heap command: %s", esp_err_to_name(err));
+
+  esp_console_cmd_t cmd_tasks = {
+      .command = "tasks",
+      .help = "Print task list",
+      .func = &tasks_func,
+  };
+  err = esp_console_cmd_register(&cmd_tasks);
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register tasks command: %s", esp_err_to_name(err));
 
   provision_args.token = arg_str1(NULL, NULL, "<token>", "ThingsBoard device token");
   provision_args.end = arg_end(1);
