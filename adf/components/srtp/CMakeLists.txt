@@ -21,8 +21,7 @@ ExternalProject_Add(srtp
   GIT_REPOSITORY https://github.com/cisco/libsrtp
   GIT_TAG 5f8dfbf7eedbc2fa737cf0a2931b464f10396379
   DOWNLOAD_EXTRACT_TIMESTAMP true
-  PATCH_COMMAND sed -i "" -e "s/CMAKE_C_STANDARD 99/CMAKE_C_STANDARD 11/" CMakeLists.txt &&
-                sed -i "" -e "s/srtp_remove_stream(srtp_t session, unsigned int ssrc/srtp_remove_stream(srtp_t session, uint32_t ssrc/" include/srtp.h
+  PATCH_COMMAND sed -i "" -e "s/CMAKE_C_STANDARD 99/CMAKE_C_STANDARD 11/" CMakeLists.txt
   CMAKE_ARGS
     -DENABLE_MBEDTLS=ON
     -DLIBSRTP_TEST_APPS=OFF
