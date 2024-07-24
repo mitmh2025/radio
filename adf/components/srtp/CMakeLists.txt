@@ -18,7 +18,8 @@ set(SRTP_INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR}/srtp_install)
 include(ExternalProject)
 
 ExternalProject_Add(srtp
-  URL https://github.com/cisco/libsrtp/archive/refs/tags/v2.6.0.tar.gz
+  GIT_REPOSITORY https://github.com/cisco/libsrtp
+  GIT_TAG 5f8dfbf7eedbc2fa737cf0a2931b464f10396379
   DOWNLOAD_EXTRACT_TIMESTAMP true
   PATCH_COMMAND sed -i "" -e "s/CMAKE_C_STANDARD 99/CMAKE_C_STANDARD 11/" CMakeLists.txt &&
                 sed -i "" -e "s/srtp_remove_stream(srtp_t session, unsigned int ssrc/srtp_remove_stream(srtp_t session, uint32_t ssrc/" include/srtp.h
@@ -36,10 +37,10 @@ ExternalProject_Add(srtp
     -DCMAKE_CXX_FLAGS=${SRTP_CFLAGS}
     -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
   INSTALL_DIR ${SRTP_INSTALL_DIR}
-  BUILD_BYPRODUCTS ${SRTP_INSTALL_DIR}/lib/libsrtp2.a
+  BUILD_BYPRODUCTS ${SRTP_INSTALL_DIR}/lib/libsrtp3.a
 )
 
-add_prebuilt_library(srtp_lib "${SRTP_INSTALL_DIR}/lib/libsrtp2.a")
+add_prebuilt_library(srtp_lib "${SRTP_INSTALL_DIR}/lib/libsrtp3.a")
 target_include_directories(srtp_lib INTERFACE "${SRTP_INSTALL_DIR}/include")
 add_dependencies(srtp_lib srtp)
 target_link_libraries(${COMPONENT_LIB} INTERFACE srtp_lib)
