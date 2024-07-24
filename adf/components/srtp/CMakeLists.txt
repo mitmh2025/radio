@@ -3,7 +3,6 @@ cmake_minimum_required( VERSION 3.12 )
 idf_component_register(REQUIRES mbedtls)
 
 foreach(LIB IN ITEMS mbedtls newlib lwip vfs esp_system freertos xtensa esp_hw_support soc esp_common heap esp_rom)
-  message(STATUS "Getting include directories for ${LIB}")
   idf_component_get_property(tmp_lib ${LIB} COMPONENT_LIB)
   get_target_property(tmp_includes ${tmp_lib} INTERFACE_INCLUDE_DIRECTORIES)
   list(APPEND INCLUDES ${tmp_includes})
