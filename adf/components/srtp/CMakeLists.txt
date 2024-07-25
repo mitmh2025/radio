@@ -1,4 +1,4 @@
-cmake_minimum_required( VERSION 3.12 )
+cmake_minimum_required(VERSION 3.12)
 
 idf_component_register(REQUIRES mbedtls)
 
@@ -19,7 +19,6 @@ include(ExternalProject)
 ExternalProject_Add(srtp
   GIT_REPOSITORY https://github.com/cisco/libsrtp
   GIT_TAG 5f8dfbf7eedbc2fa737cf0a2931b464f10396379
-  DOWNLOAD_EXTRACT_TIMESTAMP true
   PATCH_COMMAND sed -i "" -e "s/CMAKE_C_STANDARD 99/CMAKE_C_STANDARD 11/" CMakeLists.txt
   CMAKE_ARGS
     -DENABLE_MBEDTLS=ON

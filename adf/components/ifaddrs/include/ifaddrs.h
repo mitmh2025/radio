@@ -3,6 +3,10 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 // These should come from <net/if.h> but lwip doesn't have them
 #define IFF_UP          0x1             /* interface is up */
 #define IFF_BROADCAST   0x2             /* broadcast address valid */
@@ -25,3 +29,7 @@ struct ifaddrs
 int getifaddrs(struct ifaddrs **ifap);
 
 void freeifaddrs(struct ifaddrs *ifp);
+
+#ifdef __cplusplus
+}
+#endif
