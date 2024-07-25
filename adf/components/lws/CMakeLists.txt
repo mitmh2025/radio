@@ -1,0 +1,15 @@
+idf_component_register(PRIV_REQUIRES driver)
+
+set(LWS_WITH_DRIVERS OFF)
+set(LWS_WITHOUT_SERVER ON)
+set(LWS_WITHOUT_TEST_SERVER ON)
+set(LWS_WITHOUT_TEST_SERVER_EXTPOLL ON)
+set(LWS_WITHOUT_TEST_PING ON)
+set(LWS_WITHOUT_TEST_CLIENT ON)
+set(LWS_WITH_EXPORT_LWSTARGETS OFF)
+set(DISABLE_WERROR ON)
+include_directories($ENV{IDF_PATH}/components/driver/gpio/include)
+set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
+add_subdirectory(libwebsockets)
+
+target_link_libraries(${COMPONENT_LIB} INTERFACE websockets)
