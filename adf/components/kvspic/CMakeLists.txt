@@ -2,15 +2,6 @@ cmake_minimum_required(VERSION 3.12)
 
 idf_component_register(REQUIRES uname)
 
-foreach(LIB IN ITEMS newlib uname freertos xtensa esp_hw_support soc esp_common heap esp_rom esp_system)
-  idf_component_get_property(tmp_lib ${LIB} COMPONENT_LIB)
-  get_target_property(tmp_includes ${tmp_lib} INTERFACE_INCLUDE_DIRECTORIES)
-  list(APPEND INCLUDES ${tmp_includes})
-endforeach()
-
-list(TRANSFORM INCLUDES PREPEND "-I")
-list(JOIN INCLUDES " " KVSPIC_CFLAGS)
-
 set(KVSPIC_INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR}/kvspic_install)
 
 include(ExternalProject)
@@ -23,8 +14,11 @@ ExternalProject_Add(kvspic
     -DBUILD_DEPENDENCIES=OFF
     -DBUILD_TEST=OFF
     -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
-    -DCMAKE_C_FLAGS=${KVSPIC_CFLAGS}
-    -DCMAKE_CXX_FLAGS=${KVSPIC_CFLAGS}
+    -DCMAKE_PROJECT_pic_project_INCLUDE=${CMAKE_CURRENT_SOURCE_DIR}/kvspic-fix-CMakeLists.txt
+    -DEXTRA_INCLUDE_DIRECTORIES=$<TARGET_PROPERTY:${COMPONENT_TARGET},INTERFACE_INCLUDE_DIRECTORIES>
+  USES_TERMINAL_DOWNLOAD TRUE
+  USES_TERMINAL_CONFIGURE TRUE
+  USES_TERMINAL_BUILD TRUE
   INSTALL_DIR ${KVSPIC_INSTALL_DIR}
   BUILD_BYPRODUCTS
     ${KVSPIC_INSTALL_DIR}/lib/libkvspic.a
