@@ -5,13 +5,15 @@ idf_component_register(REQUIRES srtp libcextras kvscommonlws kvspic mbedtls lws)
 idf_component_get_property(KVSCOMMONLWS_PREFIX kvscommonlws KVSCOMMONLWS_PREFIX)
 idf_component_get_property(SRTP_PREFIX srtp SRTP_PREFIX)
 
+idf_component_get_property(libcextras_lib libcextras COMPONENT_LIB)
+
 set(KVSWEBRTCCLIENT_INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR}/kvswebrtcclient_install)
 
 include(ExternalProject)
 
 ExternalProject_Add(kvswebrtcclient
   GIT_REPOSITORY git@github.com:mitmh2025/amazon-kinesis-video-streams-webrtc-sdk-c
-  GIT_TAG 077f29e702930b351d4af13101f8afa9be290c81
+  GIT_TAG 4f6eabcc9d58c1e85a5fd2cc3a22e25567e76550
   CMAKE_ARGS
     -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
     -DBUILD_STATIC_LIBS=ON
@@ -22,8 +24,9 @@ ExternalProject_Add(kvswebrtcclient
     -DENABLE_DATA_CHANNEL=OFF
     -DENABLE_KVS_THREADPOOL=OFF
     -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
-    -DCMAKE_PROJECT_KinesisVideoWebRTCClient_INCLUDE=${CMAKE_SOURCE_DIR}/cmake/add-extra-include-directories.cmake
-    -DEXTRA_INCLUDE_DIRECTORIES=$<TARGET_PROPERTY:${COMPONENT_TARGET},INTERFACE_INCLUDE_DIRECTORIES>
+    -DCMAKE_PROJECT_KinesisVideoWebRTCClient_INCLUDE=${CMAKE_SOURCE_DIR}/cmake/add-extra-properties.cmake
+    -DEXTRA_INCLUDE_DIRECTORIES=$<TARGET_PROPERTY:${libcextras_lib},INTERFACE_INCLUDE_DIRECTORIES>
+    -DEXTRA_COMPILE_DEFINITIONS=$<TARGET_PROPERTY:${COMPONENT_TARGET},INTERFACE_COMPILE_DEFINITIONS>
     -DMBEDTLS_INCLUDE_DIRS=$<TARGET_PROPERTY:${COMPONENT_TARGET},INTERFACE_INCLUDE_DIRECTORIES>
     -DMBEDTLS_LIBRARY=$<TARGET_FILE:mbedtls>
     -DMBEDX509_LIBRARY=$<TARGET_FILE:mbedx509>
@@ -38,7 +41,7 @@ ExternalProject_Add(kvswebrtcclient
   DEPENDS kvspic srtp kvscommonlws idf::libcextras idf::lws
 )
 
-add_prebuilt_library(kvswebrtcclient_lib "${KVSWEBRTCCLIENT_INSTALL_DIR}/lib/libkvsWebrtcClient.a")
+add_prebuilt_library(kvswebrtcclient_lib "${KVSWEBRTCCLIENT_INSTALL_DIR}/lib/libkvsWebrtcClient.a" REQUIRES srtp mbedtls libcextras kvspic)
 target_include_directories(kvswebrtcclient_lib INTERFACE "${KVSWEBRTCCLIENT_INSTALL_DIR}/include")
 add_dependencies(kvswebrtcclient_lib kvswebrtcclient)
 

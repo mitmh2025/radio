@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.12)
 
-idf_component_register(PRIV_REQUIRES mbedtls)
+idf_component_register(REQUIRES mbedtls)
 
 set(SRTP_INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR}/srtp_install)
 idf_component_set_property(${COMPONENT_NAME} SRTP_PREFIX ${SRTP_INSTALL_DIR})
@@ -19,10 +19,12 @@ ExternalProject_Add(srtp
     -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
     -DBUILD_SHARED_LIBS=OFF
     -DENABLE_WARNINGS_AS_ERRORS=OFF
-    -DMBEDTLS_INCLUDE_DIRS=$<TARGET_PROPERTY:mbedtls,INTERFACE_INCLUDE_DIRECTORIES>
+    -DMBEDTLS_INCLUDE_DIRS=$<TARGET_PROPERTY:${COMPONENT_TARGET},INTERFACE_INCLUDE_DIRECTORIES>
     -DMBEDTLS_LIBRARY=$<TARGET_FILE:mbedtls>
     -DMBEDX509_LIBRARY=$<TARGET_FILE:mbedx509>
     -DMBEDCRYPTO_LIBRARY=$<TARGET_FILE:mbedcrypto>
+    -DCMAKE_PROJECT_libsrtp2_INCLUDE=${CMAKE_SOURCE_DIR}/cmake/add-extra-properties.cmake
+    -DEXTRA_COMPILE_DEFINITIONS=$<TARGET_PROPERTY:${COMPONENT_TARGET},INTERFACE_COMPILE_DEFINITIONS>
     -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
   CMAKE_CACHE_ARGS
     -DHAVE_NETINET_IN_H:BOOL=ON
@@ -30,7 +32,7 @@ ExternalProject_Add(srtp
   BUILD_BYPRODUCTS ${SRTP_INSTALL_DIR}/lib/libsrtp2.a
 )
 
-add_prebuilt_library(srtp_lib "${SRTP_INSTALL_DIR}/lib/libsrtp2.a")
+add_prebuilt_library(srtp_lib "${SRTP_INSTALL_DIR}/lib/libsrtp2.a" REQUIRES mbedtls)
 target_include_directories(srtp_lib INTERFACE "${SRTP_INSTALL_DIR}/include")
 add_dependencies(srtp_lib srtp)
 target_link_libraries(${COMPONENT_LIB} INTERFACE srtp_lib)

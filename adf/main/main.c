@@ -25,6 +25,8 @@
 #include "driver/usb_serial_jtag.h"
 #include "esp_ota_ops.h"
 
+#include "com/amazonaws/kinesis/video/webrtcclient/Include.h"
+
 const char *RADIO_TAG = "radio";
 
 extern const uint8_t music_start[] asm("_binary_song_mp3_start");
@@ -145,6 +147,13 @@ void app_main(void)
   ESP_ERROR_CHECK(board_i2c_init());
   ESP_ERROR_CHECK(tas2505_init());
   ESP_ERROR_CHECK(wifi_init());
+  uint32_t status = initKvsWebRtc();
+  if (status != STATUS_SUCCESS)
+  {
+    ESP_LOGE(RADIO_TAG, "Failed to initialize KVS WebRTC with status code %" PRIu32, status);
+    abort();
+    return;
+  }
 
   if (!(xEventGroupGetBits(radio_event_group) & RADIO_EVENT_GROUP_THINGS_PROVISIONED))
   {
