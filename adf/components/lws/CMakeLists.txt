@@ -1,4 +1,4 @@
-idf_component_register(PRIV_REQUIRES driver)
+idf_component_register(REQUIRES driver esp_wifi nvs_flash)
 
 set(LWS_WITH_DRIVERS OFF)
 set(LWS_WITHOUT_SERVER ON)
