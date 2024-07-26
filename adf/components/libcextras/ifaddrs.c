@@ -3,10 +3,6 @@
 #include "esp_err.h"
 #include "esp_netif.h"
 
-#if defined(CONFIG_LWIP_IPV6)
-#error "IPv6 not supported"
-#endif
-
 static esp_err_t _getifaddrs_cb(void *ctx)
 {
   esp_err_t err;
