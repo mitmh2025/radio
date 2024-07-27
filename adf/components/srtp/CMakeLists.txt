@@ -8,11 +8,8 @@ idf_component_set_property(${COMPONENT_NAME} SRTP_PREFIX ${SRTP_INSTALL_DIR})
 include(ExternalProject)
 
 ExternalProject_Add(srtp
-  GIT_REPOSITORY https://github.com/cisco/libsrtp
-  GIT_TAG fd08747fa6800b321d53e15feb34da12dc697dee
-  PATCH_COMMAND
-    sed -i "" -e "s/CMAKE_C_STANDARD 99/CMAKE_C_STANDARD 11/" CMakeLists.txt &&
-    sed -i "" -e "s/srtp_remove_stream(srtp_t session, unsigned int ssrc/srtp_remove_stream(srtp_t session, uint32_t ssrc/" include/srtp.h
+  GIT_REPOSITORY git@github.com:mitmh2025/libsrtp
+  GIT_TAG 0c9a4eaed2ad55ef353f29e283f44d5921b276f3
   CMAKE_ARGS
     -DENABLE_MBEDTLS=ON
     -DLIBSRTP_TEST_APPS=OFF

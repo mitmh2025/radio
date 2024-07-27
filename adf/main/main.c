@@ -147,10 +147,12 @@ void app_main(void)
   ESP_ERROR_CHECK(board_i2c_init());
   ESP_ERROR_CHECK(tas2505_init());
   ESP_ERROR_CHECK(wifi_init());
+
+  loggerSetLogLevel(LOG_LEVEL_VERBOSE);
   uint32_t status = initKvsWebRtc();
   if (status != STATUS_SUCCESS)
   {
-    ESP_LOGE(RADIO_TAG, "Failed to initialize KVS WebRTC with status code %" PRIu32, status);
+    ESP_LOGE(RADIO_TAG, "Failed to initialize KVS WebRTC with status code %" PRIx32, status);
     abort();
     return;
   }
