@@ -110,6 +110,10 @@ esp_err_t wifi_init()
   esp_err_t err = esp_wifi_init(&cfg);
   ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to initialize wifi: %s", esp_err_to_name(err));
 
+  // TODO: reevaluate if this is what we actually want (or if, e.g., we only want it while streaming audio)
+  err = esp_wifi_set_ps(WIFI_PS_NONE);
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to set wifi power save mode: %s", esp_err_to_name(err));
+
   err = esp_netif_init();
   ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to initialize netif: %s", esp_err_to_name(err));
   wifi_netif = esp_netif_create_default_wifi_sta();
