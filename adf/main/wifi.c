@@ -38,6 +38,7 @@ static void wifi_report_telemetry()
   things_send_telemetry_string("wifi_ssid", (const char *)ap_info.ssid);
   things_send_telemetry_int("wifi_rssi", ap_info.rssi);
   things_send_telemetry_int("wifi_channel", ap_info.primary);
+  // TODO: report BSSID
 }
 
 esp_err_t wifi_get_mac(uint8_t *mac)
