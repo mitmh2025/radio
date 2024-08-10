@@ -6,11 +6,11 @@ dependencies:
       type: service
     version: 6.21.5
   espressif/esp-dsp:
-    component_hash: 3e7bbd487f1357a1d4944d0c85966d049501ea281b8a4c7f93f7cfedd5b7f23d
+    component_hash: 2592f9fd35b35b63cc8303078413ac3dd4ab8eecc2b53fe1cb610a86756db7a5
     source:
       service_url: https://api.components.espressif.com/
       type: service
-    version: 1.4.12
+    version: 1.5.1
   espressif/jsmn:
     component_hash: d80350c41bbaa827c98a25b6072df00884e72f54885996fab4a4f0aebce6b6c3
     source:
@@ -27,7 +27,7 @@ dependencies:
     component_hash: null
     source:
       type: idf
-    version: 5.2.0
+    version: 5.2.2
   thingsboard/ThingsBoard:
     component_hash: fbf7e33a396ad42649346ba62449b13cb305aceda4261bb684ac813e9c074117
     source:
@@ -35,6 +35,6 @@ dependencies:
       path: .
       type: git
     version: 2a476796fb877cd8726648360aa89440a10ca43e
-manifest_hash: e3d878286a847be057440e2e46e37b850f5b96fc1a380229afe2bf42a2116d0c
+manifest_hash: a089dcae0ff08192d63c515a19838e26bfb89604450ecb13db7656c85ca934d6
 target: esp32s3
 version: 1.0.0
