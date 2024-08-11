@@ -70,7 +70,8 @@ static int heap_func(int argc, char **argv)
 static int tasks_func(int argc, char **argv)
 {
   const size_t bytes_per_task = 40; /* see vTaskList description */
-  char *task_list_buffer = malloc(uxTaskGetNumberOfTasks() * bytes_per_task);
+  const size_t buffer_size = uxTaskGetNumberOfTasks() * bytes_per_task;
+  char *task_list_buffer = malloc(buffer_size);
   if (task_list_buffer == NULL)
   {
     ESP_LOGE(RADIO_TAG, "failed to allocate buffer for vTaskList output");
@@ -79,6 +80,11 @@ static int tasks_func(int argc, char **argv)
   fputs("Task Name\tStatus\tPrio\tCore\tHWM\tTask#\n", stdout);
   vTaskList(task_list_buffer);
   fputs(task_list_buffer, stdout);
+
+  vTaskGetRunTimeStats(task_list_buffer);
+  fputs("\nTask Name\tRuntime\t%CPU\n", stdout);
+  fputs(task_list_buffer, stdout);
+
   free(task_list_buffer);
   return 0;
 }
