@@ -1,6 +1,6 @@
 [submodule "adf/components/lws/libwebsockets"]
 	path = adf/components/lws/libwebsockets
 	url = git@github.com:mitmh2025/libwebsockets
-[submodule "adf/components/soundtouch/soundtouch"]
-	path = adf/components/soundtouch/soundtouch
-	url = https://codeberg.org/soundtouch/soundtouch
+[submodule "adf/components/signalsmith/signalsmith-stretch"]
+	path = adf/components/signalsmith/signalsmith-stretch
+	url = https://github.com/Signalsmith-Audio/signalsmith-stretch
