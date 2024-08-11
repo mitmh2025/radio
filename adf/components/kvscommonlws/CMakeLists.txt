@@ -10,9 +10,7 @@ idf_component_set_property(${COMPONENT_NAME} KVSCOMMONLWS_PREFIX ${KVSCOMMONLWS_
 include(ExternalProject)
 
 ExternalProject_Add(kvscommonlws
-  GIT_REPOSITORY https://github.com/awslabs/amazon-kinesis-video-streams-producer-c
-  GIT_TAG 3e519b7670e39031375d227f983ad2cde888078e
-  PATCH_COMMAND sed -i "" -e "/LIBWEBSOCKETS/d" CMakeLists.txt
+  SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/amazon-kinesis-video-streams-producer-c
   CMAKE_ARGS
     -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
     -DBUILD_STATIC=ON

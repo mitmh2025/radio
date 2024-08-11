@@ -12,8 +12,7 @@ set(KVSWEBRTCCLIENT_INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR}/kvswebrtcclient_inst
 include(ExternalProject)
 
 ExternalProject_Add(kvswebrtcclient
-  GIT_REPOSITORY git@github.com:mitmh2025/amazon-kinesis-video-streams-webrtc-sdk-c
-  GIT_TAG 3c07de0a7bb0d71f22eb3ce7d6130e0e025fb533
+  SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/amazon-kinesis-video-streams-webrtc-sdk-c
   CMAKE_ARGS
     -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
     -DBUILD_STATIC_LIBS=ON

@@ -8,8 +8,7 @@ idf_component_set_property(${COMPONENT_NAME} SRTP_PREFIX ${SRTP_INSTALL_DIR})
 include(ExternalProject)
 
 ExternalProject_Add(srtp
-  GIT_REPOSITORY git@github.com:mitmh2025/libsrtp
-  GIT_TAG 0c9a4eaed2ad55ef353f29e283f44d5921b276f3
+  SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libsrtp
   CMAKE_ARGS
     -DENABLE_MBEDTLS=ON
     -DLIBSRTP_TEST_APPS=OFF

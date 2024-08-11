@@ -1,3 +1,15 @@
 [submodule "adf/components/lws/libwebsockets"]
 	path = adf/components/lws/libwebsockets
 	url = git@github.com:mitmh2025/libwebsockets
+[submodule "adf/components/srtp/libsrtp"]
+	path = adf/components/srtp/libsrtp
+	url = git@github.com:mitmh2025/libsrtp
+[submodule "adf/components/kvspic/amazon-kinesis-video-streams-pic"]
+	path = adf/components/kvspic/amazon-kinesis-video-streams-pic
+	url = git@github.com:mitmh2025/amazon-kinesis-video-streams-pic
+[submodule "adf/components/kvswebrtcclient/amazon-kinesis-video-streams-webrtc-sdk-c"]
+	path = adf/components/kvswebrtcclient/amazon-kinesis-video-streams-webrtc-sdk-c
+	url = git@github.com:mitmh2025/amazon-kinesis-video-streams-webrtc-sdk-c
+[submodule "adf/components/kvscommonlws/amazon-kinesis-video-streams-producer-c"]
+	path = adf/components/kvscommonlws/amazon-kinesis-video-streams-producer-c
+	url = git@github.com:mitmh2025/amazon-kinesis-video-streams-producer-c

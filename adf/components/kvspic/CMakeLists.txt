@@ -8,8 +8,7 @@ idf_component_set_property(${COMPONENT_NAME} KVSPIC_PREFIX ${KVSPIC_INSTALL_DIR}
 include(ExternalProject)
 
 ExternalProject_Add(kvspic
-  GIT_REPOSITORY git@github.com:mitmh2025/amazon-kinesis-video-streams-pic
-  GIT_TAG 2ccfe8e0132b2aa3f7680bd3ae26e8ebb2281d27
+  SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/amazon-kinesis-video-streams-pic
   CMAKE_ARGS
     -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
     -DBUILD_DEPENDENCIES=OFF
