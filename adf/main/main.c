@@ -5,7 +5,6 @@
 #include "console.h"
 #include "board.h"
 #include "tas2505.h"
-#include "rubberband_filter.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -24,6 +23,7 @@
 #include "esp_vfs_dev.h"
 #include "driver/usb_serial_jtag.h"
 #include "esp_ota_ops.h"
+#include "soundtouch_filter.h"
 
 #include "com/amazonaws/kinesis/video/webrtcclient/Include.h"
 
@@ -43,37 +43,35 @@ void pipeline_init_and_run(void)
   http_cfg.crt_bundle_attach = esp_crt_bundle_attach;
   audio_element_handle_t http_stream_reader = http_stream_init(&http_cfg);
   mem_assert(http_stream_reader);
+  audio_element_set_uri(http_stream_reader, "https://ebroder.net/assets/take5.mp3");
 
   // Create mp3 decoder
   mp3_decoder_cfg_t mp3_cfg = DEFAULT_MP3_DECODER_CONFIG();
   audio_element_handle_t mp3_decoder = mp3_decoder_init(&mp3_cfg);
   mem_assert(mp3_decoder);
 
-  // Create rubberband filter
-  rubberband_filter_cfg_t rb_cfg = DEFAULT_RUBBERBAND_FILTER_CONFIG();
-  audio_element_handle_t rubberband_filter = rubberband_filter_init(&rb_cfg);
-  mem_assert(rubberband_filter);
+  // Create SoundTouch filter
+  soundtouch_filter_cfg_t soundtouch_cfg = DEFAULT_SOUNDTOUCH_FILTER_CONFIG();
+  audio_element_handle_t soundtouch = soundtouch_filter_init(&soundtouch_cfg);
+  mem_assert(soundtouch);
 
   // Create I2S output
   i2s_stream_cfg_t i2s_cfg = I2S_STREAM_CFG_DEFAULT();
   i2s_cfg.type = AUDIO_STREAM_WRITER;
   audio_element_handle_t i2s_stream_writer = i2s_stream_init(&i2s_cfg);
-  i2s_stream_set_clk(i2s_stream_writer, rb_cfg.sample_rate, rb_cfg.bits, rb_cfg.channels);
   mem_assert(i2s_stream_writer);
 
   // Register audio elements to pipeline and link
   ESP_ERROR_CHECK(audio_pipeline_register(pipeline, http_stream_reader, "http"));
   ESP_ERROR_CHECK(audio_pipeline_register(pipeline, mp3_decoder, "mp3"));
-  ESP_ERROR_CHECK(audio_pipeline_register(pipeline, rubberband_filter, "rubberband"));
+  ESP_ERROR_CHECK(audio_pipeline_register(pipeline, soundtouch, "soundtouch"));
   ESP_ERROR_CHECK(audio_pipeline_register(pipeline, i2s_stream_writer, "i2s"));
-  const char *link_tag[] = {"http", "mp3", "rubberband", "i2s"};
+  const char *link_tag[] = {"http", "mp3", "soundtouch", "i2s"};
   ESP_ERROR_CHECK(audio_pipeline_link(pipeline, &link_tag[0], sizeof(link_tag) / sizeof(link_tag[0])));
 
   audio_event_iface_cfg_t evt_cfg = AUDIO_EVENT_IFACE_DEFAULT_CFG();
   audio_event_iface_handle_t evt = audio_event_iface_init(&evt_cfg);
   audio_pipeline_set_listener(pipeline, evt);
-
-  audio_element_set_uri(http_stream_reader, "https://ebroder.net/assets/take5.mp3");
 
   ESP_ERROR_CHECK(audio_pipeline_run(pipeline));
 
@@ -92,7 +90,7 @@ void pipeline_init_and_run(void)
       audio_element_getinfo(mp3_decoder, &music_info);
       ESP_LOGI(RADIO_TAG, "[ * ] Receive music info from mp3 decoder, sample_rates=%d, bits=%d, ch=%d",
                music_info.sample_rates, music_info.bits, music_info.channels);
-      rubberband_filter_change_src_info(rubberband_filter, music_info.sample_rates, music_info.channels, music_info.bits);
+      soundtouch_filter_change_src_info(soundtouch, music_info.sample_rates, music_info.channels, music_info.bits);
       i2s_stream_set_clk(i2s_stream_writer, music_info.sample_rates, music_info.bits, music_info.channels);
       continue;
     }
@@ -101,8 +99,8 @@ void pipeline_init_and_run(void)
 
 void app_main(void)
 {
-  esp_log_level_set("*", ESP_LOG_WARN);
-  esp_log_level_set(RADIO_TAG, ESP_LOG_INFO);
+  // esp_log_level_set("*", ESP_LOG_WARN);
+  // esp_log_level_set(RADIO_TAG, ESP_LOG_INFO);
 
   esp_err_t err = nvs_flash_init();
   if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND)
