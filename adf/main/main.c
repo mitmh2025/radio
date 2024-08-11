@@ -5,6 +5,7 @@
 #include "console.h"
 #include "board.h"
 #include "tas2505.h"
+#include "rubberband_filter.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -18,7 +19,6 @@
 #include "audio_pipeline.h"
 #include "http_stream.h"
 #include "mp3_decoder.h"
-#include "filter_resample.h"
 #include "i2s_stream.h"
 #include "esp_crt_bundle.h"
 #include "esp_vfs_dev.h"
@@ -29,28 +29,7 @@
 
 const char *RADIO_TAG = "radio";
 
-extern const uint8_t music_start[] asm("_binary_song_mp3_start");
-extern const uint8_t music_end[] asm("_binary_song_mp3_end");
-
-static size_t music_pos = 0;
-
 EventGroupHandle_t radio_event_group;
-
-int mp3_read_cb(audio_element_handle_t el, char *buf, int len, TickType_t wait_time, void *ctx)
-{
-  int read_size = music_end - music_start - music_pos;
-  if (read_size == 0)
-  {
-    return AEL_IO_DONE;
-  }
-  else if (len < read_size)
-  {
-    read_size = len;
-  }
-  memcpy(buf, music_start + music_pos, read_size);
-  music_pos += read_size;
-  return read_size;
-}
 
 void pipeline_init_and_run(void)
 {
@@ -60,42 +39,41 @@ void pipeline_init_and_run(void)
   mem_assert(pipeline);
 
   // Create HTTP fetcher
-  // http_stream_cfg_t http_cfg = HTTP_STREAM_CFG_DEFAULT();
-  // http_cfg.crt_bundle_attach = esp_crt_bundle_attach;
-  // audio_element_handle_t http_stream_reader = http_stream_init(&http_cfg);
-  // mem_assert(http_stream_reader);
+  http_stream_cfg_t http_cfg = HTTP_STREAM_CFG_DEFAULT();
+  http_cfg.crt_bundle_attach = esp_crt_bundle_attach;
+  audio_element_handle_t http_stream_reader = http_stream_init(&http_cfg);
+  mem_assert(http_stream_reader);
 
   // Create mp3 decoder
   mp3_decoder_cfg_t mp3_cfg = DEFAULT_MP3_DECODER_CONFIG();
   audio_element_handle_t mp3_decoder = mp3_decoder_init(&mp3_cfg);
   mem_assert(mp3_decoder);
-  ESP_ERROR_CHECK(audio_element_set_read_cb(mp3_decoder, mp3_read_cb, NULL));
 
-  // Create resample filter
-  rsp_filter_cfg_t rsp_cfg = DEFAULT_RESAMPLE_FILTER_CONFIG();
-  audio_element_handle_t resample_filter = rsp_filter_init(&rsp_cfg);
-  mem_assert(resample_filter);
+  // Create rubberband filter
+  rubberband_filter_cfg_t rb_cfg = DEFAULT_RUBBERBAND_FILTER_CONFIG();
+  audio_element_handle_t rubberband_filter = rubberband_filter_init(&rb_cfg);
+  mem_assert(rubberband_filter);
 
   // Create I2S output
   i2s_stream_cfg_t i2s_cfg = I2S_STREAM_CFG_DEFAULT();
   i2s_cfg.type = AUDIO_STREAM_WRITER;
   audio_element_handle_t i2s_stream_writer = i2s_stream_init(&i2s_cfg);
-  i2s_stream_set_clk(i2s_stream_writer, rsp_cfg.dest_rate, rsp_cfg.dest_bits, rsp_cfg.dest_ch);
+  i2s_stream_set_clk(i2s_stream_writer, rb_cfg.sample_rate, rb_cfg.bits, rb_cfg.channels);
   mem_assert(i2s_stream_writer);
 
   // Register audio elements to pipeline and link
-  // ESP_ERROR_CHECK(audio_pipeline_register(pipeline, http_stream_reader, "http"));
+  ESP_ERROR_CHECK(audio_pipeline_register(pipeline, http_stream_reader, "http"));
   ESP_ERROR_CHECK(audio_pipeline_register(pipeline, mp3_decoder, "mp3"));
-  ESP_ERROR_CHECK(audio_pipeline_register(pipeline, resample_filter, "resample"));
+  ESP_ERROR_CHECK(audio_pipeline_register(pipeline, rubberband_filter, "rubberband"));
   ESP_ERROR_CHECK(audio_pipeline_register(pipeline, i2s_stream_writer, "i2s"));
-  const char *link_tag[] = {"mp3", "resample", "i2s"};
+  const char *link_tag[] = {"http", "mp3", "rubberband", "i2s"};
   ESP_ERROR_CHECK(audio_pipeline_link(pipeline, &link_tag[0], sizeof(link_tag) / sizeof(link_tag[0])));
 
   audio_event_iface_cfg_t evt_cfg = AUDIO_EVENT_IFACE_DEFAULT_CFG();
   audio_event_iface_handle_t evt = audio_event_iface_init(&evt_cfg);
   audio_pipeline_set_listener(pipeline, evt);
 
-  // audio_element_set_uri(http_stream_reader, "https://ebroder.net/assets/take5.mp3");
+  audio_element_set_uri(http_stream_reader, "https://ebroder.net/assets/take5.mp3");
 
   ESP_ERROR_CHECK(audio_pipeline_run(pipeline));
 
@@ -114,7 +92,8 @@ void pipeline_init_and_run(void)
       audio_element_getinfo(mp3_decoder, &music_info);
       ESP_LOGI(RADIO_TAG, "[ * ] Receive music info from mp3 decoder, sample_rates=%d, bits=%d, ch=%d",
                music_info.sample_rates, music_info.bits, music_info.channels);
-      rsp_filter_change_src_info(resample_filter, music_info.sample_rates, music_info.channels, music_info.bits);
+      rubberband_filter_change_src_info(rubberband_filter, music_info.sample_rates, music_info.channels, music_info.bits);
+      i2s_stream_set_clk(i2s_stream_writer, music_info.sample_rates, music_info.bits, music_info.channels);
       continue;
     }
   }
@@ -173,6 +152,6 @@ void app_main(void)
   ESP_ERROR_CHECK_WITHOUT_ABORT(esp_ota_mark_app_valid_cancel_rollback());
 
   // xEventGroupWaitBits(radio_event_group, RADIO_EVENT_GROUP_THINGS_PROVISIONED, pdFALSE, pdTRUE, portMAX_DELAY);
-  // xEventGroupWaitBits(radio_event_group, RADIO_EVENT_GROUP_WIFI_CONNECTED, pdFALSE, pdTRUE, portMAX_DELAY);
+  xEventGroupWaitBits(radio_event_group, RADIO_EVENT_GROUP_WIFI_CONNECTED, pdFALSE, pdTRUE, portMAX_DELAY);
   pipeline_init_and_run();
 }

@@ -1,5 +1,6 @@
 idf_component_register(
   SRCS
+  "rubberband_filter.cpp"
   "rubberband/src/rubberband-c.cpp"
   "rubberband/src/RubberBandStretcher.cpp"
   "rubberband/src/RubberBandLiveShifter.cpp"
@@ -24,5 +25,8 @@ idf_component_register(
   "rubberband/src/finer/R3LiveShifter.cpp"
   "rubberband/src/common/BQResampler.cpp"
   INCLUDE_DIRS
-  "rubberband/rubberband")
-add_compile_definitions(-DUSE_BUILTIN_FFT -DUSE_BQRESAMPLER -DLACK_SINCOS -DUSE_PTHREADS -DLACK_POSIX_MEMALIGN -DUSE_OWN_ALIGNED_MALLOC -DNO_EXCEPTIONS)
+  "."
+  "rubberband/rubberband"
+  REQUIRES audio_pipeline)
+add_compile_definitions(-DUSE_BUILTIN_FFT -DUSE_BQRESAMPLER -DUSE_PTHREADS -DLACK_POSIX_MEMALIGN -DUSE_OWN_ALIGNED_MALLOC -DNO_EXCEPTIONS -DPROCESS_SAMPLE_TYPE=float)
+target_link_libraries(${COMPONENT_LIB} PUBLIC m)
