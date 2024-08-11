@@ -23,7 +23,6 @@
 #include "esp_vfs_dev.h"
 #include "driver/usb_serial_jtag.h"
 #include "esp_ota_ops.h"
-#include "stretch_filter.h"
 
 #include "com/amazonaws/kinesis/video/webrtcclient/Include.h"
 
@@ -50,11 +49,6 @@ void pipeline_init_and_run(void)
   audio_element_handle_t mp3_decoder = mp3_decoder_init(&mp3_cfg);
   mem_assert(mp3_decoder);
 
-  // Create stretch filter
-  stretch_filter_cfg_t stretch_cfg = DEFAULT_STRETCH_FILTER_CONFIG();
-  audio_element_handle_t stretch = stretch_filter_init(&stretch_cfg);
-  mem_assert(stretch);
-
   // Create I2S output
   i2s_stream_cfg_t i2s_cfg = I2S_STREAM_CFG_DEFAULT();
   i2s_cfg.type = AUDIO_STREAM_WRITER;
@@ -64,9 +58,8 @@ void pipeline_init_and_run(void)
   // Register audio elements to pipeline and link
   ESP_ERROR_CHECK(audio_pipeline_register(pipeline, http_stream_reader, "http"));
   ESP_ERROR_CHECK(audio_pipeline_register(pipeline, mp3_decoder, "mp3"));
-  ESP_ERROR_CHECK(audio_pipeline_register(pipeline, stretch, "stretch"));
   ESP_ERROR_CHECK(audio_pipeline_register(pipeline, i2s_stream_writer, "i2s"));
-  const char *link_tag[] = {"http", "mp3", "stretch", "i2s"};
+  const char *link_tag[] = {"http", "mp3", "i2s"};
   ESP_ERROR_CHECK(audio_pipeline_link(pipeline, &link_tag[0], sizeof(link_tag) / sizeof(link_tag[0])));
 
   audio_event_iface_cfg_t evt_cfg = AUDIO_EVENT_IFACE_DEFAULT_CFG();
@@ -90,7 +83,6 @@ void pipeline_init_and_run(void)
       audio_element_getinfo(mp3_decoder, &music_info);
       ESP_LOGI(RADIO_TAG, "[ * ] Receive music info from mp3 decoder, sample_rates=%d, bits=%d, ch=%d",
                music_info.sample_rates, music_info.bits, music_info.channels);
-      stretch_filter_change_src_info(stretch, music_info.sample_rates, music_info.channels, music_info.bits);
       i2s_stream_set_clk(i2s_stream_writer, music_info.sample_rates, music_info.bits, music_info.channels);
       continue;
     }
