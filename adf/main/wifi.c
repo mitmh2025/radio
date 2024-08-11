@@ -11,6 +11,7 @@
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_check.h"
+#include "esp_mac.h"
 
 #ifndef RADIO_WIFI_SSID
 #error "RADIO_WIFI_SSID is not defined"
@@ -35,10 +36,13 @@ static void wifi_report_telemetry()
     return;
   }
 
+  char bssid_str[18];
+  snprintf(bssid_str, sizeof(bssid_str), MACSTR, MAC2STR(ap_info.bssid));
+
   things_send_telemetry_string("wifi_ssid", (const char *)ap_info.ssid);
   things_send_telemetry_int("wifi_rssi", ap_info.rssi);
   things_send_telemetry_int("wifi_channel", ap_info.primary);
-  // TODO: report BSSID
+  things_send_telemetry_string("wifi_bssid", bssid_str);
 }
 
 esp_err_t wifi_get_mac(uint8_t *mac)
