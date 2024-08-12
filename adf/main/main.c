@@ -3,6 +3,7 @@
 #include "wifi.h"
 #include "things.h"
 #include "console.h"
+#include "stream.h"
 #include "board.h"
 #include "tas2505.h"
 
@@ -23,8 +24,6 @@
 #include "esp_vfs_dev.h"
 #include "driver/usb_serial_jtag.h"
 #include "esp_ota_ops.h"
-
-#include "com/amazonaws/kinesis/video/webrtcclient/Include.h"
 
 const char *RADIO_TAG = "radio";
 
@@ -116,15 +115,7 @@ void app_main(void)
   ESP_ERROR_CHECK(board_i2c_init());
   ESP_ERROR_CHECK(tas2505_init());
   ESP_ERROR_CHECK(wifi_init());
-
-  loggerSetLogLevel(LOG_LEVEL_VERBOSE);
-  uint32_t status = initKvsWebRtc();
-  if (status != STATUS_SUCCESS)
-  {
-    ESP_LOGE(RADIO_TAG, "Failed to initialize KVS WebRTC with status code %" PRIx32, status);
-    abort();
-    return;
-  }
+  ESP_ERROR_CHECK(stream_init());
 
   if (!(xEventGroupGetBits(radio_event_group) & RADIO_EVENT_GROUP_THINGS_PROVISIONED))
   {
@@ -143,5 +134,12 @@ void app_main(void)
 
   // xEventGroupWaitBits(radio_event_group, RADIO_EVENT_GROUP_THINGS_PROVISIONED, pdFALSE, pdTRUE, portMAX_DELAY);
   xEventGroupWaitBits(radio_event_group, RADIO_EVENT_GROUP_WIFI_CONNECTED, pdFALSE, pdTRUE, portMAX_DELAY);
+
+  stream_config_t stream_cfg = {
+    .whep_url = "http://192.168.21.207:8889/music/whep",
+  };
+  stream_connection_t connection;
+  stream_connect(&stream_cfg, &connection);
+
   pipeline_init_and_run();
 }
