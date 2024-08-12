@@ -276,6 +276,17 @@ static esp_err_t stream_connect_http_event_handler(esp_http_client_event_t *evt)
     {
       data->connection->session_url = strdup(evt->header_value);
     }
+    else if (strcasecmp(evt->header_key, "Link") == 0)
+    {
+      // TODO: Check for rel="ice-server" and then parse out additional
+      // STUN/TURN servers to pass to addConfigToServerList
+      //
+      // Header looks like:
+      //
+      // Link: <stun:stun.example.net>; rel="ice-server"
+      // Link: <turn:turn.example.net?transport=udp>; rel="ice-server";
+      //       username="user"; credential="myPassword"; credential-type="password"
+    }
   }
   return ESP_OK;
 }
