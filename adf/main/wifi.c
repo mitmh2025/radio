@@ -4,6 +4,7 @@
 #include "things.h"
 
 #include <string.h>
+#include <sys/time.h>
 
 #include "sdkconfig.h"
 #include "nvs_flash.h"
@@ -12,6 +13,7 @@
 #include "esp_log.h"
 #include "esp_check.h"
 #include "esp_mac.h"
+#include "esp_netif_sntp.h"
 
 #ifndef RADIO_WIFI_SSID
 #error "RADIO_WIFI_SSID is not defined"
@@ -25,6 +27,16 @@ static_assert(strlen(RADIO_WIFI_PASSWORD) > 0, "RADIO_WIFI_PASSWORD is empty");
 #endif
 
 static esp_netif_t *wifi_netif = NULL;
+
+static void wifi_clock_synced(struct timeval *tv)
+{
+  // Format time as iso8601 string
+  struct tm timeinfo;
+  localtime_r(&tv->tv_sec, &timeinfo);
+  char strftime_buf[64];
+  strftime(strftime_buf, sizeof(strftime_buf), "%Y-%m-%dT%H:%M:%S%z", &timeinfo);
+  ESP_LOGI(RADIO_TAG, "SNTP time synced to %s", strftime_buf);
+}
 
 static void wifi_report_telemetry()
 {
@@ -89,6 +101,12 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
     {
       ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
       ESP_LOGI(RADIO_TAG, "Got IP address ip=" IPSTR, IP2STR(&event->ip_info.ip));
+      esp_err_t err = esp_netif_sntp_start();
+      if (err != ESP_OK)
+      {
+        ESP_LOGE(RADIO_TAG, "Failed to start SNTP: %s", esp_err_to_name(err));
+      }
+
       xEventGroupClearBits(radio_event_group, RADIO_EVENT_GROUP_WIFI_DISCONNECTED);
       xEventGroupSetBits(radio_event_group, RADIO_EVENT_GROUP_WIFI_CONNECTED);
       break;
@@ -141,6 +159,13 @@ esp_err_t wifi_init()
   ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to set wifi config: %s", esp_err_to_name(err));
   err = esp_wifi_start();
   ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to start wifi: %s", esp_err_to_name(err));
+
+  // Setup NTP
+  esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
+  config.start = false;
+  config.sync_cb = wifi_clock_synced;
+  err = esp_netif_sntp_init(&config);
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to initialize SNTP: %s", esp_err_to_name(err));
 
   things_register_telemetry_generator(&wifi_report_telemetry);
 
