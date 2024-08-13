@@ -507,6 +507,7 @@ esp_err_t stream_connect(stream_config_t *cfg, stream_connection_t *handle)
     return ESP_FAIL;
   }
 
+  // TODO: see if we can return before waiting for the task to complete
   xTaskNotifyWait(0, ULONG_MAX, NULL, portMAX_DELAY);
 
   return args.ret;
