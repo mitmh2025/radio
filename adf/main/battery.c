@@ -14,16 +14,23 @@ static i2c_master_dev_handle_t battery_i2c_device;
 
 static void battery_telemetry_generator()
 {
-  int battery_mv = 0;
+  int battery_sample_sum = 0;
+  int battery_sample_count = 64;
+  esp_err_t err = ESP_OK;
 
-  esp_err_t err = adc_oneshot_get_calibrated_result(battery_adc_unit, battery_adc_cali, BATTERY_ADC_CHANNEL, &battery_mv);
-  if (err != ESP_OK)
+  for (int i = 0; i < battery_sample_count; i++)
   {
-    ESP_LOGE(RADIO_TAG, "Failed to get calibrated ADC result");
-    return;
+    int sample;
+    err = adc_oneshot_get_calibrated_result(battery_adc_unit, battery_adc_cali, BATTERY_ADC_CHANNEL, &sample);
+    if (err != ESP_OK)
+    {
+      ESP_LOGE(RADIO_TAG, "Failed to get raw ADC sample");
+      return;
+    }
+    battery_sample_sum += sample;
   }
 
-  things_send_telemetry_double("battery_voltage", battery_mv * BATTERY_SCALE_FACTOR);
+  things_send_telemetry_double("battery_voltage", (battery_sample_sum / (float)battery_sample_count) * BATTERY_SCALE_FACTOR);
 
   uint8_t addr = IP5306_REG_READ0;
   ip5306_reg_read0_t reg0_value;
