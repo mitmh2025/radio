@@ -4,6 +4,7 @@
 #include "things.h"
 #include "console.h"
 #include "stream.h"
+#include "battery.h"
 #include "board.h"
 #include "tas2505.h"
 
@@ -113,6 +114,7 @@ void app_main(void)
 
   ESP_ERROR_CHECK(things_init());
   ESP_ERROR_CHECK(board_i2c_init());
+  ESP_ERROR_CHECK(battery_init());
   ESP_ERROR_CHECK(tas2505_init());
   ESP_ERROR_CHECK(wifi_init());
   ESP_ERROR_CHECK(stream_init());

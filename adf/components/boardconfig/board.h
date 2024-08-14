@@ -37,6 +37,9 @@ i2c_master_bus_handle_t board_i2c_get_handle(void);
 #define BOARD_I2C_MUTEX_LOCK() xSemaphoreTake(i2c_mutex, portMAX_DELAY)
 #define BOARD_I2C_MUTEX_UNLOCK() xSemaphoreGive(i2c_mutex)
 
+#define BATTERY_ADC_CHANNEL ADC_CHANNEL_8
+#define BATTERY_SCALE_FACTOR (3.0f / (2.0f * 1000.0f))
+
 #ifdef __cplusplus
 }
 #endif

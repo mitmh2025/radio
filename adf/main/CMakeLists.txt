@@ -5,5 +5,6 @@ idf_component_register(
   stream.c
   wifi.c
   things.cpp
+  battery.c
   INCLUDE_DIRS
   ".")
