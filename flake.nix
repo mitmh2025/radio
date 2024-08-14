@@ -24,6 +24,13 @@
           })
         ];
       });
+      esp-adf = final.fetchFromGitHub {
+        owner = "espressif";
+        repo = "esp-adf";
+        fetchSubmodules = true;
+        rev = "0593164bf7e64c268dad56e332d6f07f0e9c37ab";
+        hash = "sha256-oVJHV5jd4lnRUanyQTpmqLgtA2627uSxpyIDwVgq1lk=";
+      };
     });
   in
     (flake-utils.lib.eachDefaultSystem (system:
@@ -37,7 +44,7 @@
         };
       in {
         packages = rec {
-          inherit (pkgs) radio-esp-idf;
+          inherit (pkgs) radio-esp-idf esp-adf;
           #default = bluechips-rs;
         };
         devShells.default = pkgs.mkShell {
@@ -45,6 +52,9 @@
           buildInputs = with pkgs; [
             radio-esp-idf
           ];
+          shellHook = ''
+            export ADF_PATH=${pkgs.esp-adf}
+          '';
         };
       })) // {
         overlays.default = overlay;
