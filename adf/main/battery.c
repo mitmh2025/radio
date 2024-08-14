@@ -56,7 +56,7 @@ cleanup:
   if (err == ESP_OK)
   {
     things_send_telemetry_string("battery_status",
-                                 reg1_value.parsed.CHARGE_DONE ? "charged" : reg0_value.parsed.CHARGE_ENABLE ? "charging"
+                                 !reg1_value.parsed.CHARGING ? "charged" : reg0_value.parsed.CHARGE_ENABLE ? "charging"
                                                                                                              : "discharging");
   }
 }

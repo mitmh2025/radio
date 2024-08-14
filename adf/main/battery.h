@@ -29,7 +29,7 @@ extern "C"
     struct
     {
       uint8_t reserved : 4;
-      uint8_t CHARGE_DONE : 1;
+      uint8_t CHARGING : 1;
       uint8_t reserved2 : 3;
     } parsed;
 
