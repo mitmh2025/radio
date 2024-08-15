@@ -13,6 +13,9 @@
 #include "esp_check.h"
 #include "esp_core_dump.h"
 
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+
 #include <Espressif_MQTT_Client.h>
 #include <Espressif_Updater.h>
 #include <ThingsBoard.h>
@@ -43,6 +46,49 @@ static std::string things_token;
 static std::vector<void (*)(void)> telemetry_generators;
 
 static constexpr TickType_t CONNECT_TIMEOUT = pdMS_TO_TICKS(5000);
+
+static struct {
+  configRUN_TIME_COUNTER_TYPE run_time_counter;
+  configRUN_TIME_COUNTER_TYPE cpu0_idle_counter;
+  configRUN_TIME_COUNTER_TYPE cpu1_idle_counter;
+} things_last_cpu_usage = {};
+
+static void things_telemetry_generator()
+{
+  // Report basic metrics
+  things_send_telemetry_int("uptime", esp_timer_get_time() / (1000 * 1000));
+
+  configRUN_TIME_COUNTER_TYPE run_time_counter = 0;
+  portALT_GET_RUN_TIME_COUNTER_VALUE(run_time_counter);
+  configRUN_TIME_COUNTER_TYPE cpu0_idle_counter = ulTaskGetIdleRunTimeCounterForCore(0);
+  configRUN_TIME_COUNTER_TYPE cpu1_idle_counter = ulTaskGetIdleRunTimeCounterForCore(1);
+
+  if (things_last_cpu_usage.run_time_counter != 0 && run_time_counter != things_last_cpu_usage.run_time_counter)
+  {
+    configRUN_TIME_COUNTER_TYPE run_time_delta = run_time_counter - things_last_cpu_usage.run_time_counter;
+    configRUN_TIME_COUNTER_TYPE cpu0_idle_delta = cpu0_idle_counter - things_last_cpu_usage.cpu0_idle_counter;
+    configRUN_TIME_COUNTER_TYPE cpu1_idle_delta = cpu1_idle_counter - things_last_cpu_usage.cpu1_idle_counter;
+
+    float cpu0_usage = 100.0 * (run_time_delta - cpu0_idle_delta) / run_time_delta;
+    float cpu1_usage = 100.0 * (run_time_delta - cpu1_idle_delta) / run_time_delta;
+
+    things_send_telemetry_float("cpu0_usage_percent", cpu0_usage);
+    things_send_telemetry_float("cpu1_usage_percent", cpu1_usage);
+  }
+
+  things_last_cpu_usage.run_time_counter = run_time_counter;
+  things_last_cpu_usage.cpu0_idle_counter = cpu0_idle_counter;
+  things_last_cpu_usage.cpu1_idle_counter = cpu1_idle_counter;
+
+  things_send_telemetry_int("task_count", uxTaskGetNumberOfTasks());
+
+  things_send_telemetry_int("psram_free", heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+  things_send_telemetry_int("dram_free", heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+  things_send_telemetry_int("psram_total", heap_caps_get_total_size(MALLOC_CAP_SPIRAM));
+  things_send_telemetry_int("dram_total", heap_caps_get_total_size(MALLOC_CAP_INTERNAL));
+  things_send_telemetry_int("psram_lwm", heap_caps_get_minimum_free_size(MALLOC_CAP_SPIRAM));
+  things_send_telemetry_int("dram_lwm", heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL));
+}
 
 static void things_connect_callback(void)
 {
@@ -229,6 +275,8 @@ extern "C" esp_err_t things_init()
     return err;
   }
 
+  things_register_telemetry_generator(things_telemetry_generator);
+
   return ESP_OK;
 }
 
@@ -273,7 +321,7 @@ extern "C" bool things_send_telemetry_string(char const *const key, char const *
   return tb.sendTelemetryData(key, value);
 }
 
-extern "C" bool things_send_telemetry_double(char const *const key, double value)
+extern "C" bool things_send_telemetry_float(char const *const key, float value)
 {
   if (!tb.connected())
   {

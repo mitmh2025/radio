@@ -30,7 +30,7 @@ static void battery_telemetry_generator()
     battery_sample_sum += sample;
   }
 
-  things_send_telemetry_double("battery_voltage", (battery_sample_sum / (float)battery_sample_count) * BATTERY_SCALE_FACTOR);
+  things_send_telemetry_float("battery_voltage", (battery_sample_sum / (float)battery_sample_count) * BATTERY_SCALE_FACTOR);
 
   uint8_t addr = IP5306_REG_READ0;
   ip5306_reg_read0_t reg0_value;
