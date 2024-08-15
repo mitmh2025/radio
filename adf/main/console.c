@@ -77,7 +77,7 @@ static int tasks_func(int argc, char **argv)
     ESP_LOGE(RADIO_TAG, "failed to allocate buffer for vTaskList output");
     return 1;
   }
-  fputs("Task Name\tStatus\tPrio\tCore\tHWM\tTask#\n", stdout);
+  fputs("Task Name\tStatus\tPrio\tHWM\tTask\tCore#\n", stdout);
   vTaskList(task_list_buffer);
   fputs(task_list_buffer, stdout);
 
