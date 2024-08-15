@@ -355,7 +355,6 @@ static void stream_connect_task(void *arg)
     goto cleanup;
   }
 
-  // TODO: set peerConnectionOnConnectionStateChange callbacks
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wpointer-to-int-cast"
   peerConnectionOnIceCandidate(connection->peer_connection, (UINT64)connection, stream_on_ice_candidate);
