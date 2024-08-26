@@ -40,6 +40,8 @@ i2c_master_bus_handle_t board_i2c_get_handle(void);
 #define BATTERY_ADC_CHANNEL ADC_CHANNEL_8
 #define BATTERY_SCALE_FACTOR (3.0f / (2.0f * 1000.0f))
 
+#define VOLUME_ADC_CHANNEL ADC_CHANNEL_0
+
 #ifdef __cplusplus
 }
 #endif

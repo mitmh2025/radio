@@ -1,6 +1,7 @@
 #include "battery.h"
 #include "things.h"
 #include "main.h"
+#include "adc.h"
 
 #include "board.h"
 
@@ -8,7 +9,6 @@
 #include "esp_check.h"
 #include "esp_adc/adc_oneshot.h"
 
-static adc_oneshot_unit_handle_t battery_adc_unit;
 static adc_cali_handle_t battery_adc_cali;
 static i2c_master_dev_handle_t battery_i2c_device;
 
@@ -21,7 +21,7 @@ static void battery_telemetry_generator()
   for (int i = 0; i < battery_sample_count; i++)
   {
     int sample;
-    err = adc_oneshot_get_calibrated_result(battery_adc_unit, battery_adc_cali, BATTERY_ADC_CHANNEL, &sample);
+    err = adc_oneshot_get_calibrated_result(adc_get_handle(), battery_adc_cali, BATTERY_ADC_CHANNEL, &sample);
     if (err != ESP_OK)
     {
       ESP_LOGE(RADIO_TAG, "Failed to get raw ADC sample");
@@ -63,26 +63,18 @@ cleanup:
 
 esp_err_t battery_init()
 {
-  adc_oneshot_unit_init_cfg_t cfg = {
-      .unit_id = ADC_UNIT_1,
-      .clk_src = ADC_DIGI_CLK_SRC_DEFAULT,
-      .ulp_mode = false,
-  };
-  esp_err_t err = adc_oneshot_new_unit(&cfg, &battery_adc_unit);
-  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to create ADC unit");
-
   adc_channel_t channel = BATTERY_ADC_CHANNEL;
   adc_oneshot_chan_cfg_t chan_cfg = {
       .atten = ADC_ATTEN_DB_12,
       .bitwidth = ADC_BITWIDTH_DEFAULT,
   };
-  err = adc_oneshot_config_channel(battery_adc_unit, channel, &chan_cfg);
+  esp_err_t err = adc_oneshot_config_channel(adc_get_handle(), channel, &chan_cfg);
   ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to configure ADC channel");
 
   adc_cali_curve_fitting_config_t cali_cfg = {
       .atten = chan_cfg.atten,
       .bitwidth = chan_cfg.bitwidth,
-      .unit_id = cfg.unit_id,
+      .unit_id = ADC_UNIT_1,
       .chan = channel,
   };
   err = adc_cali_create_scheme_curve_fitting(&cali_cfg, &battery_adc_cali);

@@ -241,32 +241,7 @@ esp_err_t tas2505_deinit(void)
   return ret;
 }
 
-esp_err_t tas2505_enable_pa(bool enable)
-{
-  // RST pin only needs to be low for 10ns or high for 1ms; either way that's
-  // less than a single tick
-  if (enable)
-  {
-    gpio_set_level(TAS2505_RST_GPIO, 1);
-    vTaskDelay(1);
-
-    esp_err_t ret = tas2505_write_registers(tas2505_init_registers, sizeof(tas2505_init_registers) / sizeof(tas2505_init_registers[0]));
-    ESP_RETURN_ON_ERROR(ret, TAG, "Writing initial registers failed");
-    ret = tas2505_set_output(current_output);
-    ESP_RETURN_ON_ERROR(ret, TAG, "Setting output failed");
-    ret = tas2505_set_input(current_input);
-    ESP_RETURN_ON_ERROR(ret, TAG, "Setting input failed");
-    return ret;
-  }
-  else
-  {
-    gpio_set_level(TAS2505_RST_GPIO, 0);
-    vTaskDelay(1);
-  }
-  return ESP_OK;
-}
-
-esp_err_t tas2505_set_output(tas2505_output_t output)
+esp_err_t _force_tas2505_set_output(tas2505_output_t output)
 {
   esp_err_t ret = ESP_OK;
 
@@ -296,7 +271,17 @@ esp_err_t tas2505_set_output(tas2505_output_t output)
   return ret;
 }
 
-esp_err_t tas2505_set_input(tas2505_input_t input)
+esp_err_t tas2505_set_output(tas2505_output_t output)
+{
+  if (current_output == output)
+  {
+    return ESP_OK;
+  }
+
+  return _force_tas2505_set_output(output);
+}
+
+esp_err_t _force_tas2505_set_input(tas2505_input_t input)
 {
   esp_err_t ret = ESP_OK;
 
@@ -332,9 +317,44 @@ esp_err_t tas2505_set_input(tas2505_input_t input)
   return ret;
 }
 
+esp_err_t tas2505_set_input(tas2505_input_t input)
+{
+  if (current_input == input)
+  {
+    return ESP_OK;
+  }
+
+  return _force_tas2505_set_input(input);
+}
+
+esp_err_t tas2505_enable_pa(bool enable)
+{
+  // RST pin only needs to be low for 10ns or high for 1ms; either way that's
+  // less than a single tick
+  if (enable)
+  {
+    gpio_set_level(TAS2505_RST_GPIO, 1);
+    vTaskDelay(1);
+
+    esp_err_t ret = tas2505_write_registers(tas2505_init_registers, sizeof(tas2505_init_registers) / sizeof(tas2505_init_registers[0]));
+    ESP_RETURN_ON_ERROR(ret, TAG, "Writing initial registers failed");
+    ret = _force_tas2505_set_output(current_output);
+    ESP_RETURN_ON_ERROR(ret, TAG, "Setting output failed");
+    ret = _force_tas2505_set_input(current_input);
+    ESP_RETURN_ON_ERROR(ret, TAG, "Setting input failed");
+    return ret;
+  }
+  else
+  {
+    gpio_set_level(TAS2505_RST_GPIO, 0);
+    vTaskDelay(1);
+  }
+  return ESP_OK;
+}
+
 esp_err_t tas2505_read_gpio(bool *val)
 {
-  esp_err_t ret = 0;
+  esp_err_t ret = ESP_OK;
   uint8_t page = TAS2505_CFG_REG_GPIO_CONTROL >> 8;
   uint8_t offset = TAS2505_CFG_REG_GPIO_CONTROL & 0xff;
   uint8_t register_value = 0;
@@ -349,4 +369,23 @@ esp_err_t tas2505_read_gpio(bool *val)
 end:
   BOARD_I2C_MUTEX_UNLOCK();
   return ret;
+}
+
+esp_err_t tas2505_set_volume(uint8_t volume)
+{
+  static tas2505_cfg_reg_t volume_registers[] = {
+    {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_HP_VOLUME, 0},
+    {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_SPEAKER_VOLUME, 0},
+  };
+
+  uint8_t value = (0xff - volume) >> 1;
+  if (value > 0x74) {
+    // clamp to mute
+    value = 0x7f;
+  }
+  for (size_t i = 0; i < sizeof(volume_registers) / sizeof(volume_registers[0]); i++) {
+    volume_registers[i].value = value;
+  }
+
+  return tas2505_write_registers(volume_registers, sizeof(volume_registers) / sizeof(volume_registers[0]));
 }

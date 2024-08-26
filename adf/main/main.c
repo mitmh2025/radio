@@ -7,6 +7,7 @@
 #include "battery.h"
 #include "board.h"
 #include "tas2505.h"
+#include "adc.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -25,16 +26,71 @@
 #include "esp_vfs_dev.h"
 #include "driver/usb_serial_jtag.h"
 #include "esp_ota_ops.h"
+#include "esp_adc/adc_oneshot.h"
 
 const char *RADIO_TAG = "radio";
 
 EventGroupHandle_t radio_event_group;
 
+void dac_volume_output_task(void *arg)
+{
+  adc_oneshot_unit_handle_t adc_unit = adc_get_handle();
+
+  adc_channel_t channel = VOLUME_ADC_CHANNEL;
+  adc_oneshot_chan_cfg_t chan_cfg = {
+      .atten = ADC_ATTEN_DB_12,
+      .bitwidth = ADC_BITWIDTH_12,
+  };
+  esp_err_t err = adc_oneshot_config_channel(adc_unit, channel, &chan_cfg);
+  if (err != ESP_OK)
+  {
+    ESP_LOGE(RADIO_TAG, "Failed to configure ADC channel: %d", err);
+    vTaskDelete(NULL);
+  }
+
+  int average_volume = 0xfff;
+
+  while (1)
+  {
+    vTaskDelay(pdMS_TO_TICKS(100));
+
+    bool gpio;
+    err = tas2505_read_gpio(&gpio);
+    if (err != ESP_OK)
+    {
+      ESP_LOGE(RADIO_TAG, "Failed to read GPIO: %d", err);
+      continue;
+    }
+
+    if (gpio)
+    {
+      tas2505_set_output(TAS2505_OUTPUT_SPEAKER);
+    }
+    else
+    {
+      tas2505_set_output(TAS2505_OUTPUT_HEADPHONE);
+    }
+
+    int volume;
+    err = adc_oneshot_read(adc_unit, channel, &volume);
+    if (err != ESP_OK)
+    {
+      ESP_LOGE(RADIO_TAG, "Failed to read ADC: %d", err);
+      continue;
+    }
+
+    int new_average = (average_volume * 15 + volume) / 16;
+    if (new_average >> 4 != average_volume >> 4)
+    {
+      tas2505_set_volume(new_average >> 4);
+    }
+    average_volume = new_average;
+  }
+}
+
 void webrtc_pipeline_start(void *context)
 {
   webrtc_connection_t connection = (webrtc_connection_t)context;
-
-  vTaskDelay(pdMS_TO_TICKS(100));
 
   // Create pipeline
   audio_pipeline_cfg_t pipeline_cfg = DEFAULT_AUDIO_PIPELINE_CONFIG();
@@ -124,12 +180,15 @@ void app_main(void)
     return;
   }
 
+  ESP_ERROR_CHECK(adc_init());
   ESP_ERROR_CHECK(things_init());
   ESP_ERROR_CHECK(board_i2c_init());
   ESP_ERROR_CHECK(battery_init());
   ESP_ERROR_CHECK(tas2505_init());
   ESP_ERROR_CHECK(wifi_init());
   ESP_ERROR_CHECK(webrtc_init());
+
+  xTaskCreatePinnedToCore(dac_volume_output_task, "dac_volume_output", 4096, NULL, 15, NULL, 1);
 
   if (!(xEventGroupGetBits(radio_event_group) & RADIO_EVENT_GROUP_THINGS_PROVISIONED))
   {
@@ -150,8 +209,8 @@ void app_main(void)
   xEventGroupWaitBits(radio_event_group, RADIO_EVENT_GROUP_WIFI_CONNECTED, pdFALSE, pdTRUE, portMAX_DELAY);
 
   webrtc_config_t webrtc_cfg = {
-    .whep_url = "http://192.168.21.207:8889/music/whep",
-    .state_change_callback = on_webrtc_state_change,
+      .whep_url = "http://192.168.21.207:8889/music/whep",
+      .state_change_callback = on_webrtc_state_change,
   };
   webrtc_connection_t connection;
   webrtc_connect(&webrtc_cfg, &connection);

@@ -26,6 +26,7 @@ esp_err_t tas2505_enable_pa(bool enable);
 esp_err_t tas2505_set_output(tas2505_output_t output);
 esp_err_t tas2505_set_input(tas2505_input_t input);
 esp_err_t tas2505_read_gpio(bool *val);
+esp_err_t tas2505_set_volume(uint8_t volume);
 
 #ifdef __cplusplus
 }

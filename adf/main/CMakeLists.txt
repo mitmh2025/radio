@@ -6,5 +6,6 @@ idf_component_register(
   wifi.c
   things.cpp
   battery.c
+  adc.c
   INCLUDE_DIRS
   ".")
