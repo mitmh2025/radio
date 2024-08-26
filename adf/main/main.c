@@ -48,10 +48,9 @@ void dac_volume_output_task(void *arg)
     vTaskDelete(NULL);
   }
 
-  int average_volume = 0xfff;
-
   while (1)
   {
+loop:
     vTaskDelay(pdMS_TO_TICKS(100));
 
     bool gpio;
@@ -59,7 +58,7 @@ void dac_volume_output_task(void *arg)
     if (err != ESP_OK)
     {
       ESP_LOGE(RADIO_TAG, "Failed to read GPIO: %d", err);
-      continue;
+      goto loop;
     }
 
     if (gpio)
@@ -71,20 +70,26 @@ void dac_volume_output_task(void *arg)
       tas2505_set_output(TAS2505_OUTPUT_HEADPHONE);
     }
 
-    int volume;
-    err = adc_oneshot_read(adc_unit, channel, &volume);
+    int volume_total = 0;
+    for (int i = 0; i < 16; i++)
+    {
+      int volume;
+      err = adc_oneshot_read(adc_unit, channel, &volume);
+      if (err != ESP_OK)
+      {
+        ESP_LOGE(RADIO_TAG, "Failed to read ADC: %d", err);
+        goto loop;
+      }
+      volume_total += volume;
+    }
+    // Shift down by 8 bits: 4 bits for the average and 4 bits to get from
+    // 12-bit ADC precision to 8-bit volume
+    err = tas2505_set_volume(volume_total >> 8);
     if (err != ESP_OK)
     {
-      ESP_LOGE(RADIO_TAG, "Failed to read ADC: %d", err);
-      continue;
+      ESP_LOGE(RADIO_TAG, "Failed to set volume: %d", err);
+      goto loop;
     }
-
-    int new_average = (average_volume * 15 + volume) / 16;
-    if (new_average >> 4 != average_volume >> 4)
-    {
-      tas2505_set_volume(new_average >> 4);
-    }
-    average_volume = new_average;
   }
 }
 

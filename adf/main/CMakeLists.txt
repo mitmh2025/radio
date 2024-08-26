@@ -7,5 +7,6 @@ idf_component_register(
   things.cpp
   battery.c
   adc.c
+  tas2505.c
   INCLUDE_DIRS
   ".")

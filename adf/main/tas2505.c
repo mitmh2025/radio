@@ -1,5 +1,6 @@
 #include "board.h"
 #include "tas2505.h"
+#include "things.h"
 #include "driver/i2c_master.h"
 #include "esp_check.h"
 #include "esp_log.h"
@@ -119,6 +120,8 @@ static tas2505_cfg_reg_t tas2505_line_off_registers[] = {
     {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_OUTPUT_CONTROL, 0x20},
 };
 
+static uint8_t current_volume = 0xff;
+
 static esp_err_t tas2505_write_register(uint8_t offset, uint8_t value)
 {
   uint8_t data[2] = {offset, value};
@@ -146,23 +149,29 @@ static esp_err_t tas2505_write_registers(tas2505_cfg_reg_t *registers, size_t le
     case TAS2505_CFG_OP_DELAY:
       vTaskDelay(registers[i].value / portTICK_PERIOD_MS);
       break;
-    default: {
+    default:
+    {
       uint8_t page = registers[i].reg >> 8;
       uint8_t offset = registers[i].reg & 0xff;
-      if (current_page != page) {
+      if (current_page != page)
+      {
         ret = tas2505_write_register(0x0, page);
         ESP_GOTO_ON_ERROR(ret, end, TAG, "i2c_bus_write_bytes: page=%d (idx=%d)", page, i);
         current_page = page;
       }
 
       uint8_t val = registers[i].value;
-      if (registers[i].op == TAS2505_CFG_OP_SET_BITS || registers[i].op == TAS2505_CFG_OP_CLEAR_BITS) {
+      if (registers[i].op == TAS2505_CFG_OP_SET_BITS || registers[i].op == TAS2505_CFG_OP_CLEAR_BITS)
+      {
         ret = tas2505_read_register(offset, &val);
         ESP_GOTO_ON_ERROR(ret, end, TAG, "i2c_bus_read_bytes: reg=%d (idx=%d)", offset, i);
 
-        if (registers[i].op == TAS2505_CFG_OP_SET_BITS) {
+        if (registers[i].op == TAS2505_CFG_OP_SET_BITS)
+        {
           val |= registers[i].value;
-        } else {
+        }
+        else
+        {
           val &= ~registers[i].value;
         }
       }
@@ -183,6 +192,45 @@ static esp_err_t tas2505_write_registers(tas2505_cfg_reg_t *registers, size_t le
 end:
   BOARD_I2C_MUTEX_UNLOCK();
   return ret;
+}
+
+static void tas2505_telemetry_generator()
+{
+  const char *output;
+  switch (current_output)
+  {
+    case TAS2505_OUTPUT_SPEAKER:
+      output = "speaker";
+      break;
+    case TAS2505_OUTPUT_HEADPHONE:
+      output = "headphone";
+      break;
+    case TAS2505_OUTPUT_BOTH:
+      output = "both";
+      break;
+    default:
+      output = "unknown";
+  }
+  things_send_telemetry_string("audio_output", output);
+
+  const char *input;
+  switch (current_input)
+  {
+    case TAS2505_INPUT_DAC:
+      input = "DAC";
+      break;
+    case TAS2505_INPUT_LINE:
+      input = "line";
+      break;
+    case TAS2505_INPUT_BOTH:
+      input = "both";
+      break;
+    default:
+      input = "unknown";
+  }
+  things_send_telemetry_string("audio_input", input);
+
+  things_send_telemetry_int("audio_volume", current_volume);
 }
 
 esp_err_t tas2505_init()
@@ -229,6 +277,8 @@ esp_err_t tas2505_init()
 
   tas2505_enable_pa(false);
   tas2505_enable_pa(true);
+
+  things_register_telemetry_generator(tas2505_telemetry_generator);
 
   return ret;
 }
@@ -278,7 +328,9 @@ esp_err_t tas2505_set_output(tas2505_output_t output)
     return ESP_OK;
   }
 
-  return _force_tas2505_set_output(output);
+  esp_err_t err = _force_tas2505_set_output(output);
+  tas2505_telemetry_generator();
+  return err;
 }
 
 esp_err_t _force_tas2505_set_input(tas2505_input_t input)
@@ -287,26 +339,26 @@ esp_err_t _force_tas2505_set_input(tas2505_input_t input)
 
   switch (input)
   {
-    case TAS2505_INPUT_DAC:
-      ESP_LOGI(TAG, "Setting input to DAC");
-      ret = tas2505_write_registers(tas2505_line_off_registers, sizeof(tas2505_line_off_registers) / sizeof(tas2505_line_off_registers[0]));
-      ESP_RETURN_ON_ERROR(ret, TAG, "Setting input to DAC failed");
-      ret = tas2505_write_registers(tas2505_dac_on_registers, sizeof(tas2505_dac_on_registers) / sizeof(tas2505_dac_on_registers[0]));
-      break;
-    case TAS2505_INPUT_LINE:
-      ESP_LOGI(TAG, "Setting input to line");
-      ret = tas2505_write_registers(tas2505_dac_off_registers, sizeof(tas2505_dac_off_registers) / sizeof(tas2505_dac_off_registers[0]));
-      ESP_RETURN_ON_ERROR(ret, TAG, "Setting input to line failed");
-      ret = tas2505_write_registers(tas2505_line_on_registers, sizeof(tas2505_line_on_registers) / sizeof(tas2505_line_on_registers[0]));
-      break;
-    case TAS2505_INPUT_BOTH:
-      ESP_LOGI(TAG, "Setting input to both");
-      ret = tas2505_write_registers(tas2505_dac_on_registers, sizeof(tas2505_dac_on_registers) / sizeof(tas2505_dac_on_registers[0]));
-      ESP_RETURN_ON_ERROR(ret, TAG, "Setting input to both failed");
-      ret = tas2505_write_registers(tas2505_line_on_registers, sizeof(tas2505_line_on_registers) / sizeof(tas2505_line_on_registers[0]));
-      break;
-    default:
-      return ESP_ERR_INVALID_ARG;
+  case TAS2505_INPUT_DAC:
+    ESP_LOGI(TAG, "Setting input to DAC");
+    ret = tas2505_write_registers(tas2505_line_off_registers, sizeof(tas2505_line_off_registers) / sizeof(tas2505_line_off_registers[0]));
+    ESP_RETURN_ON_ERROR(ret, TAG, "Setting input to DAC failed");
+    ret = tas2505_write_registers(tas2505_dac_on_registers, sizeof(tas2505_dac_on_registers) / sizeof(tas2505_dac_on_registers[0]));
+    break;
+  case TAS2505_INPUT_LINE:
+    ESP_LOGI(TAG, "Setting input to line");
+    ret = tas2505_write_registers(tas2505_dac_off_registers, sizeof(tas2505_dac_off_registers) / sizeof(tas2505_dac_off_registers[0]));
+    ESP_RETURN_ON_ERROR(ret, TAG, "Setting input to line failed");
+    ret = tas2505_write_registers(tas2505_line_on_registers, sizeof(tas2505_line_on_registers) / sizeof(tas2505_line_on_registers[0]));
+    break;
+  case TAS2505_INPUT_BOTH:
+    ESP_LOGI(TAG, "Setting input to both");
+    ret = tas2505_write_registers(tas2505_dac_on_registers, sizeof(tas2505_dac_on_registers) / sizeof(tas2505_dac_on_registers[0]));
+    ESP_RETURN_ON_ERROR(ret, TAG, "Setting input to both failed");
+    ret = tas2505_write_registers(tas2505_line_on_registers, sizeof(tas2505_line_on_registers) / sizeof(tas2505_line_on_registers[0]));
+    break;
+  default:
+    return ESP_ERR_INVALID_ARG;
   }
 
   if (ret == ESP_OK)
@@ -324,7 +376,9 @@ esp_err_t tas2505_set_input(tas2505_input_t input)
     return ESP_OK;
   }
 
-  return _force_tas2505_set_input(input);
+  esp_err_t err = _force_tas2505_set_input(input);
+  tas2505_telemetry_generator();
+  return err;
 }
 
 esp_err_t tas2505_enable_pa(bool enable)
@@ -373,19 +427,34 @@ end:
 
 esp_err_t tas2505_set_volume(uint8_t volume)
 {
+  if (volume == current_volume)
+  {
+    return ESP_OK;
+  }
+
   static tas2505_cfg_reg_t volume_registers[] = {
-    {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_HP_VOLUME, 0},
-    {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_SPEAKER_VOLUME, 0},
+      {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_HP_VOLUME, 0},
+      {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_SPEAKER_VOLUME, 0},
   };
 
   uint8_t value = (0xff - volume) >> 1;
-  if (value > 0x74) {
+  if (value > 0x74)
+  {
     // clamp to mute
     value = 0x7f;
   }
-  for (size_t i = 0; i < sizeof(volume_registers) / sizeof(volume_registers[0]); i++) {
+  for (size_t i = 0; i < sizeof(volume_registers) / sizeof(volume_registers[0]); i++)
+  {
     volume_registers[i].value = value;
   }
 
-  return tas2505_write_registers(volume_registers, sizeof(volume_registers) / sizeof(volume_registers[0]));
+  esp_err_t err = tas2505_write_registers(volume_registers, sizeof(volume_registers) / sizeof(volume_registers[0]));
+
+  if (err == ESP_OK)
+  {
+    current_volume = volume;
+    tas2505_telemetry_generator();
+  }
+
+  return err;
 }
