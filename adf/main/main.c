@@ -46,8 +46,7 @@ void webrtc_pipeline_start(void *context)
   }
 
   // Create I2S output
-  i2s_stream_cfg_t i2s_cfg = I2S_STREAM_CFG_DEFAULT();
-  i2s_cfg.type = AUDIO_STREAM_WRITER;
+  i2s_stream_cfg_t i2s_cfg = I2S_STREAM_CFG_DEFAULT_WITH_PARA(I2S_NUM_0, 48000, 16, AUDIO_STREAM_WRITER);
   // Opus decoding will happen in the I2S task so it needs a lot of stack and a
   // big enough buffer
   i2s_cfg.task_core = 1;
@@ -62,13 +61,7 @@ void webrtc_pipeline_start(void *context)
     ESP_LOGE(RADIO_TAG, "Failed to create I2S stream");
     vTaskDelete(NULL);
   }
-  esp_err_t err = i2s_stream_set_clk(i2s_stream_writer, 48000, 16, 2);
-  if (err != ESP_OK)
-  {
-    ESP_LOGE(RADIO_TAG, "Failed to set clock for I2S stream: %d", err);
-    vTaskDelete(NULL);
-  }
-  err = audio_element_set_read_cb(i2s_stream_writer, webrtc_read_audio_sample, connection);
+  esp_err_t err = audio_element_set_read_cb(i2s_stream_writer, webrtc_read_audio_sample, connection);
   if (err != ESP_OK)
   {
     ESP_LOGE(RADIO_TAG, "Failed to set read callback for I2S stream: %d", err);
