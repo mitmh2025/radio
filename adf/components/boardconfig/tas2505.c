@@ -48,6 +48,12 @@ typedef struct
   uint8_t value;
 } tas2505_cfg_reg_t;
 
+// These initialization values were calculated assuming 44.1kHz or 48kHz sample
+// rate, stereo, 16-bit I2S (so byte clock of either 1.4112MHz or 1.536MHz), but
+// in practice they seem to work fine with lower sample/clock rates too
+//
+// Specific values are DOSR=128, MDAC=2, NDAC=8, PLL_P=1, PLL_D=0, PLL_J=32, and
+// PLL_R=2
 static tas2505_cfg_reg_t tas2505_init_registers[] = {
     {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_SOFTWARE_RESET, 0x1},
     {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_LDO_CONTROL, 0x0},
@@ -75,48 +81,42 @@ static tas2505_output_t current_output = TAS2505_OUTPUT_SPEAKER;
 
 // TODO: Fix this to set register 0x1/0x9 to disable the HP driver
 static tas2505_cfg_reg_t tas2505_speaker_output_registers[] = {
-    {TAS2505_CFG_REG_OUTPUT_ROUTING, 0xc0},
-    {TAS2505_CFG_REG_AINL_VOLUME, 0x80},
-    {TAS2505_CFG_REG_HP_VOLUME, 0x75 /* mute */},
-    {TAS2505_CFG_REG_SPEAKER_CONTROL, 0x2},
+    {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_OUTPUT_ROUTING, 0xc0},
+    {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_AINL_VOLUME, 0x80},
+    {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_HP_VOLUME, 0x75 /* mute */},
+    {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_SPEAKER_CONTROL, 0x2},
 };
 
 static tas2505_cfg_reg_t tas2505_headphone_output_registers[] = {
-    {TAS2505_CFG_REG_OUTPUT_ROUTING, 0xb},
-    {TAS2505_CFG_REG_AINL_VOLUME, 0x0},
-    {TAS2505_CFG_REG_HP_VOLUME, 0x0},
-    {TAS2505_CFG_REG_SPEAKER_CONTROL, 0x0},
+    {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_OUTPUT_ROUTING, 0xb},
+    {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_AINL_VOLUME, 0x0},
+    {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_HP_VOLUME, 0x0},
+    {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_SPEAKER_CONTROL, 0x0},
 };
 
 static tas2505_cfg_reg_t tas2505_both_output_registers[] = {
-    {TAS2505_CFG_REG_OUTPUT_ROUTING, 0xc4},
-    {TAS2505_CFG_REG_AINL_VOLUME, 0x80},
-    {TAS2505_CFG_REG_HP_VOLUME, 0x0},
-    {TAS2505_CFG_REG_SPEAKER_CONTROL, 0x2},
+    {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_OUTPUT_ROUTING, 0xc4},
+    {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_AINL_VOLUME, 0x80},
+    {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_HP_VOLUME, 0x0},
+    {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_SPEAKER_CONTROL, 0x2},
 };
 
 static tas2505_input_t current_input = TAS2505_INPUT_DAC;
 
-// These initialization values were calculated assuming 44.1kHz or 48kHz sample
-// rate, stereo, 16-bit I2S (so byte clock of either 1.4112MHz or 1.536MHz), but
-// in practice they seem to work fine with lower sample/clock rates too
-//
-// Specific values are DOSR=128, MDAC=2, NDAC=8, PLL_P=1, PLL_D=0, PLL_J=32, and
-// PLL_R=2
 static tas2505_cfg_reg_t tas2505_dac_on_registers[] = {
-    {TAS2505_CFG_REG_DAC_SETUP1, 0xb0},
+    {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_DAC_SETUP1, 0xb0},
 };
 
 static tas2505_cfg_reg_t tas2505_dac_off_registers[] = {
-    {TAS2505_CFG_REG_DAC_SETUP1, 0x00},
+    {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_DAC_SETUP1, 0x00},
 };
 
 static tas2505_cfg_reg_t tas2505_line_on_registers[] = {
-    {TAS2505_CFG_REG_OUTPUT_CONTROL, 0x23},
+    {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_OUTPUT_CONTROL, 0x23},
 };
 
 static tas2505_cfg_reg_t tas2505_line_off_registers[] = {
-    {TAS2505_CFG_REG_OUTPUT_CONTROL, 0x20},
+    {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_OUTPUT_CONTROL, 0x20},
 };
 
 static esp_err_t tas2505_write_register(uint8_t offset, uint8_t value)
