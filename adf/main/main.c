@@ -3,7 +3,7 @@
 #include "wifi.h"
 #include "things.h"
 #include "console.h"
-#include "stream.h"
+#include "webrtc.h"
 #include "battery.h"
 #include "board.h"
 #include "tas2505.h"
@@ -30,68 +30,87 @@ const char *RADIO_TAG = "radio";
 
 EventGroupHandle_t radio_event_group;
 
-void pipeline_init_and_run(void)
+void webrtc_pipeline_start(void *context)
 {
+  webrtc_connection_t connection = (webrtc_connection_t)context;
+
+  vTaskDelay(pdMS_TO_TICKS(100));
+
   // Create pipeline
   audio_pipeline_cfg_t pipeline_cfg = DEFAULT_AUDIO_PIPELINE_CONFIG();
   audio_pipeline_handle_t pipeline = audio_pipeline_init(&pipeline_cfg);
-  mem_assert(pipeline);
-
-  // Create HTTP fetcher
-  http_stream_cfg_t http_cfg = HTTP_STREAM_CFG_DEFAULT();
-  http_cfg.crt_bundle_attach = esp_crt_bundle_attach;
-  audio_element_handle_t http_stream_reader = http_stream_init(&http_cfg);
-  mem_assert(http_stream_reader);
-  audio_element_set_uri(http_stream_reader, "https://ebroder.net/assets/take5.mp3");
-
-  // Create mp3 decoder
-  mp3_decoder_cfg_t mp3_cfg = DEFAULT_MP3_DECODER_CONFIG();
-  audio_element_handle_t mp3_decoder = mp3_decoder_init(&mp3_cfg);
-  mem_assert(mp3_decoder);
+  if (!pipeline)
+  {
+    ESP_LOGE(RADIO_TAG, "Failed to create audio pipeline");
+    vTaskDelete(NULL);
+  }
 
   // Create I2S output
   i2s_stream_cfg_t i2s_cfg = I2S_STREAM_CFG_DEFAULT();
   i2s_cfg.type = AUDIO_STREAM_WRITER;
+  // Opus decoding will happen in the I2S task so it needs a lot of stack and a
+  // big enough buffer
+  i2s_cfg.task_core = 1;
+  i2s_cfg.task_stack = 30 * 1024;
+  i2s_cfg.stack_in_ext = true;
+  // Need space for 20ms of audio at 48kHz, 16-bit, stereo
+  // TODO: adapt to packet sizes?
+  i2s_cfg.buffer_len = 960 * 2 * 2;
   audio_element_handle_t i2s_stream_writer = i2s_stream_init(&i2s_cfg);
-  mem_assert(i2s_stream_writer);
+  if (!i2s_stream_writer)
+  {
+    ESP_LOGE(RADIO_TAG, "Failed to create I2S stream");
+    vTaskDelete(NULL);
+  }
+  esp_err_t err = i2s_stream_set_clk(i2s_stream_writer, 48000, 16, 2);
+  if (err != ESP_OK)
+  {
+    ESP_LOGE(RADIO_TAG, "Failed to set clock for I2S stream: %d", err);
+    vTaskDelete(NULL);
+  }
+  err = audio_element_set_read_cb(i2s_stream_writer, webrtc_read_audio_sample, connection);
+  if (err != ESP_OK)
+  {
+    ESP_LOGE(RADIO_TAG, "Failed to set read callback for I2S stream: %d", err);
+    vTaskDelete(NULL);
+  }
 
   // Register audio elements to pipeline and link
-  ESP_ERROR_CHECK(audio_pipeline_register(pipeline, http_stream_reader, "http"));
-  ESP_ERROR_CHECK(audio_pipeline_register(pipeline, mp3_decoder, "mp3"));
-  ESP_ERROR_CHECK(audio_pipeline_register(pipeline, i2s_stream_writer, "i2s"));
-  const char *link_tag[] = {"http", "mp3", "i2s"};
-  ESP_ERROR_CHECK(audio_pipeline_link(pipeline, &link_tag[0], sizeof(link_tag) / sizeof(link_tag[0])));
-
-  audio_event_iface_cfg_t evt_cfg = AUDIO_EVENT_IFACE_DEFAULT_CFG();
-  audio_event_iface_handle_t evt = audio_event_iface_init(&evt_cfg);
-  audio_pipeline_set_listener(pipeline, evt);
-
-  ESP_ERROR_CHECK(audio_pipeline_run(pipeline));
-
-  while (1)
+  err = audio_pipeline_register(pipeline, i2s_stream_writer, "i2s");
+  if (err != ESP_OK)
   {
-    audio_event_iface_msg_t msg;
-    esp_err_t ret = audio_event_iface_listen(evt, &msg, portMAX_DELAY);
-    if (ret != ESP_OK)
-    {
-      continue;
-    }
+    ESP_LOGE(RADIO_TAG, "Failed to register I2S stream: %d", err);
+    vTaskDelete(NULL);
+  }
+  const char *link_tag[] = {"i2s"};
+  err = audio_pipeline_link(pipeline, &link_tag[0], sizeof(link_tag) / sizeof(link_tag[0]));
+  if (err != ESP_OK)
+  {
+    ESP_LOGE(RADIO_TAG, "Failed to link I2S stream: %d", err);
+    vTaskDelete(NULL);
+  }
 
-    if (msg.source_type == AUDIO_ELEMENT_TYPE_ELEMENT && msg.source == (void *)mp3_decoder && msg.cmd == AEL_MSG_CMD_REPORT_MUSIC_INFO)
-    {
-      audio_element_info_t music_info = {0};
-      audio_element_getinfo(mp3_decoder, &music_info);
-      ESP_LOGI(RADIO_TAG, "[ * ] Receive music info from mp3 decoder, sample_rates=%d, bits=%d, ch=%d",
-               music_info.sample_rates, music_info.bits, music_info.channels);
-      i2s_stream_set_clk(i2s_stream_writer, music_info.sample_rates, music_info.bits, music_info.channels);
-      continue;
-    }
+  err = audio_pipeline_run(pipeline);
+  if (err != ESP_OK)
+  {
+    ESP_LOGE(RADIO_TAG, "Failed to run pipeline: %d", err);
+    vTaskDelete(NULL);
+  }
+
+  vTaskDelete(NULL);
+}
+
+static void on_webrtc_state_change(webrtc_connection_t conn, void *context, WEBRTC_CONNECTION_STATE state)
+{
+  if (state == WEBRTC_CONNECTION_STATE_CONNECTED)
+  {
+    xTaskCreatePinnedToCore(webrtc_pipeline_start, "webrtc_pipeline", 4096, conn, 5, NULL, 1);
   }
 }
 
 void app_main(void)
 {
-  esp_log_level_set("*", ESP_LOG_WARN);
+  esp_log_level_set("*", ESP_LOG_VERBOSE);
   esp_log_level_set(RADIO_TAG, ESP_LOG_INFO);
 
   esp_err_t err = nvs_flash_init();
@@ -117,7 +136,7 @@ void app_main(void)
   ESP_ERROR_CHECK(battery_init());
   ESP_ERROR_CHECK(tas2505_init());
   ESP_ERROR_CHECK(wifi_init());
-  ESP_ERROR_CHECK(stream_init());
+  ESP_ERROR_CHECK(webrtc_init());
 
   if (!(xEventGroupGetBits(radio_event_group) & RADIO_EVENT_GROUP_THINGS_PROVISIONED))
   {
@@ -137,11 +156,10 @@ void app_main(void)
   // xEventGroupWaitBits(radio_event_group, RADIO_EVENT_GROUP_THINGS_PROVISIONED, pdFALSE, pdTRUE, portMAX_DELAY);
   xEventGroupWaitBits(radio_event_group, RADIO_EVENT_GROUP_WIFI_CONNECTED, pdFALSE, pdTRUE, portMAX_DELAY);
 
-  stream_config_t stream_cfg = {
+  webrtc_config_t webrtc_cfg = {
     .whep_url = "http://192.168.21.207:8889/music/whep",
+    .state_change_callback = on_webrtc_state_change,
   };
-  stream_connection_t connection;
-  stream_connect(&stream_cfg, &connection);
-
-  pipeline_init_and_run();
+  webrtc_connection_t connection;
+  webrtc_connect(&webrtc_cfg, &connection);
 }

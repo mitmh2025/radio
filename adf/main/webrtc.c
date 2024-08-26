@@ -1,21 +1,24 @@
-#include "stream.h"
+#include "webrtc.h"
 #include "main.h"
 
 #include "esp_log.h"
 #include "esp_check.h"
 #include "esp_http_client.h"
 
+#include "opus.h"
+
 #include "com/amazonaws/kinesis/video/webrtcclient/Include.h"
 
-struct stream_connection
+struct webrtc_connection
 {
-  stream_connection_state_change_callback_t state_change_callback;
+  webrtc_connection_state_change_callback_t state_change_callback;
   void *user_data;
 
   PRtcPeerConnection peer_connection;
   PRtcRtpTransceiver transceiver;
   char *session_url;
   esp_http_client_handle_t whep_client;
+  RTC_PEER_CONNECTION_STATE state;
 
   char *local_ice_ufrag;
   char *local_ice_pwd;
@@ -26,27 +29,34 @@ struct stream_connection
   // We should never have this many pending candidates, but it's a relatively
   // cheap allocation
   char *pending_candidates[16];
+
+  OpusDecoder *decoder;
 };
 
-struct stream_connect_task_args
+struct webrtc_connect_task_args
 {
   TaskHandle_t caller;
-  stream_config_t *config;
-  stream_connection_t *handle;
+  webrtc_config_t *config;
+  webrtc_connection_t *handle;
   esp_err_t ret;
 };
 
-struct stream_connect_http_data
+struct webrtc_connect_http_data
 {
-  stream_connection_t connection;
+  webrtc_connection_t connection;
   PRtcSessionDescriptionInit remoteDescription;
 };
 
-void stream_free_connection(stream_connection_t connection)
+void webrtc_free_connection(webrtc_connection_t connection)
 {
   if (!connection)
   {
     return;
+  }
+
+  if (connection->decoder)
+  {
+    opus_decoder_destroy(connection->decoder);
   }
 
   esp_http_client_cleanup(connection->whep_client);
@@ -73,9 +83,9 @@ void stream_free_connection(stream_connection_t connection)
   free(connection);
 }
 
-esp_err_t stream_init()
+esp_err_t webrtc_init()
 {
-  loggerSetLogLevel(LOG_LEVEL_VERBOSE);
+  loggerSetLogLevel(LOG_LEVEL_INFO);
   uint32_t status = initKvsWebRtc();
   if (status != STATUS_SUCCESS)
   {
@@ -89,7 +99,7 @@ esp_err_t stream_init()
 // KVS WebRTC always uses mid=0 for trickle ICE so we can hardcode this
 static const char *STREAM_MID_LINE = "a=mid:0";
 
-static void stream_send_pending_candidates(stream_connection_t connection)
+static void webrtc_send_pending_candidates(webrtc_connection_t connection)
 {
   if (!connection->whep_client)
   {
@@ -173,33 +183,35 @@ cleanup:
   xSemaphoreGive(connection->lock);
 }
 
-static void stream_on_connection_state_change(UINT64 arg, RTC_PEER_CONNECTION_STATE state)
+static void webrtc_on_connection_state_change(UINT64 arg, RTC_PEER_CONNECTION_STATE state)
 {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wint-to-pointer-cast"
-  stream_connection_t connection = (stream_connection_t)arg;
+  webrtc_connection_t connection = (webrtc_connection_t)arg;
 #pragma GCC diagnostic pop
 
-  STREAM_CONNECTION_STATE new_state;
+  connection->state = state;
+
+  WEBRTC_CONNECTION_STATE new_state;
   switch (state)
   {
   case RTC_PEER_CONNECTION_STATE_NEW:
-    new_state = STREAM_CONNECTION_STATE_NEW;
+    new_state = WEBRTC_CONNECTION_STATE_NEW;
     break;
   case RTC_PEER_CONNECTION_STATE_CONNECTING:
-    new_state = STREAM_CONNECTION_STATE_CONNECTING;
+    new_state = WEBRTC_CONNECTION_STATE_CONNECTING;
     break;
   case RTC_PEER_CONNECTION_STATE_CONNECTED:
-    new_state = STREAM_CONNECTION_STATE_CONNECTED;
+    new_state = WEBRTC_CONNECTION_STATE_CONNECTED;
     break;
   case RTC_PEER_CONNECTION_STATE_DISCONNECTED:
-    new_state = STREAM_CONNECTION_STATE_DISCONNECTED;
+    new_state = WEBRTC_CONNECTION_STATE_DISCONNECTED;
     break;
   case RTC_PEER_CONNECTION_STATE_FAILED:
-    new_state = STREAM_CONNECTION_STATE_FAILED;
+    new_state = WEBRTC_CONNECTION_STATE_FAILED;
     break;
   case RTC_PEER_CONNECTION_STATE_CLOSED:
-    new_state = STREAM_CONNECTION_STATE_CLOSED;
+    new_state = WEBRTC_CONNECTION_STATE_CLOSED;
     break;
   default:
     ESP_LOGW(RADIO_TAG, "Unknown connection state %d", state);
@@ -208,21 +220,21 @@ static void stream_on_connection_state_change(UINT64 arg, RTC_PEER_CONNECTION_ST
 
   if (connection->state_change_callback)
   {
-    connection->state_change_callback(connection->user_data, new_state);
+    connection->state_change_callback(connection, connection->user_data, new_state);
   }
 }
 
-static void stream_on_ice_candidate(UINT64 arg, PCHAR candidate)
+static void webrtc_on_ice_candidate(UINT64 arg, PCHAR candidate)
 {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wint-to-pointer-cast"
-  stream_connection_t connection = (stream_connection_t)arg;
+  webrtc_connection_t connection = (webrtc_connection_t)arg;
 #pragma GCC diagnostic pop
 
   if (candidate == NULL)
   {
     // All candidates have received
-    stream_send_pending_candidates(connection);
+    webrtc_send_pending_candidates(connection);
     return;
   }
 
@@ -254,13 +266,13 @@ static void stream_on_ice_candidate(UINT64 arg, PCHAR candidate)
 
   xSemaphoreGive(connection->lock);
 
-  stream_send_pending_candidates(connection);
+  webrtc_send_pending_candidates(connection);
 }
 
-static esp_err_t stream_connect_http_event_handler(esp_http_client_event_t *evt)
+static esp_err_t webrtc_connect_http_event_handler(esp_http_client_event_t *evt)
 {
-  struct stream_connect_http_data *data = (struct stream_connect_http_data *)evt->user_data;
-  
+  struct webrtc_connect_http_data *data = (struct webrtc_connect_http_data *)evt->user_data;
+
   if (evt->event_id == HTTP_EVENT_ON_DATA)
   {
     if (strlen(data->remoteDescription->sdp) + evt->data_len + 1 >= MAX_SESSION_DESCRIPTION_INIT_SDP_LEN)
@@ -291,25 +303,34 @@ static esp_err_t stream_connect_http_event_handler(esp_http_client_event_t *evt)
   return ESP_OK;
 }
 
-static void stream_connect_task(void *arg)
+static void webrtc_connect_task(void *arg)
 {
-  struct stream_connect_task_args *args = (struct stream_connect_task_args *)arg;
+  struct webrtc_connect_task_args *args = (struct webrtc_connect_task_args *)arg;
   PRtcConfiguration cfg = NULL;
   PRtcMediaStreamTrack track = NULL;
   PRtcSessionDescriptionInit offer = NULL;
   esp_http_client_handle_t http_client = NULL;
   PRtcSessionDescriptionInit remoteDescription = NULL;
 
-  stream_connection_t connection = calloc(1, sizeof(struct stream_connection));
+  webrtc_connection_t connection = calloc(1, sizeof(struct webrtc_connection));
   if (!connection)
   {
-    ESP_LOGE(RADIO_TAG, "Failed to allocate memory for stream connection");
+    ESP_LOGE(RADIO_TAG, "Failed to allocate memory for webrtc connection");
     args->ret = ESP_ERR_NO_MEM;
     goto cleanup;
   }
   *args->handle = connection;
   connection->state_change_callback = args->config->state_change_callback;
   connection->user_data = args->config->user_data;
+
+  int error;
+  connection->decoder = opus_decoder_create(48000, 1, &error);
+  if (error != OPUS_OK)
+  {
+    ESP_LOGE(RADIO_TAG, "Failed to create Opus decoder with error code %s", opus_strerror(error));
+    args->ret = ESP_FAIL;
+    goto cleanup;
+  }
 
   connection->lock = xSemaphoreCreateMutex();
 
@@ -335,7 +356,7 @@ static void stream_connect_task(void *arg)
   track = calloc(1, sizeof(RtcMediaStreamTrack));
   if (!track)
   {
-    ESP_LOGE(RADIO_TAG, "Failed to allocate memory for media stream track");
+    ESP_LOGE(RADIO_TAG, "Failed to allocate memory for media webrtc track");
     args->ret = ESP_ERR_NO_MEM;
     goto cleanup;
   }
@@ -357,8 +378,8 @@ static void stream_connect_task(void *arg)
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wpointer-to-int-cast"
-  peerConnectionOnIceCandidate(connection->peer_connection, (UINT64)connection, stream_on_ice_candidate);
-  peerConnectionOnConnectionStateChange(connection->peer_connection, (UINT64)connection, stream_on_connection_state_change);
+  peerConnectionOnIceCandidate(connection->peer_connection, (UINT64)connection, webrtc_on_ice_candidate);
+  peerConnectionOnConnectionStateChange(connection->peer_connection, (UINT64)connection, webrtc_on_connection_state_change);
 #pragma GCC diagnostic pop
 
   offer = calloc(1, sizeof(RtcSessionDescriptionInit));
@@ -417,7 +438,7 @@ static void stream_connect_task(void *arg)
     goto cleanup;
   }
 
-  struct stream_connect_http_data http_data = {
+  struct webrtc_connect_http_data http_data = {
       .connection = connection,
       .remoteDescription = remoteDescription,
   };
@@ -426,7 +447,7 @@ static void stream_connect_task(void *arg)
       .method = HTTP_METHOD_POST,
       .transport_type = strcasecmp("https://", args->config->whep_url) == 0 ? HTTP_TRANSPORT_OVER_SSL : HTTP_TRANSPORT_OVER_TCP,
       .user_data = &http_data,
-      .event_handler = stream_connect_http_event_handler,
+      .event_handler = webrtc_connect_http_event_handler,
   };
   http_client = esp_http_client_init(&http_config);
   if (!http_client)
@@ -465,7 +486,7 @@ static void stream_connect_task(void *arg)
 
   // Flush any pending ICE candidates that came in while we were waiting for the
   // session to be established
-  stream_send_pending_candidates(connection);
+  webrtc_send_pending_candidates(connection);
 
 cleanup:
   esp_http_client_cleanup(http_client);
@@ -476,14 +497,14 @@ cleanup:
 
   if (args->ret != ESP_OK)
   {
-    stream_free_connection(connection);
+    webrtc_free_connection(connection);
   }
 
   xTaskNotifyGive(args->caller);
   vTaskDelete(NULL);
 }
 
-esp_err_t stream_connect(stream_config_t *cfg, stream_connection_t *handle)
+esp_err_t webrtc_connect(webrtc_config_t *cfg, webrtc_connection_t *handle)
 {
   ESP_RETURN_ON_FALSE(cfg, ESP_ERR_INVALID_ARG, RADIO_TAG, "Invalid config");
   ESP_RETURN_ON_FALSE(cfg->whep_url, ESP_ERR_INVALID_ARG, RADIO_TAG, "Invalid WHEP URL");
@@ -491,7 +512,7 @@ esp_err_t stream_connect(stream_config_t *cfg, stream_connection_t *handle)
 
   // Connecting to webrtc requires a lot of stack space so spin it off into a
   // separate task
-  struct stream_connect_task_args args = {
+  struct webrtc_connect_task_args args = {
       .caller = xTaskGetCurrentTaskHandle(),
       .config = cfg,
       .handle = handle,
@@ -499,10 +520,10 @@ esp_err_t stream_connect(stream_config_t *cfg, stream_connection_t *handle)
   };
 
   TaskHandle_t task;
-  BaseType_t result = xTaskCreatePinnedToCore(stream_connect_task, "stream_connect", 6 * 1024, &args, 5, &task, 1);
+  BaseType_t result = xTaskCreatePinnedToCore(webrtc_connect_task, "webrtc_connect", 6 * 1024, &args, 5, &task, 1);
   if (result != pdPASS)
   {
-    ESP_LOGE(RADIO_TAG, "Failed to create stream connect task");
+    ESP_LOGE(RADIO_TAG, "Failed to create webrtc connect task");
     return ESP_FAIL;
   }
 
@@ -510,4 +531,75 @@ esp_err_t stream_connect(stream_config_t *cfg, stream_connection_t *handle)
   xTaskNotifyWait(0, ULONG_MAX, NULL, portMAX_DELAY);
 
   return args.ret;
+}
+
+struct webrtc_on_frame_data
+{
+  webrtc_connection_t connection;
+  audio_element_handle_t el;
+  char *buf;
+  int buf_len;
+};
+
+static void webrtc_read_on_frame(UINT64 custom_data, PFrame frame)
+{
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wint-to-pointer-cast"
+  struct webrtc_on_frame_data *data = (struct webrtc_on_frame_data *)custom_data;
+#pragma GCC diagnostic pop
+
+  memset(data->buf, 0, data->buf_len);
+
+  int decoded = 0;
+
+  if (frame->size == 0)
+  {
+    ESP_LOGI(RADIO_TAG, "Skipping missing RTP frame");
+    // TODO: FEC
+    opus_int32 packet_duration;
+    opus_decoder_ctl(data->connection->decoder, OPUS_GET_LAST_PACKET_DURATION(&packet_duration));
+    decoded = opus_decode(data->connection->decoder, NULL, 0, (opus_int16 *)data->buf, packet_duration, 0);
+  }
+  else
+  {
+    decoded = opus_decode(
+        data->connection->decoder,
+        (unsigned char *)frame->frameData,
+        frame->size,
+        (opus_int16 *)data->buf,
+        data->buf_len / (2 * sizeof(opus_int16) / sizeof(data->buf[0])),
+        0);
+  }
+
+  if (decoded < 0)
+  {
+    ESP_LOGE(RADIO_TAG, "Failed to decode Opus frame with error code %d (%s)", decoded, opus_strerror(decoded));
+    data->buf_len = AEL_IO_FAIL;
+    return;
+  }
+
+  data->buf_len = decoded * 2 * sizeof(opus_int16) / sizeof(data->buf[0]);
+}
+
+audio_element_err_t webrtc_read_audio_sample(audio_element_handle_t el, char *buf, int len, TickType_t ticks_to_wait, void *context)
+{
+  webrtc_connection_t connection = (webrtc_connection_t)context;
+  if (!connection || connection->state != RTC_PEER_CONNECTION_STATE_CONNECTED)
+  {
+    return AEL_IO_FAIL;
+  }
+
+  struct webrtc_on_frame_data data = {
+      .connection = connection,
+      .el = el,
+      .buf = buf,
+      .buf_len = len,
+  };
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpointer-to-int-cast"
+  transceiverPopFrame(connection->transceiver, (UINT64)&data, webrtc_read_on_frame);
+#pragma GCC diagnostic pop
+
+  return (audio_element_err_t)data.buf_len;
 }

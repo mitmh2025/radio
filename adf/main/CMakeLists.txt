@@ -2,7 +2,7 @@ idf_component_register(
   SRCS
   console.c
   main.c
-  stream.c
+  webrtc.c
   wifi.c
   things.cpp
   battery.c
