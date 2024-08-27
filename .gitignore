@@ -1,4 +1,9 @@
-/localconfig.h
-.theia
-.vscode
-build
+/.vscode/settings.json
+/build
+sdkconfig
+sdkconfig.old
+sdkconfig.esp32dev
+sdkconfig.esp32dev.old
+managed_components
+config.h
+/.pio
