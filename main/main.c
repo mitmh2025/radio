@@ -95,6 +95,8 @@ loop:
 
 void webrtc_pipeline_start(void *context)
 {
+  vTaskDelay(pdMS_TO_TICKS(100));
+
   webrtc_connection_t connection = (webrtc_connection_t)context;
 
   // Create pipeline

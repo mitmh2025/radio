@@ -31,6 +31,9 @@ struct webrtc_connection
   char *pending_candidates[16];
 
   OpusDecoder *decoder;
+  char *last_received_packet;
+  size_t last_received_packet_len;
+  size_t last_received_packet_capacity;
 };
 
 struct webrtc_connect_task_args
@@ -53,6 +56,8 @@ void webrtc_free_connection(webrtc_connection_t connection)
   {
     return;
   }
+
+  free(connection->last_received_packet);
 
   if (connection->decoder)
   {
@@ -553,16 +558,27 @@ static void webrtc_read_on_frame(UINT64 custom_data, PFrame frame)
   int decoded = 0;
   size_t bytes_per_sample = 2 /* channels */ * sizeof(opus_int16) / sizeof(data->buf[0]);
 
-  if (frame->size == 0)
+  if (data->connection->last_received_packet_len == 0)
   {
-    ESP_LOGI(RADIO_TAG, "Skipping missing RTP frame");
-    // TODO: FEC
-    opus_int32 packet_duration;
-    opus_decoder_ctl(data->connection->decoder, OPUS_GET_LAST_PACKET_DURATION(&packet_duration));
-    decoded = opus_decode(data->connection->decoder, NULL, 0, (opus_int16 *)data->buf, packet_duration, 0);
+    // Missing last packet.
+    if (frame->size == 0)
+    {
+      // Missing current packet too. Trigger PLC
+      ESP_LOGI(RADIO_TAG, "Previous two packets missing, triggering PLC");
+      opus_int32 packet_duration;
+      opus_decoder_ctl(data->connection->decoder, OPUS_GET_LAST_PACKET_DURATION(&packet_duration));
+      decoded = opus_decode(data->connection->decoder, NULL, 0, (opus_int16 *)data->buf, packet_duration, 0);
+    }
+    else
+    {
+      // We have a new packet, so trigger FEC
+      ESP_LOGI(RADIO_TAG, "Previous packet missing, triggering FEC");
+      decoded = opus_decode(data->connection->decoder, (unsigned char *)frame->frameData, frame->size, (opus_int16 *)data->buf, data->buf_len / bytes_per_sample, 1);
+    }
   }
   else
   {
+    // Decode the packet
     decoded = opus_decode(
         data->connection->decoder,
         (unsigned char *)frame->frameData,
@@ -578,6 +594,20 @@ static void webrtc_read_on_frame(UINT64 custom_data, PFrame frame)
     data->buf_len = AEL_IO_FAIL;
     return;
   }
+
+  if (data->connection->last_received_packet_capacity < frame->size)
+  {
+    data->connection->last_received_packet = realloc(data->connection->last_received_packet, frame->size);
+    if (!data->connection->last_received_packet)
+    {
+      ESP_LOGE(RADIO_TAG, "Failed to allocate memory for last received packet");
+      data->buf_len = AEL_IO_FAIL;
+      return;
+    }
+    data->connection->last_received_packet_capacity = frame->size;
+  }
+  memcpy(data->connection->last_received_packet, frame->frameData, frame->size);
+  data->connection->last_received_packet_len = frame->size;
 
   data->buf_len = decoded * bytes_per_sample;
 }
