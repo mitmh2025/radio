@@ -31,7 +31,7 @@ static_assert(strlen(RADIO_THINGSBOARD_SERVER) > 0, "RADIO_THINGSBOARD_SERVER is
 
 static constexpr uint8_t FIRMWARE_FAILURE_RETRIES = 12U;
 static constexpr uint16_t FIRMWARE_PACKET_SIZE = 4096U;
-static constexpr uint16_t MAX_MESSAGE_SIZE = 256U;
+static constexpr uint16_t MAX_MESSAGE_SIZE = UINT16_MAX; // Max core dump size
 
 static constexpr char THINGSBOARD_SERVER[] = RADIO_THINGSBOARD_SERVER;
 static constexpr uint16_t THINGSBOARD_PORT = 8883U;
