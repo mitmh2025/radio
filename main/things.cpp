@@ -181,13 +181,7 @@ static void things_upload_coredump(size_t core_size)
     goto cleanup;
   }
 
-  ret = mbedtls_base64_encode(NULL, 0, &base64_size, (const unsigned char *)core_dump_addr, core_size);
-  if (ret != 0)
-  {
-    ESP_LOGE(RADIO_TAG, "Failed to get base64 size for coredump: %d", ret);
-    goto cleanup;
-  }
-
+  mbedtls_base64_encode(NULL, 0, &base64_size, (const unsigned char *)core_dump_addr, core_size);
   base64_core_dump = (char *)malloc(base64_size);
   if (base64_core_dump == NULL)
   {
