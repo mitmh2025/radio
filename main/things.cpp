@@ -12,6 +12,9 @@
 #include "esp_app_desc.h"
 #include "esp_check.h"
 #include "esp_core_dump.h"
+#include "esp_partition.h"
+
+#include "mbedtls/base64.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -154,6 +157,61 @@ static void things_updated_callback(const bool &success)
   esp_restart();
 }
 
+static void things_upload_coredump(size_t core_size)
+{
+  const esp_partition_t *partition;
+  const void *core_dump_addr = NULL;
+  esp_partition_mmap_handle_t handle;
+  esp_err_t err = ESP_OK;
+  size_t base64_size;
+  char *base64_core_dump = NULL;
+  int ret;
+
+  partition = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_COREDUMP, NULL);
+  if (partition == NULL)
+  {
+    ESP_LOGE(RADIO_TAG, "Failed to find coredump partition");
+    return;
+  }
+
+  err = esp_partition_mmap(partition, 0, core_size, ESP_PARTITION_MMAP_DATA, &core_dump_addr, &handle);
+  if (err != ESP_OK)
+  {
+    ESP_LOGE(RADIO_TAG, "Failed to map coredump partition: %s", esp_err_to_name(err));
+    goto cleanup;
+  }
+
+  base64_size = 4 * ((core_size + 2) / 3);
+  base64_core_dump = (char *)malloc(base64_size);
+  if (base64_core_dump == NULL)
+  {
+    ESP_LOGE(RADIO_TAG, "Failed to allocate memory for base64 coredump");
+    goto cleanup;
+  }
+
+  ret = mbedtls_base64_encode((unsigned char *)base64_core_dump, base64_size, &base64_size, (const unsigned char *)core_dump_addr, core_size);
+  if (ret != 0)
+  {
+    ESP_LOGE(RADIO_TAG, "Failed to base64 encode coredump: %d", ret);
+    goto cleanup;
+  }
+
+  tb.sendTelemetryData("coredump", base64_core_dump);
+
+  ESP_LOGI(RADIO_TAG, "Uploading coredump to ThingsBoard");
+
+cleanup:
+  if (base64_core_dump != NULL)
+  {
+    free(base64_core_dump);
+  }
+
+  if (core_dump_addr != NULL)
+  {
+    esp_partition_munmap(handle);
+  }
+}
+
 static void things_task(void *arg)
 {
   // First, block until we're provisioned
@@ -197,7 +255,7 @@ static void things_task(void *arg)
     if (err == ESP_OK)
     {
       ESP_LOGW(RADIO_TAG, "Core dump detected at 0x%08x, size %d bytes", core_addr, core_size);
-      // TODO: upload core dump to thingsboard
+      things_upload_coredump(core_size);
     }
     else if (err != ESP_ERR_NOT_FOUND && err != ESP_ERR_INVALID_SIZE)
     {
