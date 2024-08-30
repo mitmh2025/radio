@@ -595,6 +595,11 @@ esp_err_t webrtc_connect(webrtc_config_t *cfg, webrtc_connection_t *handle)
   return args.ret;
 }
 
+void webrtc_wait_buffer_duration(webrtc_connection_t connection, uint32_t duration_samples, uint64_t max_wait_ms)
+{
+  transceiverWaitBufferDuration(connection->transceiver, duration_samples, max_wait * 10);
+}
+
 struct webrtc_on_frame_data
 {
   webrtc_connection_t connection;

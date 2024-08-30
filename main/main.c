@@ -95,9 +95,12 @@ loop:
 
 void webrtc_pipeline_start(void *context)
 {
-  vTaskDelay(pdMS_TO_TICKS(100));
-
   webrtc_connection_t connection = (webrtc_connection_t)context;
+
+  int64_t start = esp_timer_get_time();
+  webrtc_wait_buffer_duration(connection, 48000, 3000);
+  int64_t end = esp_timer_get_time();
+  ESP_LOGI(RADIO_TAG, "Spent %lldms buffering audio", (end - start) / 1000);
 
   // Create pipeline
   audio_pipeline_cfg_t pipeline_cfg = DEFAULT_AUDIO_PIPELINE_CONFIG();
