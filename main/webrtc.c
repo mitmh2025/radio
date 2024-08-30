@@ -88,9 +88,66 @@ void webrtc_free_connection(webrtc_connection_t connection)
   free(connection);
 }
 
+static VOID webrtc_logger(UINT32 level, const PCHAR tag, const PCHAR fmt, ...)
+{
+  int esp_log_level = 0;
+  switch (level)
+  {
+  case LOG_LEVEL_VERBOSE:
+    esp_log_level = ESP_LOG_VERBOSE;
+    break;
+  case LOG_LEVEL_DEBUG:
+    esp_log_level = ESP_LOG_DEBUG;
+    break;
+  case LOG_LEVEL_INFO:
+    esp_log_level = ESP_LOG_INFO;
+    break;
+  case LOG_LEVEL_WARN:
+    esp_log_level = ESP_LOG_WARN;
+    break;
+  case LOG_LEVEL_ERROR:
+    esp_log_level = ESP_LOG_ERROR;
+    break;
+  case LOG_LEVEL_FATAL:
+    esp_log_level = ESP_LOG_ERROR;
+    break;
+  default:
+    esp_log_level = ESP_LOG_VERBOSE;
+    break;
+  }
+
+  va_list args;
+  va_start(args, fmt);
+  int len = vsnprintf(NULL, 0, fmt, args);
+  va_end(args);
+  if (len < 0)
+  {
+    return;
+  }
+
+  char *buffer = malloc(len + 1);
+  if (!buffer)
+  {
+    return;
+  }
+
+  va_start(args, fmt);
+  len = vsnprintf(buffer, len + 1, fmt, args);
+  va_end(args);
+
+  if (len < 0)
+  {
+    free(buffer);
+    return;
+  }
+
+  ESP_LOG_LEVEL_LOCAL(esp_log_level, tag, "%s", buffer);
+  free(buffer);
+}
+
 esp_err_t webrtc_init()
 {
-  loggerSetLogLevel(LOG_LEVEL_INFO);
+  globalCustomLogPrintFn = webrtc_logger;
   uint32_t status = initKvsWebRtc();
   if (status != STATUS_SUCCESS)
   {

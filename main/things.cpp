@@ -47,6 +47,46 @@ static std::vector<void (*)(void)> telemetry_generators;
 
 static constexpr TickType_t CONNECT_TIMEOUT = pdMS_TO_TICKS(5000);
 
+vprintf_like_t things_orig_vprintf = NULL;
+
+int things_vprintf(const char *format, va_list args)
+{
+  char *buf = NULL;
+  int len = 0;
+  if (tb.connected())
+  {
+    len = vsnprintf(NULL, 0, format, args);
+    if (len < 0)
+    {
+      goto cleanup;
+    }
+    buf = (char *)malloc(len + 1);
+    if (!buf)
+    {
+      goto cleanup;
+    }
+
+    len = vsnprintf(buf, len + 1, format, args);
+    if (len < 0)
+    {
+      goto cleanup;
+    }
+    tb.sendTelemetryData("log", buf);
+  }
+
+cleanup:
+  free(buf);
+
+  if (things_orig_vprintf)
+  {
+    return things_orig_vprintf(format, args);
+  }
+  else
+  {
+    return len;
+  }
+}
+
 static struct {
   configRUN_TIME_COUNTER_TYPE run_time_counter;
   configRUN_TIME_COUNTER_TYPE cpu0_idle_counter;
@@ -254,6 +294,8 @@ extern "C" esp_err_t things_init()
 
   esp_err_t err = nvs_open(THINGS_NVS_NAMESPACE, NVS_READWRITE, &things_nvs_handle);
   ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to open NVS handle: %s", esp_err_to_name(err));
+
+  things_orig_vprintf = esp_log_set_vprintf(things_vprintf);
 
   mqtt_client.set_connect_callback(things_connect_callback);
   mqtt_client.set_server_crt_bundle_attach(esp_crt_bundle_attach);
