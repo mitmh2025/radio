@@ -18,6 +18,7 @@
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/queue.h"
 
 #include <Espressif_MQTT_Client.h>
 #include <Espressif_Updater.h>
@@ -50,13 +51,14 @@ static std::vector<void (*)(void)> telemetry_generators;
 
 static constexpr TickType_t CONNECT_TIMEOUT = pdMS_TO_TICKS(5000);
 
-vprintf_like_t things_orig_vprintf = NULL;
+static vprintf_like_t things_orig_vprintf = NULL;
+static QueueHandle_t things_log_queue = NULL;
 
 int things_vprintf(const char *format, va_list args)
 {
   char *buf = NULL;
   int len = 0;
-  if (tb.connected())
+  if (things_log_queue)
   {
     len = vsnprintf(NULL, 0, format, args);
     if (len < 0)
@@ -72,14 +74,19 @@ int things_vprintf(const char *format, va_list args)
     len = vsnprintf(buf, len + 1, format, args);
     if (len < 0)
     {
+      free(buf);
       goto cleanup;
     }
-    tb.sendTelemetryData("log", buf);
+
+    BaseType_t result = xQueueSendToBack(things_log_queue, &buf, 0);
+    if (result != pdTRUE)
+    {
+      // Didn't post to queue, free the buffer
+      free(buf);
+    }
   }
 
 cleanup:
-  free(buf);
-
   if (things_orig_vprintf)
   {
     return things_orig_vprintf(format, args);
@@ -87,6 +94,31 @@ cleanup:
   else
   {
     return len;
+  }
+}
+
+void things_log_task(void *context)
+{
+  while (true)
+  {
+    char *buf = NULL;
+    BaseType_t result = xQueueReceive(things_log_queue, &buf, portMAX_DELAY);
+    if (result != pdTRUE)
+    {
+      continue;
+    }
+
+    if (!buf)
+    {
+      continue;
+    }
+
+    if (tb.connected())
+    {
+      tb.sendTelemetryData("log", buf);
+    }
+
+    free(buf);
   }
 }
 
@@ -353,6 +385,8 @@ extern "C" esp_err_t things_init()
   esp_err_t err = nvs_open(THINGS_NVS_NAMESPACE, NVS_READWRITE, &things_nvs_handle);
   ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to open NVS handle: %s", esp_err_to_name(err));
 
+  things_log_queue = xQueueCreate(16, sizeof(char *));
+  xTaskCreate(things_log_task, "things_log_task", 4096, NULL, 15, NULL);
   things_orig_vprintf = esp_log_set_vprintf(things_vprintf);
 
   mqtt_client.set_connect_callback(things_connect_callback);
