@@ -98,7 +98,12 @@ void webrtc_pipeline_start(void *context)
   webrtc_connection_t connection = (webrtc_connection_t)context;
 
   int64_t start = esp_timer_get_time();
-  webrtc_wait_buffer_duration(connection, 48000, 3000);
+  esp_err_t err = webrtc_wait_buffer_duration(connection, 48000, 3000);
+  if (err != ESP_OK)
+  {
+    ESP_LOGE(RADIO_TAG, "Failed to wait for buffer duration: %d", err);
+    vTaskDelete(NULL);
+  }
   int64_t end = esp_timer_get_time();
   ESP_LOGI(RADIO_TAG, "Spent %lldms buffering audio", (end - start) / 1000);
 
@@ -127,7 +132,7 @@ void webrtc_pipeline_start(void *context)
     ESP_LOGE(RADIO_TAG, "Failed to create I2S stream");
     vTaskDelete(NULL);
   }
-  esp_err_t err = audio_element_set_read_cb(i2s_stream_writer, webrtc_read_audio_sample, connection);
+  err = audio_element_set_read_cb(i2s_stream_writer, webrtc_read_audio_sample, connection);
   if (err != ESP_OK)
   {
     ESP_LOGE(RADIO_TAG, "Failed to set read callback for I2S stream: %d", err);

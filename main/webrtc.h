@@ -40,8 +40,9 @@ extern "C"
   esp_err_t webrtc_init();
   esp_err_t webrtc_connect(webrtc_config_t *cfg, webrtc_connection_t *connection);
   void webrtc_free_connection(webrtc_connection_t connection);
+  esp_err_t webrtc_get_buffer_duration(webrtc_connection_t connection, uint32_t *duration);
+  esp_err_t webrtc_wait_buffer_duration(webrtc_connection_t connection, uint32_t duration_samples, uint64_t max_wait_ms);
   audio_element_err_t webrtc_read_audio_sample(audio_element_handle_t el, char *buf, int len, TickType_t ticks_to_wait, void *context);
-  void webrtc_wait_buffer_duration(webrtc_connection_t connection, uint32_t duration_samples, uint64_t max_wait_ms);
 
 #ifdef __cplusplus
 }

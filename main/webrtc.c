@@ -595,9 +595,28 @@ esp_err_t webrtc_connect(webrtc_config_t *cfg, webrtc_connection_t *handle)
   return args.ret;
 }
 
-void webrtc_wait_buffer_duration(webrtc_connection_t connection, uint32_t duration_samples, uint64_t max_wait_ms)
+esp_err_t webrtc_get_buffer_duration(webrtc_connection_t connection, uint32_t *duration)
 {
-  transceiverWaitBufferDuration(connection->transceiver, duration_samples, max_wait_ms * 10);
+  STATUS ret = transceiverGetBufferDuration(connection->transceiver, duration);
+  if (ret != STATUS_SUCCESS)
+  {
+    ESP_LOGE(RADIO_TAG, "Failed to get buffer duration with status code %" PRIx32, ret);
+    return ESP_FAIL;
+  }
+
+  return ESP_OK;
+}
+
+esp_err_t webrtc_wait_buffer_duration(webrtc_connection_t connection, uint32_t duration_samples, uint64_t max_wait_ms)
+{
+  STATUS ret = transceiverWaitBufferDuration(connection->transceiver, duration_samples, max_wait_ms * 10);
+  if (ret != STATUS_SUCCESS)
+  {
+    ESP_LOGE(RADIO_TAG, "Failed to wait for buffer duration with status code %" PRIx32, ret);
+    return ESP_FAIL;
+  }
+
+  return ESP_OK;
 }
 
 struct webrtc_on_frame_data
