@@ -27,7 +27,7 @@
 #ifndef RADIO_THINGSBOARD_SERVER
 #error "RADIO_THINGSBOARD_SERVER is not defined"
 #else
-static_assert(strlen(RADIO_THINGSBOARD_SERVER) > 0, "RADIO_THINGSBOARD_SERVER is empty");
+static_assert(strlen(RADIO_THINGSBOARD_SERVER) > 0, "RADIO_THINGSBOARD_SERVER is empty (make sure config.h exists and is populated)");
 #endif
 
 static constexpr uint8_t FIRMWARE_FAILURE_RETRIES = 12U;

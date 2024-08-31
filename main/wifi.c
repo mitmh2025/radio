@@ -18,12 +18,12 @@
 #ifndef RADIO_WIFI_SSID
 #error "RADIO_WIFI_SSID is not defined"
 #else
-static_assert(strlen(RADIO_WIFI_SSID) > 0, "RADIO_WIFI_SSID is empty");
+static_assert(strlen(RADIO_WIFI_SSID) > 0, "RADIO_WIFI_SSID is empty (make sure config.h exists and is populated)");
 #endif
 #ifndef RADIO_WIFI_PASSWORD
 #error "RADIO_WIFI_PASSWORD is not defined"
 #else
-static_assert(strlen(RADIO_WIFI_PASSWORD) > 0, "RADIO_WIFI_PASSWORD is empty");
+static_assert(strlen(RADIO_WIFI_PASSWORD) > 0, "RADIO_WIFI_PASSWORD is empty (make sure config.h exists and is populated)");
 #endif
 
 static esp_netif_t *wifi_netif = NULL;
