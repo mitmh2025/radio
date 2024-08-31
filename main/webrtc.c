@@ -582,7 +582,7 @@ esp_err_t webrtc_connect(webrtc_config_t *cfg, webrtc_connection_t *handle)
   };
 
   TaskHandle_t task;
-  BaseType_t result = xTaskCreatePinnedToCore(webrtc_connect_task, "webrtc_connect", 6 * 1024, &args, 5, &task, 1);
+  BaseType_t result = xTaskCreate(webrtc_connect_task, "webrtc_connect", 6 * 1024, &args, 10, &task);
   if (result != pdPASS)
   {
     ESP_LOGE(RADIO_TAG, "Failed to create webrtc connect task");

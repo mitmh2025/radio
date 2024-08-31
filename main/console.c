@@ -228,7 +228,7 @@ esp_err_t console_init()
   err = esp_console_cmd_register(&cmd_deprovision);
   ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register deprovision command: %s", esp_err_to_name(err));
 
-  xTaskCreatePinnedToCore(console_task, "console", 4096, NULL, 5, NULL, APP_CPU_NUM);
+  xTaskCreate(console_task, "console", 4096, NULL, 15, NULL);
 
   return ESP_OK;
 }

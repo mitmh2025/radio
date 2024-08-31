@@ -161,6 +161,19 @@ void webrtc_pipeline_start(void *context)
     vTaskDelete(NULL);
   }
 
+  while (true)
+  {
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    uint32_t buffer_duration;
+    err = webrtc_get_buffer_duration(connection, &buffer_duration);
+    if (err != ESP_OK)
+    {
+      ESP_LOGE(RADIO_TAG, "Failed to get buffer duration: %d", err);
+      continue;
+    }
+    ESP_LOGI(RADIO_TAG, "Buffer duration: %" PRIu32, buffer_duration);
+  }
+
   vTaskDelete(NULL);
 }
 
@@ -168,7 +181,7 @@ static void on_webrtc_state_change(webrtc_connection_t conn, void *context, WEBR
 {
   if (state == WEBRTC_CONNECTION_STATE_CONNECTED)
   {
-    xTaskCreatePinnedToCore(webrtc_pipeline_start, "webrtc_pipeline", 4096, conn, 5, NULL, 1);
+    xTaskCreate(webrtc_pipeline_start, "webrtc_pipeline", 4096, conn, 10, NULL);
   }
 }
 
@@ -203,7 +216,7 @@ void app_main(void)
   ESP_ERROR_CHECK(wifi_init());
   ESP_ERROR_CHECK(webrtc_init());
 
-  xTaskCreatePinnedToCore(dac_volume_output_task, "dac_volume_output", 4096, NULL, 15, NULL, 1);
+  xTaskCreate(dac_volume_output_task, "dac_volume_output", 4096, NULL, 5, NULL);
 
   if (!(xEventGroupGetBits(radio_event_group) & RADIO_EVENT_GROUP_THINGS_PROVISIONED))
   {

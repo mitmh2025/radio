@@ -386,13 +386,13 @@ extern "C" esp_err_t things_init()
   ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to open NVS handle: %s", esp_err_to_name(err));
 
   things_log_queue = xQueueCreate(16, sizeof(char *));
-  xTaskCreate(things_log_task, "things_log_task", 4096, NULL, 15, NULL);
+  xTaskCreate(things_log_task, "things_log_task", 4096, NULL, 5, NULL);
   things_orig_vprintf = esp_log_set_vprintf(things_vprintf);
 
   mqtt_client.set_connect_callback(things_connect_callback);
   mqtt_client.set_server_crt_bundle_attach(esp_crt_bundle_attach);
 
-  xTaskCreatePinnedToCore(things_task, "things_task", 4096, NULL, 5, &things_task_handle, 1);
+  xTaskCreate(things_task, "things_task", 4096, NULL, 10, &things_task_handle);
 
   size_t length;
   err = nvs_get_str(things_nvs_handle, THINGS_NVS_TOKEN_KEY, NULL, &length);
