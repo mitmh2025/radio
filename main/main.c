@@ -97,16 +97,6 @@ void webrtc_pipeline_start(void *context)
 {
   webrtc_connection_t connection = (webrtc_connection_t)context;
 
-  int64_t start = esp_timer_get_time();
-  esp_err_t err = webrtc_wait_buffer_duration(connection, 48000, 3000);
-  if (err != ESP_OK)
-  {
-    ESP_LOGE(RADIO_TAG, "Failed to wait for buffer duration: %d", err);
-    vTaskDelete(NULL);
-  }
-  int64_t end = esp_timer_get_time();
-  ESP_LOGI(RADIO_TAG, "Spent %lldms buffering audio", (end - start) / 1000);
-
   // Create pipeline
   audio_pipeline_cfg_t pipeline_cfg = DEFAULT_AUDIO_PIPELINE_CONFIG();
   audio_pipeline_handle_t pipeline = audio_pipeline_init(&pipeline_cfg);
@@ -132,7 +122,7 @@ void webrtc_pipeline_start(void *context)
     ESP_LOGE(RADIO_TAG, "Failed to create I2S stream");
     vTaskDelete(NULL);
   }
-  err = audio_element_set_read_cb(i2s_stream_writer, webrtc_read_audio_sample, connection);
+  esp_err_t err = audio_element_set_read_cb(i2s_stream_writer, webrtc_read_audio_sample, connection);
   if (err != ESP_OK)
   {
     ESP_LOGE(RADIO_TAG, "Failed to set read callback for I2S stream: %d", err);
@@ -154,24 +144,21 @@ void webrtc_pipeline_start(void *context)
     vTaskDelete(NULL);
   }
 
+  int64_t start = esp_timer_get_time();
+  err = webrtc_wait_buffer_duration(connection, 48000, 3000);
+  if (err != ESP_OK)
+  {
+    ESP_LOGE(RADIO_TAG, "Failed to wait for buffer duration: %d", err);
+    vTaskDelete(NULL);
+  }
+  int64_t end = esp_timer_get_time();
+  ESP_LOGI(RADIO_TAG, "Spent %lldms buffering audio", (end - start) / 1000);
+
   err = audio_pipeline_run(pipeline);
   if (err != ESP_OK)
   {
     ESP_LOGE(RADIO_TAG, "Failed to run pipeline: %d", err);
     vTaskDelete(NULL);
-  }
-
-  while (true)
-  {
-    vTaskDelay(pdMS_TO_TICKS(1000));
-    uint32_t buffer_duration;
-    err = webrtc_get_buffer_duration(connection, &buffer_duration);
-    if (err != ESP_OK)
-    {
-      ESP_LOGE(RADIO_TAG, "Failed to get buffer duration: %d", err);
-      continue;
-    }
-    ESP_LOGI(RADIO_TAG, "Buffer duration: %" PRIu32, buffer_duration);
   }
 
   vTaskDelete(NULL);
