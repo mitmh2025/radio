@@ -61,6 +61,12 @@ static int restart_func(int argc, char **argv)
   return 0;
 }
 
+static int panic_func(int argc, char **argv)
+{
+  *((int *)0) = 0;
+  return 0;
+}
+
 static int heap_func(int argc, char **argv)
 {
   heap_caps_print_heap_info(MALLOC_CAP_DEFAULT);
@@ -169,6 +175,14 @@ esp_err_t console_init()
   };
   err = esp_console_cmd_register(&cmd_restart);
   ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register restart command: %s", esp_err_to_name(err));
+
+  esp_console_cmd_t cmd_panic = {
+      .command = "panic",
+      .help = "Cause a panic",
+      .func = &panic_func,
+  };
+  err = esp_console_cmd_register(&cmd_panic);
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register panic command: %s", esp_err_to_name(err));
 
   esp_console_cmd_t cmd_heap = {
       .command = "heap",
