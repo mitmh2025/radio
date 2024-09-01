@@ -1,0 +1,5 @@
+config KVSWEBRTC_LOG_STREAMING
+    bool "Enable streaming logs from kvswebrtc."
+    depends on LOG_DEFAULT_LEVEL_VERBOSE
+    help
+        This enables streaming logs (at log level "verbose") in kvswebrtc.

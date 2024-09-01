@@ -11,6 +11,10 @@ set(KVSWEBRTCCLIENT_INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR}/kvswebrtcclient_inst
 
 include(ExternalProject)
 
+if(CONFIG_KVSWEBRTC_LOG_STREAMING)
+  target_compile_definitions(${COMPONENT_TARGET} INTERFACE LOG_STREAMING)
+endif()
+
 ExternalProject_Add(kvswebrtcclient
   SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/amazon-kinesis-video-streams-webrtc-sdk-c
   CMAKE_ARGS
@@ -39,6 +43,7 @@ ExternalProject_Add(kvswebrtcclient
   INSTALL_DIR ${KVSWEBRTCCLIENT_INSTALL_DIR}
   BUILD_BYPRODUCTS
     ${KVSWEBRTCCLIENT_INSTALL_DIR}/lib/libkvsWebrtcClient.a
+  BUILD_ALWAYS 1
   DEPENDS kvspic srtp kvscommonlws idf::libcextras idf::lws
 )
 
