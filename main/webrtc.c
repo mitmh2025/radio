@@ -4,6 +4,7 @@
 #include "esp_log.h"
 #include "esp_check.h"
 #include "esp_http_client.h"
+#include "esp_crt_bundle.h"
 
 #include "opus.h"
 
@@ -510,6 +511,7 @@ static void webrtc_connect_task(void *arg)
       .transport_type = strcasecmp("https://", args->config->whep_url) == 0 ? HTTP_TRANSPORT_OVER_SSL : HTTP_TRANSPORT_OVER_TCP,
       .user_data = &http_data,
       .event_handler = webrtc_connect_http_event_handler,
+      .crt_bundle_attach = esp_crt_bundle_attach,
   };
   http_client = esp_http_client_init(&http_config);
   if (!http_client)
