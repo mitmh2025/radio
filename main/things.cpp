@@ -387,7 +387,7 @@ extern "C" esp_err_t things_init()
 
   things_log_queue = xQueueCreate(16, sizeof(char *));
   xTaskCreate(things_log_task, "things_log_task", 4096, NULL, 5, NULL);
-  things_orig_vprintf = esp_log_set_vprintf(things_vprintf);
+  // things_orig_vprintf = esp_log_set_vprintf(things_vprintf);
 
   mqtt_client.set_connect_callback(things_connect_callback);
   mqtt_client.set_server_crt_bundle_attach(esp_crt_bundle_attach);
