@@ -12,4 +12,6 @@ include_directories($ENV{IDF_PATH}/components/driver/gpio/include)
 set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
 add_subdirectory(libwebsockets)
 
+set_directory_properties(PROPERTIES ADDITIONAL_CLEAN_FILES "${CMAKE_CURRENT_BINARY_DIR}/libwebsockets/include")
+
 target_link_libraries(${COMPONENT_LIB} INTERFACE websockets)
