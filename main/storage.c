@@ -117,7 +117,7 @@ static esp_err_t flash_wait_ready(block_flash_t *flash, TickType_t timeout)
   spi_transaction_t txn = {
       .cmd = BLOCK_FLASH_CMD_READ_STATUS_1,
       .flags = SPI_TRANS_USE_RXDATA,
-      .length = 8,
+      .rxlength = 8,
   };
 
   TickType_t now = xTaskGetTickCount();
@@ -171,7 +171,7 @@ static esp_err_t flash_init(block_flash_t *flash, spi_device_handle_t device)
   spi_transaction_t txn = {
       .cmd = BLOCK_FLASH_CMD_JEDEC_ID,
       .flags = SPI_TRANS_USE_RXDATA,
-      .length = 24,
+      .rxlength = 24,
   };
   ESP_RETURN_ON_ERROR(spi_device_transmit(device, &txn), RADIO_TAG, "Failed to probe SPI flash");
 
@@ -191,6 +191,7 @@ static esp_err_t flash_init(block_flash_t *flash, spi_device_handle_t device)
   // Issue reset
   txn.cmd = BLOCK_FLASH_CMD_ENABLE_RESET;
   txn.flags = 0;
+  txn.rxlength = 0;
   txn.length = 0;
   ESP_RETURN_ON_ERROR(spi_device_transmit(device, &txn), RADIO_TAG, "Failed to enable reset on SPI flash");
   txn.cmd = BLOCK_FLASH_CMD_RESET;
@@ -205,7 +206,8 @@ static esp_err_t flash_init(block_flash_t *flash, spi_device_handle_t device)
   // Check quad enable bit
   txn.cmd = BLOCK_FLASH_CMD_READ_STATUS_2;
   txn.flags = SPI_TRANS_USE_RXDATA;
-  txn.length = 8;
+  txn.length = 0;
+  txn.rxlength = 8;
   ESP_RETURN_ON_ERROR(spi_device_transmit(device, &txn), RADIO_TAG, "Failed to read SPI flash status register 2");
 
   block_flash_status_reg2 reg2 = {.raw = txn.rx_data[0]};
@@ -218,6 +220,7 @@ static esp_err_t flash_init(block_flash_t *flash, spi_device_handle_t device)
     txn.cmd = BLOCK_FLASH_CMD_WRITE_ENABLE_VOLATILE;
     txn.flags = 0;
     txn.length = 0;
+    txn.rxlength = 0;
     ESP_RETURN_ON_ERROR(spi_device_transmit(device, &txn), RADIO_TAG, "Failed to enable register write on SPI flash");
 
     reg2.parsed.quad_enable = 1;
@@ -225,6 +228,7 @@ static esp_err_t flash_init(block_flash_t *flash, spi_device_handle_t device)
     txn.flags = SPI_TRANS_USE_TXDATA;
     txn.tx_data[0] = reg2.raw;
     txn.length = 8;
+    txn.rxlength = 0;
     ESP_RETURN_ON_ERROR(spi_device_transmit(device, &txn), RADIO_TAG, "Failed to enable quad mode on SPI flash");
 
     ESP_RETURN_ON_ERROR(flash_wait_ready(flash, pdMS_TO_TICKS(1)), RADIO_TAG, "SPI flash did not become ready after enabling quad mode");
@@ -262,7 +266,7 @@ static esp_err_t flash_read(block_flash_t *flash, size_t addr, void *buffer, siz
           .cmd = BLOCK_FLASH_CMD_READ_FAST_QUAD_IO,
           .addr = addr << 8 | 0xff,
           .flags = SPI_TRANS_VARIABLE_ADDR | SPI_TRANS_VARIABLE_DUMMY | SPI_TRANS_MODE_QIO | SPI_TRANS_MODE_DIOQIO_ADDR,
-          .length = size * 8,
+          .rxlength = size * 8,
           .rx_buffer = buffer,
       },
       .address_bits = 32,
