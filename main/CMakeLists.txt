@@ -1,12 +1,13 @@
 idf_component_register(
   SRCS
+  adc.c
+  battery.c
   console.c
   main.c
+  storage.c
+  tas2505.c
+  things.cpp
   webrtc.c
   wifi.c
-  things.cpp
-  battery.c
-  adc.c
-  tas2505.c
   INCLUDE_DIRS
   ".")

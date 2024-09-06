@@ -8,6 +8,7 @@
 #include "board.h"
 #include "tas2505.h"
 #include "adc.h"
+#include "storage.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -198,6 +199,7 @@ void app_main(void)
   ESP_ERROR_CHECK(adc_init());
   ESP_ERROR_CHECK(things_init());
   ESP_ERROR_CHECK(board_i2c_init());
+  ESP_ERROR_CHECK(storage_init());
   ESP_ERROR_CHECK(battery_init());
   ESP_ERROR_CHECK(tas2505_init());
   ESP_ERROR_CHECK(wifi_init());
@@ -212,7 +214,17 @@ void app_main(void)
     char macstr[18];
     snprintf(macstr, sizeof(macstr), MACSTR, MAC2STR(mac));
 
-    ESP_LOGE(RADIO_TAG, "Device not provisioned. Provision at https://%s/entities/devices with MAC address %s and paste device token", RADIO_THINGSBOARD_SERVER, macstr);
+    ESP_LOGE(RADIO_TAG, "Device not provisioned. Provision at https://%s/entities/devices with MAC address %s and use `provision` console command to store", RADIO_THINGSBOARD_SERVER, macstr);
+  }
+
+  err = storage_mount(false);
+  if (err == ESP_FAIL)
+  {
+    ESP_LOGE(RADIO_TAG, "Flash storage not formatted. Use `format` console command to format");
+  }
+  else
+  {
+    ESP_ERROR_CHECK(err);
   }
 
   ESP_ERROR_CHECK(console_init());
@@ -224,7 +236,7 @@ void app_main(void)
   xEventGroupWaitBits(radio_event_group, RADIO_EVENT_GROUP_WIFI_CONNECTED, pdFALSE, pdTRUE, portMAX_DELAY);
 
   webrtc_config_t webrtc_cfg = {
-      .whep_url = "https://radio.mitmh2025.com/music/whep",
+      .whep_url = "http://192.168.21.207:8889/music/whep",
       .state_change_callback = on_webrtc_state_change,
   };
   webrtc_connection_t connection;

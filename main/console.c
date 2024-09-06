@@ -1,6 +1,7 @@
 #include "console.h"
 #include "main.h"
 #include "things.h"
+#include "storage.h"
 
 #include <fcntl.h>
 
@@ -145,6 +146,18 @@ static int deprovision_func(int argc, char **argv)
   return 0;
 }
 
+static int format_func(int argc, char **argv)
+{
+  esp_err_t err = storage_mount(true);
+  if (err != ESP_OK)
+  {
+    printf("Failed to format storage: %s\n", esp_err_to_name(err));
+    return 1;
+  }
+
+  return 0;
+}
+
 esp_err_t console_init()
 {
   // Block on stdin and stdout
@@ -227,6 +240,14 @@ esp_err_t console_init()
   };
   err = esp_console_cmd_register(&cmd_deprovision);
   ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register deprovision command: %s", esp_err_to_name(err));
+
+  esp_console_cmd_t cmd_format = {
+      .command = "format",
+      .help = "Format flash storage (WARNING THIS WILL ERASE ALL DATA)",
+      .func = &format_func,
+  };
+  err = esp_console_cmd_register(&cmd_format);
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register format command: %s", esp_err_to_name(err));
 
   xTaskCreate(console_task, "console", 4096, NULL, 15, NULL);
 

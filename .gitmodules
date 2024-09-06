@@ -13,3 +13,6 @@
 [submodule "adf/components/kvscommonlws/amazon-kinesis-video-streams-producer-c"]
 	path = components/kvscommonlws/amazon-kinesis-video-streams-producer-c
 	url = git@github.com:mitmh2025/amazon-kinesis-video-streams-producer-c
+[submodule "components/esp_littlefs"]
+	path = components/esp_littlefs
+	url = git@github.com:mitmh2025/esp_littlefs

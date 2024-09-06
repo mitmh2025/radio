@@ -8,22 +8,41 @@
 extern "C" {
 #endif
 
-// ESP-ADF uses the same #defines for both SDIO and SPI, but we didn't wire all
-// of the pins for SDIO
+// These #defines are required by ESP-ADF, even if you're not using its SD card
+// integration (or don't have an SD card slot at all). We've populated them to
+// match our board layout. It uses the same #defines for both SDIO and SPI, but
+// we didn't wire all of the pins for SDIO
 #define SDCARD_OPEN_FILE_NUM_MAX (5)
 #define ESP_SD_PIN_CLK GPIO_NUM_12 // CLK
-#define ESP_SD_PIN_CMD GPIO_NUM_11 // DI
+#define ESP_SD_PIN_CMD GPIO_NUM_11 // DI / MOSI
 #define ESP_SD_PIN_CD GPIO_NUM_14  // CD
-#define ESP_SD_PIN_D0 GPIO_NUM_13  // DO
+#define ESP_SD_PIN_D0 GPIO_NUM_13  // DO / MISO
 #define ESP_SD_PIN_D3 GPIO_NUM_10  // CS
 
-#define ESP_SD_PIN_D1 (-1)
-#define ESP_SD_PIN_D2 (-1)
-#define ESP_SD_PIN_D4 (-1)
-#define ESP_SD_PIN_D5 (-1)
-#define ESP_SD_PIN_D6 (-1)
-#define ESP_SD_PIN_D7 (-1)
-#define ESP_SD_PIN_WP (-1)
+#define ESP_SD_PIN_D1 GPIO_NUM_NC
+#define ESP_SD_PIN_D2 GPIO_NUM_NC
+#define ESP_SD_PIN_D4 GPIO_NUM_NC
+#define ESP_SD_PIN_D5 GPIO_NUM_NC
+#define ESP_SD_PIN_D6 GPIO_NUM_NC
+#define ESP_SD_PIN_D7 GPIO_NUM_NC
+#define ESP_SD_PIN_WP GPIO_NUM_NC
+
+// Note: The v0.2 board does not have D2 or D3 connected and pins 21 and 47 are
+// on the GPIO breakout (i.e. normally not connected). The v0.3 board uses two
+// W25Q128JV SPI flash chips, controlled by the same SPI bus with their CS
+// connected to CS1 and CS2.
+//
+// We can probe for which board we're running on by trying to communicate with
+// the flash chips.
+#define RADIO_SPI_PIN_CLK GPIO_NUM_12
+#define RADIO_SPI_PIN_MISO GPIO_NUM_13
+#define RADIO_SPI_PIN_MOSI GPIO_NUM_11
+#define RADIO_SPI_PIN_D2 GPIO_NUM_14
+#define RADIO_SPI_PIN_D3 GPIO_NUM_10
+#define RADIO_SPI_PIN_SD_CD GPIO_NUM_14
+#define RADIO_SPI_PIN_CS1 GPIO_NUM_21
+#define RADIO_SPI_PIN_CS2 GPIO_NUM_47
+#define RADIO_SPI_PIN_SD_CS GPIO_NUM_10
 
 #define BOARD_PA_GAIN (6) /* Power amplifier gain defined by board (dB) */
 #define PA_ENABLE_GPIO GPIO_NUM_15
