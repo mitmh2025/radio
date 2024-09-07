@@ -81,7 +81,6 @@ static tas2505_cfg_reg_t tas2505_init_registers[] = {
 
 static tas2505_output_t current_output = TAS2505_OUTPUT_SPEAKER;
 
-// TODO: Fix this to set register 0x1/0x9 to disable the HP driver
 static tas2505_cfg_reg_t tas2505_speaker_output_registers[] = {
     {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_SPEAKER_VOLUME_RANGE, 0x30},
     {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_AINL_VOLUME, 0x80},
