@@ -43,13 +43,13 @@ static constexpr char THINGS_NVS_NAMESPACE[] = "radio:things";
 static constexpr char THINGS_NVS_TOKEN_KEY[] = "devicetoken";
 static nvs_handle_t things_nvs_handle;
 
-static TaskHandle_t things_task_handle = NULL;
 static std::string things_token;
 static std::vector<void (*)(void)> telemetry_generators;
 
 static constexpr TickType_t CONNECT_TIMEOUT = pdMS_TO_TICKS(5000);
 
-static struct {
+static struct
+{
   configRUN_TIME_COUNTER_TYPE run_time_counter;
   configRUN_TIME_COUNTER_TYPE cpu0_idle_counter;
   configRUN_TIME_COUNTER_TYPE cpu1_idle_counter;
@@ -90,12 +90,6 @@ static void things_telemetry_generator()
   things_send_telemetry_int("dram_total", heap_caps_get_total_size(MALLOC_CAP_INTERNAL));
   things_send_telemetry_int("psram_lwm", heap_caps_get_minimum_free_size(MALLOC_CAP_SPIRAM));
   things_send_telemetry_int("dram_lwm", heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL));
-}
-
-static void things_connect_callback(void)
-{
-  if (things_task_handle != NULL)
-    xTaskNotifyGive(things_task_handle);
 }
 
 static void things_progress_callback(const size_t &currentChunk, const size_t &totalChuncks)
@@ -182,8 +176,10 @@ static void things_task(void *arg)
   {
     xEventGroupWaitBits(radio_event_group, RADIO_EVENT_GROUP_WIFI_CONNECTED, pdFALSE, pdTRUE, portMAX_DELAY);
 
+    TaskHandle_t self = xTaskGetCurrentTaskHandle();
     Espressif_MQTT_Client mqtt_client;
-    mqtt_client.set_connect_callback(things_connect_callback);
+    mqtt_client.set_connect_callback([&self]()
+                                     { xTaskNotifyGive(self); });
     mqtt_client.set_server_crt_bundle_attach(esp_crt_bundle_attach);
     std::shared_ptr<ThingsBoard> conn = std::make_shared<ThingsBoard>(mqtt_client, MAX_MESSAGE_SIZE);
     tb = conn;
@@ -315,7 +311,7 @@ extern "C" esp_err_t things_init()
 
   // TODO: Can we get log streaming to perform well enough?
 
-  xTaskCreate(things_task, "things_task", 4096, NULL, 10, &things_task_handle);
+  xTaskCreate(things_task, "things_task", 4096, NULL, 10, NULL);
 
   size_t length;
   err = nvs_get_str(things_nvs_handle, THINGS_NVS_TOKEN_KEY, NULL, &length);
