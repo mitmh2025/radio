@@ -51,77 +51,6 @@ static std::vector<void (*)(void)> telemetry_generators;
 
 static constexpr TickType_t CONNECT_TIMEOUT = pdMS_TO_TICKS(5000);
 
-static vprintf_like_t things_orig_vprintf = NULL;
-static QueueHandle_t things_log_queue = NULL;
-
-static int things_vprintf(const char *format, va_list args)
-{
-  char *buf = NULL;
-  int len = 0;
-  if (things_log_queue)
-  {
-    len = vsnprintf(NULL, 0, format, args);
-    if (len < 0)
-    {
-      goto cleanup;
-    }
-    buf = (char *)malloc(len + 1);
-    if (!buf)
-    {
-      goto cleanup;
-    }
-
-    len = vsnprintf(buf, len + 1, format, args);
-    if (len < 0)
-    {
-      free(buf);
-      goto cleanup;
-    }
-
-    BaseType_t result = xQueueSendToBack(things_log_queue, &buf, 0);
-    if (result != pdTRUE)
-    {
-      // Didn't post to queue, free the buffer
-      free(buf);
-    }
-  }
-
-cleanup:
-  if (things_orig_vprintf)
-  {
-    return things_orig_vprintf(format, args);
-  }
-  else
-  {
-    return len;
-  }
-}
-
-static void things_log_task(void *context)
-{
-  while (true)
-  {
-    char *buf = NULL;
-    BaseType_t result = xQueueReceive(things_log_queue, &buf, portMAX_DELAY);
-    if (result != pdTRUE)
-    {
-      continue;
-    }
-
-    if (!buf)
-    {
-      continue;
-    }
-
-    if (tb.connected())
-    {
-      tb.sendTelemetryData("log", buf);
-    }
-
-    free(buf);
-  }
-}
-
 static struct {
   configRUN_TIME_COUNTER_TYPE run_time_counter;
   configRUN_TIME_COUNTER_TYPE cpu0_idle_counter;
@@ -386,9 +315,6 @@ extern "C" esp_err_t things_init()
   ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to open NVS handle: %s", esp_err_to_name(err));
 
   // TODO: Can we get log streaming to perform well enough?
-  // things_log_queue = xQueueCreate(16, sizeof(char *));
-  // xTaskCreate(things_log_task, "things_log_task", 4096, NULL, 5, NULL);
-  // things_orig_vprintf = esp_log_set_vprintf(things_vprintf);
 
   mqtt_client.set_connect_callback(things_connect_callback);
   mqtt_client.set_server_crt_bundle_attach(esp_crt_bundle_attach);
