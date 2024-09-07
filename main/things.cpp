@@ -37,9 +37,7 @@ static constexpr uint16_t MAX_MESSAGE_SIZE = UINT16_MAX; // Max core dump size
 static constexpr char THINGSBOARD_SERVER[] = RADIO_THINGSBOARD_SERVER;
 static constexpr uint16_t THINGSBOARD_PORT = 8883U;
 
-static Espressif_MQTT_Client mqtt_client;
-static ThingsBoard tb(mqtt_client, MAX_MESSAGE_SIZE);
-static Espressif_Updater updater;
+static std::weak_ptr<ThingsBoard> tb;
 
 static constexpr char THINGS_NVS_NAMESPACE[] = "radio:things";
 static constexpr char THINGS_NVS_TOKEN_KEY[] = "devicetoken";
@@ -118,7 +116,7 @@ static void things_updated_callback(const bool &success)
   esp_restart();
 }
 
-static void things_upload_coredump(size_t core_size)
+static void things_upload_coredump(ThingsBoard *conn, size_t core_size)
 {
   const esp_partition_t *partition;
   const void *core_dump_addr = NULL;
@@ -157,7 +155,7 @@ static void things_upload_coredump(size_t core_size)
     goto cleanup;
   }
 
-  tb.sendTelemetryData("coredump", base64_core_dump);
+  conn->sendTelemetryData("coredump", base64_core_dump);
 
   ESP_LOGI(RADIO_TAG, "Uploading coredump to ThingsBoard");
 
@@ -184,28 +182,33 @@ static void things_task(void *arg)
   {
     xEventGroupWaitBits(radio_event_group, RADIO_EVENT_GROUP_WIFI_CONNECTED, pdFALSE, pdTRUE, portMAX_DELAY);
 
-    bool success = tb.connect(THINGSBOARD_SERVER, things_token.c_str(), THINGSBOARD_PORT);
+    Espressif_MQTT_Client mqtt_client;
+    mqtt_client.set_connect_callback(things_connect_callback);
+    mqtt_client.set_server_crt_bundle_attach(esp_crt_bundle_attach);
+    std::shared_ptr<ThingsBoard> conn = std::make_shared<ThingsBoard>(mqtt_client, MAX_MESSAGE_SIZE);
+    tb = conn;
+
+    bool success = conn->connect(THINGSBOARD_SERVER, things_token.c_str(), THINGSBOARD_PORT);
     if (!success)
     {
       ESP_LOGE(RADIO_TAG, "Failed to connect to ThingsBoard. Waiting and trying again...");
       vTaskDelay(pdMS_TO_TICKS(5000));
-      tb.disconnect();
+      conn->disconnect();
       continue;
     }
 
     TickType_t now = xTaskGetTickCount();
     TickType_t deadline = xTaskGetTickCount() + CONNECT_TIMEOUT;
-    while (!tb.connected() && now < deadline)
+    while (!conn->connected() && now < deadline)
     {
       xTaskNotifyWait(0, ULONG_MAX, NULL, deadline - now);
       now = xTaskGetTickCount();
     }
 
-    if (!tb.connected())
+    if (!conn->connected())
     {
       ESP_LOGE(RADIO_TAG, "Failed to connect to ThingsBoard within timeout. Waiting and trying again...");
       vTaskDelay(pdMS_TO_TICKS(5000));
-      tb.disconnect();
       continue;
     }
 
@@ -216,7 +219,7 @@ static void things_task(void *arg)
     if (err == ESP_OK)
     {
       ESP_LOGW(RADIO_TAG, "Core dump detected at 0x%08x, size %d bytes", core_addr, core_size);
-      things_upload_coredump(core_size);
+      things_upload_coredump(conn.get(), core_size);
     }
     else if (err != ESP_ERR_NOT_FOUND && err != ESP_ERR_INVALID_SIZE)
     {
@@ -236,23 +239,22 @@ static void things_task(void *arg)
     // for details
     const esp_app_desc_t *app = esp_app_get_description();
 
-    success = tb.Firmware_Send_Info(app->project_name, app->version);
+    success = conn->Firmware_Send_Info(app->project_name, app->version);
     if (!success)
     {
       ESP_LOGE(RADIO_TAG, "Failed to send firmware info to ThingsBoard. Waiting and trying again...");
       vTaskDelay(pdMS_TO_TICKS(5000));
-      tb.disconnect();
       continue;
     }
-    success = tb.Firmware_Send_State("UPDATED");
+    success = conn->Firmware_Send_State("UPDATED");
     if (!success)
     {
       ESP_LOGE(RADIO_TAG, "Failed to send firmware state to ThingsBoard. Waiting and trying again...");
       vTaskDelay(pdMS_TO_TICKS(5000));
-      tb.disconnect();
       continue;
     }
 
+    Espressif_Updater updater;
     const OTA_Update_Callback callback(
         things_progress_callback,
         things_updated_callback,
@@ -263,23 +265,21 @@ static void things_task(void *arg)
         FIRMWARE_PACKET_SIZE);
 
     // First subscribe to updates, in case there's not one already pending
-    success = tb.Subscribe_Firmware_Update(callback);
+    success = conn->Subscribe_Firmware_Update(callback);
     if (!success)
     {
       ESP_LOGE(RADIO_TAG, "Failed to subscribe to firmware updates from ThingsBoard. Waiting and trying again...");
       vTaskDelay(pdMS_TO_TICKS(5000));
-      tb.disconnect();
       continue;
     }
 
     // Then manually request an update, since Subscribe_Firmware_Update is
     // edge-triggered not level-triggered
-    success = tb.Start_Firmware_Update(callback);
+    success = conn->Start_Firmware_Update(callback);
     if (!success)
     {
       ESP_LOGE(RADIO_TAG, "Failed to request an immediate firmware updates from ThingsBoard. Waiting and trying again...");
       vTaskDelay(pdMS_TO_TICKS(5000));
-      tb.disconnect();
       continue;
     }
 
@@ -297,7 +297,6 @@ static void things_task(void *arg)
         break;
       }
     }
-    tb.disconnect();
   }
 
   vTaskDelete(NULL);
@@ -315,9 +314,6 @@ extern "C" esp_err_t things_init()
   ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to open NVS handle: %s", esp_err_to_name(err));
 
   // TODO: Can we get log streaming to perform well enough?
-
-  mqtt_client.set_connect_callback(things_connect_callback);
-  mqtt_client.set_server_crt_bundle_attach(esp_crt_bundle_attach);
 
   xTaskCreate(things_task, "things_task", 4096, NULL, 10, &things_task_handle);
 
@@ -375,38 +371,42 @@ extern "C" esp_err_t things_deprovision()
 
 extern "C" bool things_send_telemetry_string(char const *const key, char const *const value)
 {
-  if (!tb.connected())
+  auto conn = tb.lock();
+  if (!conn || !conn->connected())
   {
     return false;
   }
-  return tb.sendTelemetryData(key, value);
+  return conn->sendTelemetryData(key, value);
 }
 
 extern "C" bool things_send_telemetry_float(char const *const key, float value)
 {
-  if (!tb.connected())
+  auto conn = tb.lock();
+  if (!conn || !conn->connected())
   {
     return false;
   }
-  return tb.sendTelemetryData(key, value);
+  return conn->sendTelemetryData(key, value);
 }
 
 extern "C" bool things_send_telemetry_int(char const *const key, long long value)
 {
-  if (!tb.connected())
+  auto conn = tb.lock();
+  if (!conn || !conn->connected())
   {
     return false;
   }
-  return tb.sendTelemetryData(key, value);
+  return conn->sendTelemetryData(key, value);
 }
 
 extern "C" bool things_send_telemetry_bool(char const *const key, bool value)
 {
-  if (!tb.connected())
+  auto conn = tb.lock();
+  if (!conn || !conn->connected())
   {
     return false;
   }
-  return tb.sendTelemetryData(key, value);
+  return conn->sendTelemetryData(key, value);
 }
 
 extern "C" void things_register_telemetry_generator(void (*generator)(void))
