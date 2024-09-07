@@ -236,7 +236,7 @@ void app_main(void)
   xEventGroupWaitBits(radio_event_group, RADIO_EVENT_GROUP_WIFI_CONNECTED, pdFALSE, pdTRUE, portMAX_DELAY);
 
   webrtc_config_t webrtc_cfg = {
-      .whep_url = "http://192.168.21.207:8889/music/whep",
+      .whep_url = "https://radio.mitmh2025.com/music/whep",
       .state_change_callback = on_webrtc_state_change,
   };
   webrtc_connection_t connection;
