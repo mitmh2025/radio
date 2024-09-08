@@ -562,6 +562,7 @@ cleanup:
   if (args->ret != ESP_OK)
   {
     webrtc_free_connection(connection);
+    *args->handle = NULL;
   }
 
   xTaskNotifyGive(args->caller);

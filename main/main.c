@@ -162,15 +162,73 @@ void webrtc_pipeline_start(void *context)
     vTaskDelete(NULL);
   }
 
+  xTaskNotifyWait(0, ULONG_MAX, NULL, portMAX_DELAY);
+
+  audio_pipeline_deinit(pipeline);
+  webrtc_free_connection(connection);
+
   vTaskDelete(NULL);
 }
+
+TaskHandle_t webrtc_pipeline_task = NULL;
 
 static void on_webrtc_state_change(webrtc_connection_t conn, void *context, WEBRTC_CONNECTION_STATE state)
 {
   if (state == WEBRTC_CONNECTION_STATE_CONNECTED)
   {
-    xTaskCreate(webrtc_pipeline_start, "webrtc_pipeline", 4096, conn, 10, NULL);
+    xTaskCreate(webrtc_pipeline_start, "webrtc_pipeline", 4096, conn, 10, &webrtc_pipeline_task);
   }
+}
+
+static char *webrtc_current_url = NULL;
+static webrtc_connection_t webrtc_connection = NULL;
+
+void things_whep_url_callback(const char *key, things_attribute_t *attr)
+{
+  const char *url = NULL;
+  switch (attr->type)
+  {
+  case THINGS_ATTRIBUTE_TYPE_UNSET:
+    break;
+  case THINGS_ATTRIBUTE_TYPE_STRING:
+    url = attr->value.string;
+    break;
+  default:
+    ESP_LOGE(RADIO_TAG, "Expected string for whep_url, got %d", attr->type);
+    return;
+  }
+
+  if (webrtc_current_url != NULL && url != NULL && strcmp(webrtc_current_url, url) == 0)
+  {
+    ESP_LOGI(RADIO_TAG, "WebRTC URL unchanged");
+    return;
+  }
+
+  if (webrtc_pipeline_task != NULL)
+  {
+    xTaskNotifyGive(webrtc_pipeline_task);
+    webrtc_pipeline_task = NULL;
+  }
+
+  if (webrtc_current_url != NULL)
+  {
+    free(webrtc_current_url);
+    webrtc_current_url = NULL;
+  }
+
+  if (url == NULL)
+  {
+    return;
+  }
+
+  ESP_LOGI(RADIO_TAG, "Connecting to WebRTC endpoint %s", url);
+
+  webrtc_current_url = strdup(url);
+  webrtc_config_t cfg = {
+      .whep_url = webrtc_current_url,
+      .state_change_callback = on_webrtc_state_change,
+  };
+  webrtc_connect(&cfg, &webrtc_connection);
 }
 
 void app_main(void)
@@ -235,10 +293,5 @@ void app_main(void)
   // xEventGroupWaitBits(radio_event_group, RADIO_EVENT_GROUP_THINGS_PROVISIONED, pdFALSE, pdTRUE, portMAX_DELAY);
   xEventGroupWaitBits(radio_event_group, RADIO_EVENT_GROUP_WIFI_CONNECTED, pdFALSE, pdTRUE, portMAX_DELAY);
 
-  webrtc_config_t webrtc_cfg = {
-      .whep_url = "https://radio.mitmh2025.com/music/whep",
-      .state_change_callback = on_webrtc_state_change,
-  };
-  webrtc_connection_t connection;
-  webrtc_connect(&webrtc_cfg, &connection);
+  things_subscribe_attribute("whep_url", things_whep_url_callback);
 }

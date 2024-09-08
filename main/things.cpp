@@ -2,7 +2,14 @@
 #include "things.h"
 #include "main.h"
 
+#include <map>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <ranges>
 #include <string>
+#include <variant>
+#include <vector>
 
 #include "esp_err.h"
 #include "esp_log.h"
@@ -20,6 +27,7 @@
 #include "freertos/task.h"
 #include "freertos/queue.h"
 
+#define THINGSBOARD_ENABLE_DYNAMIC 1
 #include <Espressif_MQTT_Client.h>
 #include <Espressif_Updater.h>
 #include <ThingsBoard.h>
@@ -43,10 +51,46 @@ static constexpr char THINGS_NVS_NAMESPACE[] = "radio:things";
 static constexpr char THINGS_NVS_TOKEN_KEY[] = "devicetoken";
 static nvs_handle_t things_nvs_handle;
 
+static constexpr char THINGS_ATTR_NVS_NAMESPACE[] = "radio:tbattrs";
+static nvs_handle_t things_attr_nvs_handle;
+
 static std::string things_token;
-static std::vector<void (*)(void)> telemetry_generators;
+static std::mutex things_telemetry_mutex;
+static std::vector<void (*)(void)> things_telemetry_generators;
 
 static constexpr TickType_t CONNECT_TIMEOUT = pdMS_TO_TICKS(5000);
+
+static std::mutex things_attribute_mutex;
+typedef std::variant<std::string, float, long long, bool> things_attribute_cache_entry_t;
+
+static void populate_cache_update(things_attribute_cache_entry_t *cache, things_attribute_t &update)
+{
+  switch (cache->index())
+  {
+  case 0:
+    update.type = THINGS_ATTRIBUTE_TYPE_STRING;
+    update.value.string = std::get<std::string>(*cache).c_str();
+    break;
+  case 1:
+    update.type = THINGS_ATTRIBUTE_TYPE_FLOAT;
+    update.value.f = std::get<float>(*cache);
+    break;
+  case 2:
+    update.type = THINGS_ATTRIBUTE_TYPE_INT;
+    update.value.i = std::get<long long>(*cache);
+    break;
+  case 3:
+    update.type = THINGS_ATTRIBUTE_TYPE_BOOL;
+    update.value.b = std::get<bool>(*cache);
+    break;
+  default:
+    update.type = THINGS_ATTRIBUTE_TYPE_UNSET;
+    break;
+  }
+}
+
+static std::map<std::string, things_attribute_cache_entry_t> things_attribute_cache;
+static std::multimap<std::string, void (*)(const char *key, things_attribute_t *attr)> things_attribute_subscribers;
 
 static struct
 {
@@ -90,6 +134,113 @@ static void things_telemetry_generator()
   things_send_telemetry_int("dram_total", heap_caps_get_total_size(MALLOC_CAP_INTERNAL));
   things_send_telemetry_int("psram_lwm", heap_caps_get_minimum_free_size(MALLOC_CAP_SPIRAM));
   things_send_telemetry_int("dram_lwm", heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL));
+}
+
+static void things_update_attribute(const char *key, JsonVariantConst value, bool cache_nvs)
+{
+  // Need to do 3 things: update things_attribute_cache, notify subscribers, and
+  // (if caching requested) update NVS
+
+  std::optional<things_attribute_cache_entry_t> cache;
+  things_attribute_t update = {
+      .type = THINGS_ATTRIBUTE_TYPE_UNSET,
+      .value = {},
+  };
+
+  if (value.isNull())
+  {
+    cache.reset();
+  }
+  else if (value.is<long long>())
+  {
+    cache = value.as<long long>();
+  }
+  else if (value.is<float>())
+  {
+    cache = value.as<float>();
+  }
+  else if (value.is<bool>())
+  {
+    cache = value.as<bool>();
+  }
+  else if (value.is<const char *>())
+  {
+    cache = value.as<const char *>();
+  }
+  else
+  {
+    ESP_LOGE(RADIO_TAG, "Unsupported attribute type for %s", key);
+    return;
+  }
+
+  bool changed = true;
+
+  {
+    std::lock_guard<std::mutex> lock(things_attribute_mutex);
+
+    // Update cache
+    if (cache.has_value())
+    {
+      changed = !things_attribute_cache.contains(key) || things_attribute_cache[key] != cache.value();
+      things_attribute_cache[key] = cache.value();
+    }
+    else
+    {
+      changed = things_attribute_cache.contains(key);
+      things_attribute_cache.erase(key);
+    }
+
+    // Notify subscribers
+    if (cache.has_value())
+    {
+      populate_cache_update(&cache.value(), update);
+    }
+
+    auto range = things_attribute_subscribers.equal_range(key);
+    for (auto it = range.first; it != range.second; ++it)
+    {
+      it->second(key, &update);
+    }
+  }
+
+  // Update NVS
+  esp_err_t err;
+  if (cache_nvs && changed)
+  {
+    switch (update.type)
+    {
+    case THINGS_ATTRIBUTE_TYPE_UNSET:
+      err = nvs_erase_key(things_attr_nvs_handle, key);
+      break;
+    case THINGS_ATTRIBUTE_TYPE_STRING:
+      err = nvs_set_str(things_attr_nvs_handle, key, update.value.string);
+      break;
+    case THINGS_ATTRIBUTE_TYPE_FLOAT:
+      // NVS doesn't support floats
+      err = nvs_set_blob(things_attr_nvs_handle, key, &update.value.f, sizeof(update.value.f));
+      break;
+    case THINGS_ATTRIBUTE_TYPE_INT:
+      err = nvs_set_i64(things_attr_nvs_handle, key, update.value.i);
+      break;
+    case THINGS_ATTRIBUTE_TYPE_BOOL:
+      err = nvs_set_u8(things_attr_nvs_handle, key, update.value.b);
+      break;
+    default:
+      ESP_LOGE(RADIO_TAG, "Unsupported attribute type for %s", key);
+      return;
+    }
+
+    if (err != ESP_OK)
+    {
+      ESP_LOGE(RADIO_TAG, "Failed to update attribute %s in NVS: %s", key, esp_err_to_name(err));
+    }
+
+    err = nvs_commit(things_attr_nvs_handle);
+    if (err != ESP_OK)
+    {
+      ESP_LOGE(RADIO_TAG, "Failed to commit NVS after updating attribute %s: %s", key, esp_err_to_name(err));
+    }
+  }
 }
 
 static void things_progress_callback(const size_t &currentChunk, const size_t &totalChuncks)
@@ -162,6 +313,32 @@ cleanup:
   if (core_dump_addr != NULL)
   {
     esp_partition_munmap(handle);
+  }
+}
+
+static void things_attribute_callback(JsonObjectConst const &attrs)
+{
+  for (auto const &attr : attrs)
+  {
+    // If attributes have been deleted, their names show up as an array under
+    // the "deleted" key
+    if (attr.key() == "deleted")
+    {
+      if (!attr.value().is<JsonArrayConst>())
+      {
+        ESP_LOGE(RADIO_TAG, "Expected array for deleted attributes, got %s", attr.key().c_str());
+        continue;
+      }
+
+      for (auto const &key : attr.value().as<JsonArrayConst>())
+      {
+        things_update_attribute(key.as<const char *>(), JsonVariantConst(), true);
+      }
+
+      continue;
+    }
+
+    things_update_attribute(attr.key().c_str(), attr.value(), true);
   }
 }
 
@@ -251,7 +428,7 @@ static void things_task(void *arg)
     }
 
     Espressif_Updater updater;
-    const OTA_Update_Callback callback(
+    const OTA_Update_Callback ota_callback(
         things_progress_callback,
         things_updated_callback,
         app->project_name,
@@ -261,7 +438,7 @@ static void things_task(void *arg)
         FIRMWARE_PACKET_SIZE);
 
     // First subscribe to updates, in case there's not one already pending
-    success = conn->Subscribe_Firmware_Update(callback);
+    success = conn->Subscribe_Firmware_Update(ota_callback);
     if (!success)
     {
       ESP_LOGE(RADIO_TAG, "Failed to subscribe to firmware updates from ThingsBoard. Waiting and trying again...");
@@ -271,7 +448,7 @@ static void things_task(void *arg)
 
     // Then manually request an update, since Subscribe_Firmware_Update is
     // edge-triggered not level-triggered
-    success = conn->Start_Firmware_Update(callback);
+    success = conn->Start_Firmware_Update(ota_callback);
     if (!success)
     {
       ESP_LOGE(RADIO_TAG, "Failed to request an immediate firmware updates from ThingsBoard. Waiting and trying again...");
@@ -279,11 +456,46 @@ static void things_task(void *arg)
       continue;
     }
 
+    // Same with shared attributes - first subscribe, then request an update
+    const Shared_Attribute_Callback attr_sub_callback(things_attribute_callback);
+    success = conn->Shared_Attributes_Subscribe(attr_sub_callback);
+    if (!success)
+    {
+      ESP_LOGE(RADIO_TAG, "Failed to subscribe to shared attributes from ThingsBoard. Waiting and trying again...");
+      vTaskDelay(pdMS_TO_TICKS(5000));
+      continue;
+    }
+
+    {
+      std::lock_guard<std::mutex> lock(things_attribute_mutex);
+      if (!things_attribute_subscribers.empty())
+      {
+        auto attributes = std::views::keys(things_attribute_subscribers);
+        std::vector<const char *> attribute_names;
+        attribute_names.reserve(attributes.size());
+        for (auto const &attr : attributes)
+        {
+          attribute_names.push_back(attr.c_str());
+        }
+        const Attribute_Request_Callback attr_req_callback(things_attribute_callback, attribute_names.cbegin(), attribute_names.cend());
+        success = conn->Shared_Attributes_Request(attr_req_callback);
+        if (!success)
+        {
+          ESP_LOGE(RADIO_TAG, "Failed to request shared attributes from ThingsBoard. Waiting and trying again...");
+          vTaskDelay(pdMS_TO_TICKS(5000));
+          continue;
+        }
+      }
+    }
+
     while (true)
     {
-      for (auto generator : telemetry_generators)
       {
-        generator();
+        std::lock_guard<std::mutex> lock(things_telemetry_mutex);
+        for (auto const &generator : things_telemetry_generators)
+        {
+          generator();
+        }
       }
 
       // If the wifi disconnect bit remains unset after 30 seconds, send telemetry again
@@ -308,6 +520,69 @@ extern "C" esp_err_t things_init()
 
   esp_err_t err = nvs_open(THINGS_NVS_NAMESPACE, NVS_READWRITE, &things_nvs_handle);
   ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to open NVS handle: %s", esp_err_to_name(err));
+
+  err = nvs_open(THINGS_ATTR_NVS_NAMESPACE, NVS_READWRITE, &things_attr_nvs_handle);
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to open NVS handle for attributes: %s", esp_err_to_name(err));
+
+  nvs_iterator_t iter = NULL;
+  err = nvs_entry_find_in_handle(things_attr_nvs_handle, NVS_TYPE_ANY, &iter);
+  if (err != ESP_ERR_NVS_NOT_FOUND)
+  {
+    ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to find attributes in NVS");
+  }
+  while (iter)
+  {
+    nvs_entry_info_t info;
+    ESP_RETURN_ON_ERROR(nvs_entry_info(iter, &info), RADIO_TAG, "Failed to get attribute info from NVS");
+    DynamicJsonDocument doc(4000 /* max string size */);
+    switch (info.type)
+    {
+    case NVS_TYPE_U64:
+    {
+      uint64_t value;
+      ESP_RETURN_ON_ERROR(nvs_get_u64(things_attr_nvs_handle, info.key, &value), RADIO_TAG, "Failed to get attribute %s from NVS", info.key);
+      doc.set(value);
+      break;
+    }
+    case NVS_TYPE_STR:
+    {
+      size_t length;
+      ESP_RETURN_ON_ERROR(nvs_get_str(things_attr_nvs_handle, info.key, NULL, &length), RADIO_TAG, "Failed to get attribute %s from NVS", info.key);
+      std::string value(length, '\0');
+      ESP_RETURN_ON_ERROR(nvs_get_str(things_attr_nvs_handle, info.key, value.data(), &length), RADIO_TAG, "Failed to get attribute %s from NVS", info.key);
+      doc.set(value);
+      break;
+    }
+    case NVS_TYPE_BLOB:
+    {
+      float value;
+      size_t length = sizeof(value);
+      ESP_RETURN_ON_ERROR(nvs_get_blob(things_attr_nvs_handle, info.key, &value, &length), RADIO_TAG, "Failed to get attribute %s from NVS", info.key);
+      doc.set(value);
+      break;
+    }
+    case NVS_TYPE_U8:
+    {
+      uint8_t value;
+      ESP_RETURN_ON_ERROR(nvs_get_u8(things_attr_nvs_handle, info.key, &value), RADIO_TAG, "Failed to get attribute %s from NVS", info.key);
+      doc.set(!!value);
+      break;
+    }
+    default:
+      ESP_LOGE(RADIO_TAG, "Unsupported attribute type (%d) for %s", info.type, info.key);
+      break;
+    }
+
+    things_update_attribute(info.key, doc.as<JsonVariantConst>(), false);
+
+    err = nvs_entry_next(&iter);
+    if (err != ESP_ERR_NVS_NOT_FOUND)
+    {
+      ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to find attributes in NVS");
+    }
+  }
+
+  nvs_release_iterator(iter);
 
   // TODO: Can we get log streaming to perform well enough?
 
@@ -365,6 +640,8 @@ extern "C" esp_err_t things_deprovision()
   return ESP_OK;
 }
 
+// TODO: The ThingsBoard connection object doesn't have any internal locking so
+// we should protect against concurrent access
 extern "C" bool things_send_telemetry_string(char const *const key, char const *const value)
 {
   auto conn = tb.lock();
@@ -407,5 +684,67 @@ extern "C" bool things_send_telemetry_bool(char const *const key, bool value)
 
 extern "C" void things_register_telemetry_generator(void (*generator)(void))
 {
-  telemetry_generators.push_back(generator);
+  std::lock_guard<std::mutex> lock(things_telemetry_mutex);
+  things_telemetry_generators.push_back(generator);
+}
+
+extern "C" esp_err_t things_subscribe_attribute(const char *key, void (*callback)(const char *key, things_attribute_t *attr))
+{
+  ESP_RETURN_ON_FALSE(key != NULL, ESP_ERR_INVALID_ARG, RADIO_TAG, "Key must not be NULL");
+  ESP_RETURN_ON_FALSE(callback != NULL, ESP_ERR_INVALID_ARG, RADIO_TAG, "Callback must not be NULL");
+  // This is a requirement to cache the attribute in NVS
+  ESP_RETURN_ON_FALSE(strlen(key) <= 15, ESP_ERR_INVALID_ARG, RADIO_TAG, "Key must be less than 15 characters");
+
+  std::lock_guard<std::mutex> lock(things_attribute_mutex);
+
+  bool need_refresh = things_attribute_subscribers.contains(key);
+  things_attribute_subscribers.emplace(key, callback);
+
+  if (need_refresh)
+  {
+    auto conn = tb.lock();
+    if (conn && conn->connected())
+    {
+      std::vector<const char *> keys{key};
+      Attribute_Request_Callback callback(things_attribute_callback, keys.cbegin(), keys.cend());
+      return conn->Shared_Attributes_Request(callback);
+    }
+  }
+
+  // Now that we've issued the request, we can initialize the subscriber from
+  // our local cache, since the request callback won't fire until we release the
+  // lock
+  things_attribute_t update = {
+      .type = THINGS_ATTRIBUTE_TYPE_UNSET,
+      .value = {},
+  };
+  auto const &it = things_attribute_cache.find(key);
+  if (it != things_attribute_cache.end())
+  {
+    switch (it->second.index())
+    {
+    case 0:
+      update.type = THINGS_ATTRIBUTE_TYPE_STRING;
+      update.value.string = std::get<std::string>(it->second).c_str();
+      break;
+    case 1:
+      update.type = THINGS_ATTRIBUTE_TYPE_FLOAT;
+      update.value.f = std::get<float>(it->second);
+      break;
+    case 2:
+      update.type = THINGS_ATTRIBUTE_TYPE_INT;
+      update.value.i = std::get<long long>(it->second);
+      break;
+    case 3:
+      update.type = THINGS_ATTRIBUTE_TYPE_BOOL;
+      update.value.b = std::get<bool>(it->second);
+      break;
+    default:
+      ESP_LOGE(RADIO_TAG, "Unsupported attribute type for %s", key);
+      return ESP_ERR_NOT_SUPPORTED;
+    }
+  }
+  callback(key, &update);
+
+  return ESP_OK;
 }
