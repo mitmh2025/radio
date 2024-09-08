@@ -661,8 +661,6 @@ extern "C" esp_err_t things_deprovision()
   return ESP_OK;
 }
 
-// TODO: The ThingsBoard connection object doesn't have any internal locking so
-// we should protect against concurrent access
 extern "C" bool things_send_telemetry_string(char const *const key, char const *const value)
 {
   auto conn = tb.lock();
