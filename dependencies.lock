@@ -35,6 +35,6 @@ dependencies:
       path: .
       type: git
     version: 2a476796fb877cd8726648360aa89440a10ca43e
-manifest_hash: 9effd1b047603e27c8dd0200552231f6db65f1b260fc064cb17e8f9d3b72ae7a
+manifest_hash: bc16654d63777e5dc4edcc7b059cc0d46d98274bd461e5e1aed6fbe6b6ed26d5
 target: esp32s3
 version: 1.0.0

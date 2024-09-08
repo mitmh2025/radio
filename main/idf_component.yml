@@ -1,6 +1,6 @@
 dependencies:
   thingsboard/ThingsBoard:
     git: https://github.com/ebroder/thingsboard-client-sdk
-    version: d20724de44d7d145544a9b59aff784af8f74cdf1
+    version: 5af43c2c7e377f4bfe0c21ad3de28b24730f47ab
   idf:
     version: ">=5.2.0"
