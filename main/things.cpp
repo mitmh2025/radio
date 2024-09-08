@@ -38,6 +38,27 @@
 static_assert(strlen(RADIO_THINGSBOARD_SERVER) > 0, "RADIO_THINGSBOARD_SERVER is empty (make sure config.h exists and is populated)");
 #endif
 
+class ESPLogger
+{
+public:
+  template <typename... Args>
+  static int printfln(char const *const format, Args const &...args)
+  {
+    int const size = Helper::detectSize(format, args...);
+    char formatted[size] = {};
+    int const written = snprintf(formatted, size, format, args...);
+    ESP_LOGI("ThingsBoard", "%s", formatted);
+    return written;
+  }
+
+  static int println(char const *const message)
+  {
+    return printfln("%s", message);
+  }
+};
+
+using RadioThingsBoard = ThingsBoardSized<ESPLogger>;
+
 static constexpr uint8_t FIRMWARE_FAILURE_RETRIES = 12U;
 static constexpr uint16_t FIRMWARE_PACKET_SIZE = 4096U;
 static constexpr uint16_t MAX_MESSAGE_SIZE = UINT16_MAX; // Max core dump size
@@ -45,7 +66,7 @@ static constexpr uint16_t MAX_MESSAGE_SIZE = UINT16_MAX; // Max core dump size
 static constexpr char THINGSBOARD_SERVER[] = RADIO_THINGSBOARD_SERVER;
 static constexpr uint16_t THINGSBOARD_PORT = 8883U;
 
-static std::weak_ptr<ThingsBoard> tb;
+static std::weak_ptr<RadioThingsBoard> tb;
 
 static constexpr char THINGS_NVS_NAMESPACE[] = "radio:things";
 static constexpr char THINGS_NVS_TOKEN_KEY[] = "devicetoken";
@@ -261,7 +282,7 @@ static void things_updated_callback(const bool &success)
   esp_restart();
 }
 
-static void things_upload_coredump(ThingsBoard *conn, size_t core_size)
+static void things_upload_coredump(RadioThingsBoard *conn, size_t core_size)
 {
   const esp_partition_t *partition;
   const void *core_dump_addr = NULL;
@@ -358,7 +379,7 @@ static void things_task(void *arg)
     mqtt_client.set_connect_callback([&self]()
                                      { xTaskNotifyGive(self); });
     mqtt_client.set_server_crt_bundle_attach(esp_crt_bundle_attach);
-    std::shared_ptr<ThingsBoard> conn = std::make_shared<ThingsBoard>(mqtt_client, MAX_MESSAGE_SIZE);
+    std::shared_ptr<RadioThingsBoard> conn = std::make_shared<RadioThingsBoard>(mqtt_client, MAX_MESSAGE_SIZE);
     tb = conn;
 
     bool success = conn->connect(THINGSBOARD_SERVER, things_token.c_str(), THINGSBOARD_PORT);
