@@ -27,7 +27,6 @@
 #include "freertos/task.h"
 #include "freertos/queue.h"
 
-#define THINGSBOARD_ENABLE_DYNAMIC 1
 #include <Espressif_MQTT_Client.h>
 #include <Espressif_Updater.h>
 #include <ThingsBoard.h>
