@@ -337,6 +337,8 @@ cleanup:
   }
 }
 
+// TODO: if this callback is from an initial fetch of attributes and previously
+// cached attributes are missing, we should delete them from the cache
 static void things_attribute_callback(JsonObjectConst const &attrs)
 {
   for (auto const &attr : attrs)
