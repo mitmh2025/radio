@@ -24,7 +24,7 @@ static void battery_telemetry_generator()
     err = adc_oneshot_get_calibrated_result(adc_get_handle(), battery_adc_cali, BATTERY_ADC_CHANNEL, &sample);
     if (err != ESP_OK)
     {
-      ESP_LOGE(RADIO_TAG, "Failed to get raw ADC sample");
+      ESP_LOGE(RADIO_TAG, "Failed to get raw ADC sample: %d (%s)", err, esp_err_to_name(err));
       return;
     }
     battery_sample_sum += sample;
