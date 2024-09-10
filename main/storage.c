@@ -557,7 +557,7 @@ static int block_erase(void *context, uint32_t block)
 
   if (err != ESP_OK)
   {
-    ESP_LOGE(RADIO_TAG, "Failed to erase SPI flash block %" PRIx32 ": %s", block, esp_err_to_name(err));
+    ESP_LOGE(RADIO_TAG, "Failed to erase SPI flash block %" PRIx32 ": %d (%s)", block, err, esp_err_to_name(err));
     return -EIO;
   }
 

@@ -252,13 +252,13 @@ static void things_update_attribute(const char *key, JsonVariantConst value, boo
 
     if (err != ESP_OK)
     {
-      ESP_LOGE(RADIO_TAG, "Failed to update attribute %s in NVS: %s", key, esp_err_to_name(err));
+      ESP_LOGE(RADIO_TAG, "Failed to update attribute %s in NVS: %d (%s)", key, err, esp_err_to_name(err));
     }
 
     err = nvs_commit(things_attr_nvs_handle);
     if (err != ESP_OK)
     {
-      ESP_LOGE(RADIO_TAG, "Failed to commit NVS after updating attribute %s: %s", key, esp_err_to_name(err));
+      ESP_LOGE(RADIO_TAG, "Failed to commit NVS after updating attribute %s: %d (%s)", key, err, esp_err_to_name(err));
     }
   }
 }
@@ -301,7 +301,7 @@ static void things_upload_coredump(RadioThingsBoard *conn, size_t core_size)
   err = esp_partition_mmap(partition, 0, core_size, ESP_PARTITION_MMAP_DATA, &core_dump_addr, &handle);
   if (err != ESP_OK)
   {
-    ESP_LOGE(RADIO_TAG, "Failed to map coredump partition: %s", esp_err_to_name(err));
+    ESP_LOGE(RADIO_TAG, "Failed to map coredump partition: %d (%s)", err, esp_err_to_name(err));
     goto cleanup;
   }
 
@@ -418,13 +418,13 @@ static void things_task(void *arg)
     }
     else if (err != ESP_ERR_NOT_FOUND && err != ESP_ERR_INVALID_SIZE)
     {
-      ESP_LOGE(RADIO_TAG, "Failed to get core dump: %s", esp_err_to_name(err));
+      ESP_LOGE(RADIO_TAG, "Failed to get core dump: %d (%s)", err, esp_err_to_name(err));
     }
     // No matter what happened, erase the coredump so we don't re-upload it
     err = esp_core_dump_image_erase();
     if (err != ESP_OK)
     {
-      ESP_LOGE(RADIO_TAG, "Failed to erase core dump: %s", esp_err_to_name(err));
+      ESP_LOGE(RADIO_TAG, "Failed to erase core dump: %d (%s)", err, esp_err_to_name(err));
     }
 
     // Note that the project name is generated from the top-level CMakeLists.txt
@@ -621,7 +621,7 @@ extern "C" esp_err_t things_init()
   }
   else if (err != ESP_ERR_NVS_NOT_FOUND)
   {
-    ESP_LOGE(RADIO_TAG, "Failed to check device token: %s", esp_err_to_name(err));
+    ESP_LOGE(RADIO_TAG, "Failed to check device token: %d (%s)", err, esp_err_to_name(err));
     return err;
   }
 
@@ -655,7 +655,7 @@ extern "C" esp_err_t things_deprovision()
   esp_err_t err = nvs_erase_key(things_nvs_handle, THINGS_NVS_TOKEN_KEY);
   if (err != ESP_OK)
   {
-    ESP_LOGE(RADIO_TAG, "Failed to erase device token: %s", esp_err_to_name(err));
+    ESP_LOGE(RADIO_TAG, "Failed to erase device token: %d (%s)", err, esp_err_to_name(err));
     return err;
   }
 

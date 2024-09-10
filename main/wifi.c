@@ -44,7 +44,7 @@ static void wifi_report_telemetry()
   esp_err_t err = esp_wifi_sta_get_ap_info(&ap_info);
   if (err != ESP_OK)
   {
-    ESP_LOGE(RADIO_TAG, "Failed to get AP info: %s", esp_err_to_name(err));
+    ESP_LOGE(RADIO_TAG, "Failed to get AP info: %d (%s)", err, esp_err_to_name(err));
     return;
   }
 
@@ -104,7 +104,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
       esp_err_t err = esp_netif_sntp_start();
       if (err != ESP_OK)
       {
-        ESP_LOGE(RADIO_TAG, "Failed to start SNTP: %s", esp_err_to_name(err));
+        ESP_LOGE(RADIO_TAG, "Failed to start SNTP: %d (%s)", err, esp_err_to_name(err));
       }
 
       xEventGroupClearBits(radio_event_group, RADIO_EVENT_GROUP_WIFI_DISCONNECTED);

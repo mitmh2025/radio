@@ -45,7 +45,7 @@ void dac_volume_output_task(void *arg)
   esp_err_t err = adc_oneshot_config_channel(adc_unit, channel, &chan_cfg);
   if (err != ESP_OK)
   {
-    ESP_LOGE(RADIO_TAG, "Failed to configure ADC channel: %d", err);
+    ESP_LOGE(RADIO_TAG, "Failed to configure ADC channel: %d (%s)", err, esp_err_to_name(err));
     vTaskDelete(NULL);
   }
 
@@ -58,7 +58,7 @@ loop:
     err = tas2505_read_gpio(&gpio);
     if (err != ESP_OK)
     {
-      ESP_LOGE(RADIO_TAG, "Failed to read GPIO: %d", err);
+      ESP_LOGE(RADIO_TAG, "Failed to read GPIO: %d (%s)", err, esp_err_to_name(err));
       goto loop;
     }
 
@@ -78,7 +78,7 @@ loop:
       err = adc_oneshot_read(adc_unit, channel, &volume);
       if (err != ESP_OK)
       {
-        ESP_LOGE(RADIO_TAG, "Failed to read ADC: %d", err);
+        ESP_LOGE(RADIO_TAG, "Failed to read ADC: %d (%s)", err, esp_err_to_name(err));
         goto loop;
       }
       volume_total += volume;
@@ -88,7 +88,7 @@ loop:
     err = tas2505_set_volume(volume_total >> 8);
     if (err != ESP_OK)
     {
-      ESP_LOGE(RADIO_TAG, "Failed to set volume: %d", err);
+      ESP_LOGE(RADIO_TAG, "Failed to set volume: %d (%s)", err, esp_err_to_name(err));
       goto loop;
     }
   }
@@ -126,7 +126,7 @@ void webrtc_pipeline_start(void *context)
   esp_err_t err = audio_element_set_read_cb(i2s_stream_writer, webrtc_read_audio_sample, connection);
   if (err != ESP_OK)
   {
-    ESP_LOGE(RADIO_TAG, "Failed to set read callback for I2S stream: %d", err);
+    ESP_LOGE(RADIO_TAG, "Failed to set read callback for I2S stream: %d (%s)", err, esp_err_to_name(err));
     vTaskDelete(NULL);
   }
 
@@ -134,14 +134,14 @@ void webrtc_pipeline_start(void *context)
   err = audio_pipeline_register(pipeline, i2s_stream_writer, "i2s");
   if (err != ESP_OK)
   {
-    ESP_LOGE(RADIO_TAG, "Failed to register I2S stream: %d", err);
+    ESP_LOGE(RADIO_TAG, "Failed to register I2S stream: %d (%s)", err, esp_err_to_name(err));
     vTaskDelete(NULL);
   }
   const char *link_tag[] = {"i2s"};
   err = audio_pipeline_link(pipeline, &link_tag[0], sizeof(link_tag) / sizeof(link_tag[0]));
   if (err != ESP_OK)
   {
-    ESP_LOGE(RADIO_TAG, "Failed to link I2S stream: %d", err);
+    ESP_LOGE(RADIO_TAG, "Failed to link I2S stream: %d (%s)", err, esp_err_to_name(err));
     vTaskDelete(NULL);
   }
 
@@ -149,7 +149,7 @@ void webrtc_pipeline_start(void *context)
   err = webrtc_wait_buffer_duration(connection, 48000, 3000);
   if (err != ESP_OK)
   {
-    ESP_LOGE(RADIO_TAG, "Failed to wait for buffer duration: %d", err);
+    ESP_LOGE(RADIO_TAG, "Failed to wait for buffer duration: %d (%s)", err, esp_err_to_name(err));
     vTaskDelete(NULL);
   }
   int64_t end = esp_timer_get_time();
@@ -158,7 +158,7 @@ void webrtc_pipeline_start(void *context)
   err = audio_pipeline_run(pipeline);
   if (err != ESP_OK)
   {
-    ESP_LOGE(RADIO_TAG, "Failed to run pipeline: %d", err);
+    ESP_LOGE(RADIO_TAG, "Failed to run pipeline: %d (%s)", err, esp_err_to_name(err));
     vTaskDelete(NULL);
   }
 
