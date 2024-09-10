@@ -615,6 +615,7 @@ esp_err_t storage_mount(bool format)
   if (err == ESP_OK)
   {
     storage_mounted = true;
+    xEventGroupSetBits(radio_event_group, RADIO_EVENT_GROUP_STORAGE_MOUNTED);
   }
   xSemaphoreGive(storage_mounted_mutex);
   return err;
