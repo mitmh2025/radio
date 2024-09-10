@@ -9,6 +9,7 @@
 #include "opus.h"
 
 #include "com/amazonaws/kinesis/video/webrtcclient/Include.h"
+#include "com/amazonaws/kinesis/video/common/jsmn.h"
 
 struct webrtc_connection
 {
@@ -302,18 +303,40 @@ static void webrtc_on_ice_candidate(UINT64 arg, PCHAR candidate)
   }
 
   // Need to extract the candidate from the JSON-encoded string (`{"candidate":"...","sdpMid":"0","sdpMLineIndex":0}`)
-  char *candidate_start = strstr(candidate, "\"candidate\":\"");
-  if (!candidate_start)
+  jsmn_parser parser;
+  jsmn_init(&parser);
+
+  jsmntok_t tokens[7];
+  int ret = jsmn_parse(&parser, candidate, strlen(candidate), tokens, sizeof(tokens) / sizeof(tokens[0]));
+  if (ret <= 0)
   {
-    ESP_LOGE(RADIO_TAG, "Failed to find candidate in ICE candidate string");
+    ESP_LOGE(RADIO_TAG, "Failed to parse ICE candidate JSON with error code %d", ret);
     return;
   }
-  candidate_start += strlen("\"candidate\":\"");
-  char *candidate_end = strchr(candidate_start, '"');
-  if (!candidate_end)
+
+  if (tokens[0].type != JSMN_OBJECT)
   {
-    ESP_LOGE(RADIO_TAG, "Failed to find end of candidate in ICE candidate string");
+    ESP_LOGE(RADIO_TAG, "Expected JSON object for ICE candidate, got %d", tokens[0].type);
     return;
+  }
+
+  char *candidate_start = NULL;
+  char *candidate_end = NULL;
+  for (int i = 1; i < ret - 1; i++)
+  {
+    if (tokens[i].type == JSMN_STRING && strncmp(candidate + tokens[i].start, "candidate", tokens[i].end - tokens[i].start) == 0)
+    {
+      i++;
+      if (i >= ret || tokens[i].type != JSMN_STRING)
+      {
+        ESP_LOGE(RADIO_TAG, "Expected string for ICE candidate, got %d", tokens[i].type);
+        return;
+      }
+
+      candidate_start = candidate + tokens[i].start;
+      candidate_end = candidate + tokens[i].end;
+      break;
+    }
   }
 
   xSemaphoreTake(connection->lock, portMAX_DELAY);

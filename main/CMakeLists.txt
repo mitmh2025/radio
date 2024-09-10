@@ -10,4 +10,21 @@ idf_component_register(
   webrtc.c
   wifi.c
   INCLUDE_DIRS
-  ".")
+  "."
+  REQUIRES
+  audio_pipeline
+  esp_adc
+  PRIV_REQUIRES
+  app_update
+  audio_board
+  audio_stream
+  boardconfig
+  console
+  esp_app_format
+  esp_http_client
+  esp_littlefs
+  espcoredump
+  kvscommonlws
+  kvswebrtcclient
+  opus
+  sdmmc)

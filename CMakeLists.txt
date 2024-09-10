@@ -5,6 +5,7 @@ set(CMAKE_BUILD_TYPE Debug)
 include($ENV{ADF_PATH}/CMakeLists.txt)
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 
+set(EXCLUDE_COMPONENTS adf_utils)
 project(radio)
 
 if(EXISTS ${SDKCONFIG} AND ${CMAKE_SOURCE_DIR}/sdkconfig.defaults IS_NEWER_THAN ${SDKCONFIG})
