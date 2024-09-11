@@ -255,13 +255,13 @@ void app_main(void)
     return;
   }
 
+  ESP_ERROR_CHECK(wifi_init());
   ESP_ERROR_CHECK(adc_init());
-  ESP_ERROR_CHECK(things_init());
   ESP_ERROR_CHECK(board_i2c_init());
-  ESP_ERROR_CHECK(storage_init());
   ESP_ERROR_CHECK(battery_init());
   ESP_ERROR_CHECK(tas2505_init());
-  ESP_ERROR_CHECK(wifi_init());
+  ESP_ERROR_CHECK(things_init());
+  ESP_ERROR_CHECK(storage_init());
   ESP_ERROR_CHECK(webrtc_init());
 
   xTaskCreate(dac_volume_output_task, "dac_volume_output", 4096, NULL, 5, NULL);
