@@ -415,16 +415,15 @@ static void things_task(void *arg)
     {
       ESP_LOGW(RADIO_TAG, "Core dump detected at 0x%08x, size %d bytes", core_addr, core_size);
       things_upload_coredump(conn.get(), core_size);
+      err = esp_core_dump_image_erase();
+      if (err != ESP_OK)
+      {
+        ESP_LOGE(RADIO_TAG, "Failed to erase core dump: %d (%s)", err, esp_err_to_name(err));
+      }
     }
     else if (err != ESP_ERR_NOT_FOUND && err != ESP_ERR_INVALID_SIZE)
     {
       ESP_LOGE(RADIO_TAG, "Failed to get core dump: %d (%s)", err, esp_err_to_name(err));
-    }
-    // No matter what happened, erase the coredump so we don't re-upload it
-    err = esp_core_dump_image_erase();
-    if (err != ESP_OK)
-    {
-      ESP_LOGE(RADIO_TAG, "Failed to erase core dump: %d (%s)", err, esp_err_to_name(err));
     }
 
     // Note that the project name is generated from the top-level CMakeLists.txt
