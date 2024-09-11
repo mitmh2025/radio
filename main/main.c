@@ -163,10 +163,16 @@ void webrtc_pipeline_start(void *context)
     vTaskDelete(NULL);
   }
 
-  xTaskNotifyWait(0, ULONG_MAX, NULL, portMAX_DELAY);
+  TaskHandle_t killer = NULL;
+  xTaskNotifyWait(0, ULONG_MAX, (uint32_t *)&killer, portMAX_DELAY);
 
   audio_pipeline_deinit(pipeline);
   webrtc_free_connection(connection);
+
+  if (killer != NULL)
+  {
+    xTaskNotifyGive(killer);
+  }
 
   vTaskDelete(NULL);
 }
@@ -207,7 +213,8 @@ void things_whep_url_callback(const char *key, things_attribute_t *attr)
 
   if (webrtc_pipeline_task != NULL)
   {
-    xTaskNotifyGive(webrtc_pipeline_task);
+    xTaskNotify(webrtc_pipeline_task, (uint32_t)xTaskGetCurrentTaskHandle(), eSetValueWithOverwrite);
+    xTaskNotifyWait(0, ULONG_MAX, NULL, portMAX_DELAY);
     webrtc_pipeline_task = NULL;
   }
 
