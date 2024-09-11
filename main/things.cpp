@@ -263,6 +263,71 @@ static void things_update_attribute(const char *key, JsonVariantConst value, boo
   }
 }
 
+static esp_err_t things_preload_attributes(void)
+{
+  nvs_iterator_t iter = NULL;
+  esp_err_t err = nvs_entry_find_in_handle(things_attr_nvs_handle, NVS_TYPE_ANY, &iter);
+  if (err != ESP_ERR_NVS_NOT_FOUND)
+  {
+    ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to find attributes in NVS");
+  }
+  while (iter)
+  {
+    nvs_entry_info_t info;
+    ESP_RETURN_ON_ERROR(nvs_entry_info(iter, &info), RADIO_TAG, "Failed to get attribute info from NVS");
+    DynamicJsonDocument doc(4000 /* max string size */);
+    switch (info.type)
+    {
+    case NVS_TYPE_U64:
+    {
+      uint64_t value;
+      ESP_RETURN_ON_ERROR(nvs_get_u64(things_attr_nvs_handle, info.key, &value), RADIO_TAG, "Failed to get attribute %s from NVS", info.key);
+      doc.set(value);
+      break;
+    }
+    case NVS_TYPE_STR:
+    {
+      size_t length;
+      ESP_RETURN_ON_ERROR(nvs_get_str(things_attr_nvs_handle, info.key, NULL, &length), RADIO_TAG, "Failed to get attribute %s from NVS", info.key);
+      std::string value(length, '\0');
+      ESP_RETURN_ON_ERROR(nvs_get_str(things_attr_nvs_handle, info.key, value.data(), &length), RADIO_TAG, "Failed to get attribute %s from NVS", info.key);
+      doc.set(value);
+      break;
+    }
+    case NVS_TYPE_BLOB:
+    {
+      float value;
+      size_t length = sizeof(value);
+      ESP_RETURN_ON_ERROR(nvs_get_blob(things_attr_nvs_handle, info.key, &value, &length), RADIO_TAG, "Failed to get attribute %s from NVS", info.key);
+      doc.set(value);
+      break;
+    }
+    case NVS_TYPE_U8:
+    {
+      uint8_t value;
+      ESP_RETURN_ON_ERROR(nvs_get_u8(things_attr_nvs_handle, info.key, &value), RADIO_TAG, "Failed to get attribute %s from NVS", info.key);
+      doc.set(!!value);
+      break;
+    }
+    default:
+      ESP_LOGE(RADIO_TAG, "Unsupported attribute type (%d) for %s", info.type, info.key);
+      break;
+    }
+
+    things_update_attribute(info.key, doc.as<JsonVariantConst>(), false);
+
+    err = nvs_entry_next(&iter);
+    if (err != ESP_ERR_NVS_NOT_FOUND)
+    {
+      ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to find attributes in NVS");
+    }
+  }
+
+  nvs_release_iterator(iter);
+
+  return ESP_OK;
+}
+
 static void things_progress_callback(const size_t &currentChunk, const size_t &totalChuncks)
 {
   ESP_LOGV(RADIO_TAG, "Firmware update progress %d/%d chunks (%.2f%%)", currentChunk, totalChuncks, static_cast<float>(100 * currentChunk) / totalChuncks);
@@ -366,7 +431,14 @@ static void things_attribute_callback(JsonObjectConst const &attrs)
 
 static void things_task(void *arg)
 {
-  // First, block until we're provisioned
+  // First, try to pre-populate attributes from NVS - this doesn't require provisioning
+  esp_err_t err = things_preload_attributes();
+  if (err != ESP_OK)
+  {
+    ESP_LOGE(RADIO_TAG, "Failed to preload attributes: %d (%s)", err, esp_err_to_name(err));
+  }
+
+  // Otherwise block until we're provisioned
   xEventGroupWaitBits(radio_event_group, RADIO_EVENT_GROUP_THINGS_PROVISIONED, pdFALSE, pdTRUE, portMAX_DELAY);
 
   // Main loop is around wifi connection. If we get disconnected from wifi, wait
@@ -544,66 +616,6 @@ extern "C" esp_err_t things_init()
 
   err = nvs_open(THINGS_ATTR_NVS_NAMESPACE, NVS_READWRITE, &things_attr_nvs_handle);
   ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to open NVS handle for attributes: %s", esp_err_to_name(err));
-
-  nvs_iterator_t iter = NULL;
-  err = nvs_entry_find_in_handle(things_attr_nvs_handle, NVS_TYPE_ANY, &iter);
-  if (err != ESP_ERR_NVS_NOT_FOUND)
-  {
-    ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to find attributes in NVS");
-  }
-  while (iter)
-  {
-    nvs_entry_info_t info;
-    ESP_RETURN_ON_ERROR(nvs_entry_info(iter, &info), RADIO_TAG, "Failed to get attribute info from NVS");
-    DynamicJsonDocument doc(4000 /* max string size */);
-    switch (info.type)
-    {
-    case NVS_TYPE_U64:
-    {
-      uint64_t value;
-      ESP_RETURN_ON_ERROR(nvs_get_u64(things_attr_nvs_handle, info.key, &value), RADIO_TAG, "Failed to get attribute %s from NVS", info.key);
-      doc.set(value);
-      break;
-    }
-    case NVS_TYPE_STR:
-    {
-      size_t length;
-      ESP_RETURN_ON_ERROR(nvs_get_str(things_attr_nvs_handle, info.key, NULL, &length), RADIO_TAG, "Failed to get attribute %s from NVS", info.key);
-      std::string value(length, '\0');
-      ESP_RETURN_ON_ERROR(nvs_get_str(things_attr_nvs_handle, info.key, value.data(), &length), RADIO_TAG, "Failed to get attribute %s from NVS", info.key);
-      doc.set(value);
-      break;
-    }
-    case NVS_TYPE_BLOB:
-    {
-      float value;
-      size_t length = sizeof(value);
-      ESP_RETURN_ON_ERROR(nvs_get_blob(things_attr_nvs_handle, info.key, &value, &length), RADIO_TAG, "Failed to get attribute %s from NVS", info.key);
-      doc.set(value);
-      break;
-    }
-    case NVS_TYPE_U8:
-    {
-      uint8_t value;
-      ESP_RETURN_ON_ERROR(nvs_get_u8(things_attr_nvs_handle, info.key, &value), RADIO_TAG, "Failed to get attribute %s from NVS", info.key);
-      doc.set(!!value);
-      break;
-    }
-    default:
-      ESP_LOGE(RADIO_TAG, "Unsupported attribute type (%d) for %s", info.type, info.key);
-      break;
-    }
-
-    things_update_attribute(info.key, doc.as<JsonVariantConst>(), false);
-
-    err = nvs_entry_next(&iter);
-    if (err != ESP_ERR_NVS_NOT_FOUND)
-    {
-      ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to find attributes in NVS");
-    }
-  }
-
-  nvs_release_iterator(iter);
 
   // TODO: Can we get log streaming to perform well enough?
 
