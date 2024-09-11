@@ -117,6 +117,7 @@ void webrtc_pipeline_start(void *context)
   // Need space for 20ms of audio at 48kHz, 16-bit, stereo
   // TODO: adapt to packet sizes?
   i2s_cfg.buffer_len = 960 * 2 * 2;
+  i2s_cfg.chan_cfg.dma_frame_num = 960; // 20ms of audio
   audio_element_handle_t i2s_stream_writer = i2s_stream_init(&i2s_cfg);
   if (!i2s_stream_writer)
   {
