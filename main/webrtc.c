@@ -554,7 +554,7 @@ static void webrtc_connect_task(void *arg)
   ESP_LOGV(RADIO_TAG, "Received HTTP status from SDP offer request: %d", esp_http_client_get_status_code(http_client));
   if (esp_http_client_get_status_code(http_client) >= 400)
   {
-    ESP_LOGE(RADIO_TAG, "Failed to initiate session with status code %d", esp_http_client_get_status_code(http_client));
+    ESP_LOGE(RADIO_TAG, "Failed to initiate WebRTC session with status code %d", esp_http_client_get_status_code(http_client));
     args->ret = ESP_FAIL;
     goto cleanup;
   }
