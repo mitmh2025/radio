@@ -728,17 +728,17 @@ extern "C" esp_err_t things_subscribe_attribute(const char *key, void (*callback
 
   std::lock_guard<std::mutex> lock(things_attribute_mutex);
 
-  bool need_refresh = things_attribute_subscribers.contains(key);
+  bool need_fetch = !things_attribute_subscribers.contains(key);
   things_attribute_subscribers.emplace(key, callback);
 
-  if (need_refresh)
+  if (need_fetch)
   {
     auto conn = tb.lock();
     if (conn && conn->connected())
     {
       std::vector<const char *> keys{key};
       Attribute_Request_Callback callback(things_attribute_callback, keys.cbegin(), keys.cend());
-      return conn->Shared_Attributes_Request(callback);
+      conn->Shared_Attributes_Request(callback);
     }
   }
 
