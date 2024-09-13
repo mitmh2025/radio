@@ -175,8 +175,8 @@ static esp_err_t flash_init(block_flash_t *flash, spi_device_handle_t device)
   };
   ESP_RETURN_ON_ERROR(spi_device_transmit(device, &txn), RADIO_TAG, "Failed to probe SPI flash");
 
-  uint16_t dev_id = (txn.tx_data[1] << 8) | txn.tx_data[2];
-  if (txn.tx_data[0] != 0xef || (dev_id != 0x7018 && dev_id != 0x4018))
+  uint16_t dev_id = (txn.rx_data[1] << 8) | txn.rx_data[2];
+  if (txn.rx_data[0] != 0xef || (dev_id != 0x7018 && dev_id != 0x4018))
   {
     return ESP_ERR_NOT_FOUND;
   }
@@ -193,6 +193,7 @@ static esp_err_t flash_init(block_flash_t *flash, spi_device_handle_t device)
   txn.flags = 0;
   txn.rxlength = 0;
   txn.length = 0;
+  txn.rx_buffer = NULL;
   ESP_RETURN_ON_ERROR(spi_device_transmit(device, &txn), RADIO_TAG, "Failed to enable reset on SPI flash");
   txn.cmd = BLOCK_FLASH_CMD_RESET;
   ESP_RETURN_ON_ERROR(spi_device_transmit(device, &txn), RADIO_TAG, "Failed to reset SPI flash");
@@ -221,6 +222,7 @@ static esp_err_t flash_init(block_flash_t *flash, spi_device_handle_t device)
     txn.flags = 0;
     txn.length = 0;
     txn.rxlength = 0;
+    txn.rx_buffer = NULL;
     ESP_RETURN_ON_ERROR(spi_device_transmit(device, &txn), RADIO_TAG, "Failed to enable register write on SPI flash");
 
     reg2.parsed.quad_enable = 1;
@@ -229,6 +231,7 @@ static esp_err_t flash_init(block_flash_t *flash, spi_device_handle_t device)
     txn.tx_data[0] = reg2.raw;
     txn.length = 8;
     txn.rxlength = 0;
+    txn.rx_buffer = NULL;
     ESP_RETURN_ON_ERROR(spi_device_transmit(device, &txn), RADIO_TAG, "Failed to enable quad mode on SPI flash");
 
     ESP_RETURN_ON_ERROR(flash_wait_ready(flash, pdMS_TO_TICKS(1)), RADIO_TAG, "SPI flash did not become ready after enabling quad mode");
