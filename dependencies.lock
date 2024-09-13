@@ -23,12 +23,12 @@ dependencies:
       type: idf
     version: 5.2.2
   thingsboard/ThingsBoard:
-    component_hash: fbf7e33a396ad42649346ba62449b13cb305aceda4261bb684ac813e9c074117
+    component_hash: 93151ce37de0eca119483717e60dc723c2e4e1c0930088f0cdc1c3447b9d09e6
     source:
       git: https://github.com/ebroder/thingsboard-client-sdk
       path: .
       type: git
-    version: 2a476796fb877cd8726648360aa89440a10ca43e
-manifest_hash: 29ba6e1b3bdf5c54fec70ccfdf82a88a31d3089b8aae54289cceb35ce864b759
+    version: 68211abb731065d7b5ea441c93eaaa242c72855b
+manifest_hash: f9cb04a1c0491c4828279e6b19794c28ded739e585a0bb8cb2a50a9b62751971
 target: esp32s3
 version: 1.0.0
