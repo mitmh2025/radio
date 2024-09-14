@@ -158,6 +158,63 @@ static int format_func(int argc, char **argv)
   return 0;
 }
 
+static struct
+{
+  struct arg_str *dir;
+  struct arg_lit *long_format;
+  struct arg_end *end;
+} list_args;
+
+static int list_func(int argc, char **argv)
+{
+  int nerrors = arg_parse(argc, argv, (void **)&list_args);
+
+  if (nerrors != 0)
+  {
+    arg_print_errors(stderr, list_args.end, argv[0]);
+    return 1;
+  }
+
+  if (list_args.dir->count == 0)
+  {
+    arg_print_syntax(stderr, (void **)&list_args, argv[0]);
+    return 1;
+  }
+
+  DIR *dir = opendir(list_args.dir->sval[0]);
+  if (dir == NULL)
+  {
+    printf("Failed to open directory: %s\n", strerror(errno));
+    return 1;
+  }
+
+  struct dirent *entry;
+  while ((entry = readdir(dir)) != NULL)
+  {
+    if (list_args.long_format->count)
+    {
+      struct stat st;
+      char path[PATH_MAX];
+      snprintf(path, sizeof(path), "%s/%s", list_args.dir->sval[0], entry->d_name);
+      if (stat(path, &st) == 0)
+      {
+        printf("%s\t%ld\t%s\n",
+               entry->d_type == DT_DIR ? "d" : "-",
+               entry->d_type == DT_DIR ? 0 : st.st_size,
+               entry->d_name);
+      }
+    }
+    else
+    {
+      printf("%s%s\n", entry->d_name, entry->d_type == DT_DIR ? "/" : "");
+    }
+  }
+
+  closedir(dir);
+
+  return 0;
+}
+
 esp_err_t console_init()
 {
   // Block on stdin and stdout
@@ -248,6 +305,18 @@ esp_err_t console_init()
   };
   err = esp_console_cmd_register(&cmd_format);
   ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register format command: %s", esp_err_to_name(err));
+
+  list_args.dir = arg_str1(NULL, NULL, "<dir>", "Directory to list");
+  list_args.long_format = arg_lit0("l", "long", "Use a long listing format");
+  list_args.end = arg_end(1);
+  esp_console_cmd_t cmd_list = {
+      .command = "ls",
+      .help = "List files in a directory",
+      .hint = NULL,
+      .func = &list_func,
+      .argtable = &list_args,
+  };
+  err = esp_console_cmd_register(&cmd_list);
 
   xTaskCreate(console_task, "console", 4096, NULL, 15, NULL);
 
