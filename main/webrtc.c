@@ -9,7 +9,7 @@
 #include "opus.h"
 
 #include "com/amazonaws/kinesis/video/webrtcclient/Include.h"
-#include "com/amazonaws/kinesis/video/common/jsmn.h"
+#include "com/amazonaws/kinesis/video/common/Include.h"
 
 struct webrtc_connection
 {
