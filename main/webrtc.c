@@ -679,7 +679,7 @@ static void webrtc_read_on_frame(UINT64 custom_data, PFrame frame)
     else
     {
       // We have a new packet, so trigger FEC
-      ESP_LOGI(RADIO_TAG, "Previous packet missing, triggering FEC");
+      ESP_LOGV(RADIO_TAG, "Previous packet missing, triggering FEC");
       decoded = opus_decode(data->connection->decoder, (unsigned char *)frame->frameData, frame->size, (opus_int16 *)data->buf, data->buf_len / bytes_per_sample, 1);
     }
   }
