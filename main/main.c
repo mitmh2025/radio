@@ -226,6 +226,7 @@ void things_whep_url_callback(const char *key, things_attribute_t *attr)
 
   if (url == NULL)
   {
+    ESP_LOGE(RADIO_TAG, "No WebRTC WHEP URL has been configured. Set the `whep_url` shared attribute in ThingsBoard.");
     return;
   }
 
