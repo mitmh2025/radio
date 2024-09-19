@@ -606,7 +606,7 @@ static int block_sync(void *context)
   return 0;
 }
 
-esp_err_t storage_mount(bool format)
+esp_err_t storage_mount()
 {
   if (storage_mounted)
   {
@@ -615,7 +615,7 @@ esp_err_t storage_mount(bool format)
 
   esp_vfs_littlefs_conf_t conf = {
       .base_path = "/data",
-      .format_if_mount_failed = format,
+      .format_if_mount_failed = true,
   };
   esp_vfs_littlefs_custom_conf_t custom = {
       .read = block_read,

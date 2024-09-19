@@ -286,7 +286,7 @@ void app_main(void)
     ESP_LOGE(RADIO_TAG, "Device not provisioned. Provision at https://%s/entities/devices with MAC address %s and use `provision` console command to store", RADIO_THINGSBOARD_SERVER, macstr);
   }
 
-  err = storage_mount(false);
+  err = storage_mount();
   if (err == ESP_FAIL)
   {
     ESP_LOGE(RADIO_TAG, "Flash storage not formatted. Use `format` console command to format");

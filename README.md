@@ -79,8 +79,6 @@ is enumerated here as well for convenience:
   device. Use the MAC address as the device name and set Device profile to
   "radio". Copy the "Access token" from the credentials page, then use the
   `provision` command in the radio serial console to store the access token.
-* Storage format: The radio's onboard flash storage is unformatted by default.
-  Run `format` from the serial console.
 * WHEP (WebRTC) URL: In ThingsBoard, open the device, go to Attributes, choose
   Shared Attributes, and create a key called `whep_url`. You can use
   `https://radio.mitmh2025.com/music/whep` as the value for testing.

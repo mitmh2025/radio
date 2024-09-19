@@ -10,7 +10,7 @@ extern "C"
 #endif
 
   esp_err_t storage_init(void);
-  esp_err_t storage_mount(bool format);
+  esp_err_t storage_mount(void);
 
 #ifdef __cplusplus
 }
