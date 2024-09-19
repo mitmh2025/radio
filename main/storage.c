@@ -472,7 +472,11 @@ esp_err_t storage_init(void)
 
 int block_read(void *context, uint32_t block, uint32_t offset, void *buffer, size_t size)
 {
-  // Need to split the read across chips if it crosses a chip boundary
+  // Need to split the read across chips if it crosses a chip boundary and also
+  // account for the SPI max read size of 4092 bytes, so split into chunks of
+  // 2048
+  size_t read_sector_size = 2048;
+
   size_t start_addr = (size_t)block * BLOCK_FLASH_ERASE_SIZE + offset;
   size_t end_addr = start_addr + size;
 
@@ -490,19 +494,31 @@ int block_read(void *context, uint32_t block, uint32_t offset, void *buffer, siz
     size_t flash_start = idx * BLOCK_FLASH_SIZE_BYTES;
     size_t flash_end = flash_start + BLOCK_FLASH_SIZE_BYTES;
 
-    size_t read_start = start_addr > flash_start ? start_addr : flash_start;
-    size_t read_end = end_addr < flash_end ? end_addr : flash_end;
-    size_t read_size = read_end - read_start;
+    size_t flash_read_start = start_addr > flash_start ? start_addr : flash_start;
+    size_t flash_read_end = end_addr < flash_end ? end_addr : flash_end;
 
-    esp_err_t ret = flash_read(flash, read_start % BLOCK_FLASH_SIZE_BYTES, buffer, read_size);
-    if (ret != ESP_OK)
+    size_t first_sector = flash_read_start / read_sector_size;
+    size_t last_sector = (flash_read_end - 1) / read_sector_size;
+
+    for (int sector = first_sector; sector <= last_sector; sector++)
     {
-      ESP_LOGE(RADIO_TAG, "Failed to read from SPI flash (idx=%d addr=%08zx size=%08zx): %s",
-               idx, read_start, read_size, esp_err_to_name(ret));
-      return -EIO;
-    }
+      size_t sector_start = sector * read_sector_size;
+      size_t sector_end = sector_start + read_sector_size;
 
-    buffer += read_size;
+      size_t read_start = flash_read_start > sector_start ? flash_read_start : sector_start;
+      size_t read_end = flash_read_end < sector_end ? flash_read_end : sector_end;
+      size_t read_size = read_end - read_start;
+
+      esp_err_t ret = flash_read(flash, read_start % BLOCK_FLASH_SIZE_BYTES, buffer, read_size);
+      if (ret != ESP_OK)
+      {
+        ESP_LOGE(RADIO_TAG, "Failed to read from SPI flash (idx=%d addr=%08zx size=%08zx): %s",
+                 idx, read_start, read_size, esp_err_to_name(ret));
+        return -EIO;
+      }
+
+      buffer += read_size;
+    }
   }
 
   return 0;
