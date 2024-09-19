@@ -1,14 +1,15 @@
 #include "../config.h"
 #include "main.h"
-#include "wifi.h"
-#include "things.h"
-#include "console.h"
-#include "webrtc.h"
+#include "adc.h"
 #include "battery.h"
 #include "board.h"
-#include "tas2505.h"
-#include "adc.h"
+#include "console.h"
+#include "file_cache.h"
 #include "storage.h"
+#include "tas2505.h"
+#include "things.h"
+#include "webrtc.h"
+#include "wifi.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -242,8 +243,8 @@ void things_whep_url_callback(const char *key, things_attribute_t *attr)
 
 void app_main(void)
 {
-  esp_log_level_set("*", ESP_LOG_VERBOSE);
-  esp_log_level_set(RADIO_TAG, ESP_LOG_INFO);
+  esp_log_level_set("*", ESP_LOG_WARN);
+  esp_log_level_set(RADIO_TAG, ESP_LOG_DEBUG);
 
   esp_err_t err = nvs_flash_init();
   if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND)
@@ -271,6 +272,7 @@ void app_main(void)
   ESP_ERROR_CHECK(things_init());
   ESP_ERROR_CHECK(storage_init());
   ESP_ERROR_CHECK(webrtc_init());
+  ESP_ERROR_CHECK(file_cache_init());
 
   xTaskCreate(dac_volume_output_task, "dac_volume_output", 4096, NULL, 5, NULL);
 
