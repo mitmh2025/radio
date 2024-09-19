@@ -1,6 +1,7 @@
 #include "file_cache.h"
 #include "main.h"
 #include "things.h"
+#include "storage.h"
 
 #include "string.h"
 #include "sys/stat.h"
@@ -13,7 +14,7 @@
 
 #include "com/amazonaws/kinesis/video/common/Include.h"
 
-#define FILE_CACHE_PREFIX "/data/cache"
+#define FILE_CACHE_PREFIX STORAGE_MOUNTPOINT "/cache"
 
 typedef struct
 {

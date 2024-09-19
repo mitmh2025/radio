@@ -4,6 +4,8 @@
 
 #include <stdbool.h>
 
+#define STORAGE_MOUNTPOINT "/data"
+
 #ifdef __cplusplus
 extern "C"
 {

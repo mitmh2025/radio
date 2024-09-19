@@ -15,6 +15,8 @@
 #include "freertos/FreeRTOS.h"
 #include "lwip/stats.h"
 
+#include "esp_littlefs.h"
+
 static void console_task(void *arg)
 {
   // TODO: support starting/stopping the console when radio is in/out of debug
@@ -276,6 +278,23 @@ static int rm_func(int argc, char **argv)
   return 0;
 }
 
+static int df_func(int argc, char **argv)
+{
+  size_t total, used;
+  int ret = esp_littlefs_mountpoint_info(STORAGE_MOUNTPOINT, &total, &used);
+  if (ret != ESP_OK)
+  {
+    printf("Failed to get storage info: %s\n", esp_err_to_name(ret));
+    return 1;
+  }
+
+  printf("Used:  %8zu bytes (%u%%)\n", used, (used * 100) / total);
+  printf("Free:  %8zu bytes (%u%%)\n", total - used, ((total - used) * 100) / total);
+  printf("Total: %8zu bytes\n", total);
+
+  return 0;
+}
+
 esp_err_t console_init()
 {
   // Block on stdin and stdout
@@ -395,6 +414,14 @@ esp_err_t console_init()
   };
   err = esp_console_cmd_register(&cmd_rm);
   ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register rm command: %s", esp_err_to_name(err));
+
+  esp_console_cmd_t cmd_df = {
+      .command = "df",
+      .help = "Print storage usage",
+      .func = &df_func,
+  };
+  err = esp_console_cmd_register(&cmd_df);
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register df command: %s", esp_err_to_name(err));
 
   xTaskCreate(console_task, "console", 4096, NULL, 15, NULL);
 

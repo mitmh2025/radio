@@ -614,7 +614,7 @@ esp_err_t storage_mount()
   }
 
   esp_vfs_littlefs_conf_t conf = {
-      .base_path = "/data",
+      .base_path = STORAGE_MOUNTPOINT,
       .format_if_mount_failed = true,
   };
   esp_vfs_littlefs_custom_conf_t custom = {
