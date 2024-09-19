@@ -259,6 +259,8 @@ static esp_err_t flash_read(block_flash_t *flash, size_t addr, void *buffer, siz
     return ESP_ERR_INVALID_ARG;
   }
 
+  ESP_LOGV(RADIO_TAG, "Reading %zu bytes from flash at 0x%08zx", size, addr);
+
   esp_err_t ret = ESP_OK;
 
   xSemaphoreTake(flash->mutex, portMAX_DELAY);
@@ -301,6 +303,8 @@ static esp_err_t flash_write(block_flash_t *flash, size_t addr, const void *buff
     return ESP_ERR_INVALID_ARG;
   }
 
+  ESP_LOGV(RADIO_TAG, "Writing %zu bytes to flash at 0x%08zx", size, addr);
+
   esp_err_t ret = ESP_OK;
   xSemaphoreTake(flash->mutex, portMAX_DELAY);
   ESP_GOTO_ON_ERROR(flash_wait_ready(flash, portMAX_DELAY), cleanup, RADIO_TAG, "SPI flash did not become ready");
@@ -323,9 +327,15 @@ static esp_err_t flash_write(block_flash_t *flash, size_t addr, const void *buff
                     "Failed to write to SPI flash: addr 0x%08zx, size %zu",
                     addr, size);
 
-  // Typical page program time is 0.4ms with a max of 3ms
+  int64_t start = esp_timer_get_time();
+  // Typical page program time is 0.4ms with a max of 3ms, but allow up to 100
   ets_delay_us(400);
-  ESP_GOTO_ON_ERROR(flash_wait_ready(flash, pdMS_TO_TICKS(4)), cleanup, RADIO_TAG, "SPI flash did not become ready after write");
+  ESP_GOTO_ON_ERROR(flash_wait_ready(flash, pdMS_TO_TICKS(100)), cleanup, RADIO_TAG, "SPI flash did not become ready after write");
+  int64_t end = esp_timer_get_time();
+  if (end - start > 4000)
+  {
+    ESP_LOGW(RADIO_TAG, "SPI flash write of %zu bytes took %lldus", size, end - start);
+  }
 
 cleanup:
   xSemaphoreGive(flash->mutex);
@@ -343,6 +353,8 @@ static esp_err_t flash_erase(block_flash_t *flash, size_t addr)
   {
     return ESP_ERR_INVALID_ARG;
   }
+
+  ESP_LOGV(RADIO_TAG, "Erasing sector at 0x%08zx", addr);
 
   esp_err_t ret = ESP_OK;
   xSemaphoreTake(flash->mutex, portMAX_DELAY);
@@ -364,9 +376,15 @@ static esp_err_t flash_erase(block_flash_t *flash, size_t addr)
                     "Failed to erase SPI flash: addr 0x%08zx",
                     addr);
 
-  // Typical sector erase time is 45ms with max of 400ms
+  int64_t start = esp_timer_get_time();
+  // Typical sector erase time is 45ms with max of 400ms, but allow up to 1 second
   vTaskDelay(pdMS_TO_TICKS(45));
-  ESP_GOTO_ON_ERROR(flash_wait_ready(flash, pdMS_TO_TICKS(400)), cleanup, RADIO_TAG, "SPI flash did not become ready after erase");
+  ESP_GOTO_ON_ERROR(flash_wait_ready(flash, pdMS_TO_TICKS(1000)), cleanup, RADIO_TAG, "SPI flash did not become ready after erase");
+  int64_t end = esp_timer_get_time();
+  if (end - start > 401000)
+  {
+    ESP_LOGW(RADIO_TAG, "SPI flash erase took %lldus", end - start);
+  }
 
 cleanup:
   xSemaphoreGive(flash->mutex);
