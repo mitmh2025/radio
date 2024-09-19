@@ -1,5 +1,6 @@
 #include "storage.h"
 #include "main.h"
+#include "things.h"
 
 #include "esp_log.h"
 #include "esp_check.h"
@@ -86,6 +87,15 @@ typedef struct
   // Track whether the flash is known ready for a read or write command. (If
   // false, we need to wait until the busy status bit is cleared)
   bool ready;
+
+  struct
+  {
+    int64_t read_ops;
+    int64_t read_bytes;
+    int64_t write_ops;
+    int64_t write_bytes;
+    int64_t erase_ops;
+  } stats;
 } block_flash_t;
 
 #define BLOCK_FLASH_WRITE_MAX_SIZE 256
@@ -100,6 +110,52 @@ static sdmmc_card_t block_sdmmc_card;
 
 SemaphoreHandle_t storage_mounted_mutex = NULL;
 static bool storage_mounted = false;
+
+static void storage_telemetry_generator()
+{
+  if (block_type == BLOCK_FLASH)
+  {
+    int64_t total_read_ops = 0;
+    int64_t total_read_bytes = 0;
+    int64_t total_write_ops = 0;
+    int64_t total_write_bytes = 0;
+    int64_t total_erase_ops = 0;
+
+    for (int i = 0; i < BLOCK_FLASH_COUNT; i++)
+    {
+      xSemaphoreTake(block_flash[i].mutex, portMAX_DELAY);
+      total_read_ops += block_flash[i].stats.read_ops;
+      total_read_bytes += block_flash[i].stats.read_bytes;
+      total_write_ops += block_flash[i].stats.write_ops;
+      total_write_bytes += block_flash[i].stats.write_bytes;
+      total_erase_ops += block_flash[i].stats.erase_ops;
+      xSemaphoreGive(block_flash[i].mutex);
+    }
+
+    things_send_telemetry_int("storage_read_ops", total_read_ops);
+    things_send_telemetry_int("storage_read_bytes", total_read_bytes);
+    things_send_telemetry_int("storage_write_ops", total_write_ops);
+    things_send_telemetry_int("storage_write_bytes", total_write_bytes);
+    things_send_telemetry_int("storage_erase_ops", total_erase_ops);
+  }
+
+  xSemaphoreTake(storage_mounted_mutex, portMAX_DELAY);
+  bool mounted = storage_mounted;
+  xSemaphoreGive(storage_mounted_mutex);
+
+  things_send_telemetry_bool("storage_mounted", mounted);
+
+  if (mounted)
+  {
+    size_t used_bytes, total_bytes;
+    esp_err_t err = esp_littlefs_mountpoint_info(STORAGE_MOUNTPOINT, &total_bytes, &used_bytes);
+    if (err == ESP_OK)
+    {
+      things_send_telemetry_int("storage_used_bytes", used_bytes);
+      things_send_telemetry_int("storage_total_bytes", total_bytes);
+    }
+  }
+}
 
 // Must hold mutex before calling this
 static esp_err_t flash_wait_ready(block_flash_t *flash, TickType_t timeout)
@@ -281,6 +337,8 @@ static esp_err_t flash_read(block_flash_t *flash, size_t addr, void *buffer, siz
   ESP_GOTO_ON_ERROR(spi_device_transmit(flash->handle, &txn.base), cleanup, RADIO_TAG,
                     "Failed to read from SPI flash: addr 0x%08zx, size %zu",
                     addr, size);
+  flash->stats.read_ops++;
+  flash->stats.read_bytes += size;
 
 cleanup:
   xSemaphoreGive(flash->mutex);
@@ -337,6 +395,9 @@ static esp_err_t flash_write(block_flash_t *flash, size_t addr, const void *buff
     ESP_LOGW(RADIO_TAG, "SPI flash write of %zu bytes took %lldus", size, end - start);
   }
 
+  flash->stats.write_ops++;
+  flash->stats.write_bytes += size;
+
 cleanup:
   xSemaphoreGive(flash->mutex);
   return ret;
@@ -386,6 +447,8 @@ static esp_err_t flash_erase(block_flash_t *flash, size_t addr)
     ESP_LOGW(RADIO_TAG, "SPI flash erase took %lldus", end - start);
   }
 
+  flash->stats.erase_ops++;
+
 cleanup:
   xSemaphoreGive(flash->mutex);
   return ret;
@@ -434,39 +497,42 @@ esp_err_t storage_init(void)
     ESP_RETURN_ON_ERROR(spi_bus_add_device(SPI2_HOST, &dev_cfg, &device), RADIO_TAG, "Failed to initialize second SPI bus device");
     ESP_RETURN_ON_ERROR(flash_init(&block_flash[1], device), RADIO_TAG, "Failed to initialize second SPI flash");
     block_type = BLOCK_FLASH;
-    return ESP_OK;
   }
-  else if (err != ESP_ERR_NOT_FOUND)
+  else if (err == ESP_ERR_NOT_FOUND)
+  {
+    // Otherwise, we don't have flash chips, so tear down the SPI infrastructure
+    // and try again with microSD
+    ESP_RETURN_ON_ERROR(spi_bus_remove_device(device), RADIO_TAG, "Failed to remove non-present SPI flash");
+    ESP_RETURN_ON_ERROR(spi_bus_free(SPI2_HOST), RADIO_TAG, "Failed to deinitialize SPI bus");
+
+    spi_bus_config.data2_io_num = GPIO_NUM_NC;
+    spi_bus_config.data3_io_num = GPIO_NUM_NC;
+    spi_bus_config.flags = SPICOMMON_BUSFLAG_MASTER;
+    ESP_RETURN_ON_ERROR(spi_bus_initialize(SPI2_HOST, &spi_bus_config, SPI_DMA_CH_AUTO), RADIO_TAG, "Failed to initialize SPI bus for microSD");
+    ESP_RETURN_ON_ERROR(sdspi_host_init(), RADIO_TAG, "Failed to initialize SD SPI driver");
+    sdspi_device_config_t sdspi_device_config = {
+        .gpio_cd = RADIO_SPI_PIN_SD_CD,
+        .gpio_cs = RADIO_SPI_PIN_SD_CS,
+        .gpio_int = GPIO_NUM_NC,
+        .gpio_wp = GPIO_NUM_NC,
+        .host_id = SPI2_HOST,
+    };
+    sdspi_dev_handle_t block_sdspi_handle;
+    ESP_RETURN_ON_ERROR(sdspi_host_init_device(&sdspi_device_config, &block_sdspi_handle), RADIO_TAG, "Failed to initialize SD SPI device");
+
+    sdmmc_host_t block_sdmmc_host = SDSPI_HOST_DEFAULT();
+    block_sdmmc_host.slot = block_sdspi_handle;
+    ESP_RETURN_ON_ERROR(sdmmc_card_init(&block_sdmmc_host, &block_sdmmc_card), RADIO_TAG, "Failed to initialize SD card");
+
+    ESP_LOGI(RADIO_TAG, "Detected SD card with %d sectors of size %d", block_sdmmc_card.csd.capacity, block_sdmmc_card.csd.sector_size);
+    block_type = BLOCK_SD_CARD;
+  }
+  else
   {
     return err;
   }
 
-  // Otherwise, we don't have flash chips, so tear down the SPI infrastructure
-  // and try again with microSD
-  ESP_RETURN_ON_ERROR(spi_bus_remove_device(device), RADIO_TAG, "Failed to remove non-present SPI flash");
-  ESP_RETURN_ON_ERROR(spi_bus_free(SPI2_HOST), RADIO_TAG, "Failed to deinitialize SPI bus");
-
-  spi_bus_config.data2_io_num = GPIO_NUM_NC;
-  spi_bus_config.data3_io_num = GPIO_NUM_NC;
-  spi_bus_config.flags = SPICOMMON_BUSFLAG_MASTER;
-  ESP_RETURN_ON_ERROR(spi_bus_initialize(SPI2_HOST, &spi_bus_config, SPI_DMA_CH_AUTO), RADIO_TAG, "Failed to initialize SPI bus for microSD");
-  ESP_RETURN_ON_ERROR(sdspi_host_init(), RADIO_TAG, "Failed to initialize SD SPI driver");
-  sdspi_device_config_t sdspi_device_config = {
-      .gpio_cd = RADIO_SPI_PIN_SD_CD,
-      .gpio_cs = RADIO_SPI_PIN_SD_CS,
-      .gpio_int = GPIO_NUM_NC,
-      .gpio_wp = GPIO_NUM_NC,
-      .host_id = SPI2_HOST,
-  };
-  sdspi_dev_handle_t block_sdspi_handle;
-  ESP_RETURN_ON_ERROR(sdspi_host_init_device(&sdspi_device_config, &block_sdspi_handle), RADIO_TAG, "Failed to initialize SD SPI device");
-
-  sdmmc_host_t block_sdmmc_host = SDSPI_HOST_DEFAULT();
-  block_sdmmc_host.slot = block_sdspi_handle;
-  ESP_RETURN_ON_ERROR(sdmmc_card_init(&block_sdmmc_host, &block_sdmmc_card), RADIO_TAG, "Failed to initialize SD card");
-
-  ESP_LOGI(RADIO_TAG, "Detected SD card with %d sectors of size %d", block_sdmmc_card.csd.capacity, block_sdmmc_card.csd.sector_size);
-  block_type = BLOCK_SD_CARD;
+  things_register_telemetry_generator(storage_telemetry_generator);
 
   return ESP_OK;
 }
