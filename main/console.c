@@ -215,6 +215,79 @@ static int list_func(int argc, char **argv)
   return 0;
 }
 
+static struct
+{
+  struct arg_str *path;
+  struct arg_end *end;
+} cat_args;
+
+static int cat_func(int argc, char **argv)
+{
+  int nerrors = arg_parse(argc, argv, (void **)&cat_args);
+
+  if (nerrors != 0)
+  {
+    arg_print_errors(stderr, cat_args.end, argv[0]);
+    return 1;
+  }
+
+  if (cat_args.path->count == 0)
+  {
+    arg_print_syntax(stderr, (void **)&cat_args, argv[0]);
+    return 1;
+  }
+
+  FILE *file = fopen(cat_args.path->sval[0], "r");
+  if (file == NULL)
+  {
+    printf("Failed to open file: %s\n", strerror(errno));
+    return 1;
+  }
+
+  char buffer[1024];
+  size_t read;
+  while ((read = fread(buffer, 1, sizeof(buffer), file)) > 0)
+  {
+    fwrite(buffer, 1, read, stdout);
+  }
+
+  fclose(file);
+  printf("\n");
+
+  return 0;
+}
+
+static struct
+{
+  struct arg_str *path;
+  struct arg_end *end;
+} rm_args;
+
+static int rm_func(int argc, char **argv)
+{
+  int nerrors = arg_parse(argc, argv, (void **)&rm_args);
+
+  if (nerrors != 0)
+  {
+    arg_print_errors(stderr, rm_args.end, argv[0]);
+    return 1;
+  }
+
+  if (rm_args.path->count == 0)
+  {
+    arg_print_syntax(stderr, (void **)&rm_args, argv[0]);
+    return 1;
+  }
+
+  if (unlink(rm_args.path->sval[0]) != 0)
+  {
+    printf("Failed to remove file: %s\n", strerror(errno));
+    return 1;
+  }
+
+  return 0;
+}
+
 esp_err_t console_init()
 {
   // Block on stdin and stdout
@@ -317,6 +390,31 @@ esp_err_t console_init()
       .argtable = &list_args,
   };
   err = esp_console_cmd_register(&cmd_list);
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register ls command: %s", esp_err_to_name(err));
+
+  cat_args.path = arg_str1(NULL, NULL, "<path>", "File to display");
+  cat_args.end = arg_end(1);
+  esp_console_cmd_t cmd_cat = {
+      .command = "cat",
+      .help = "Display the contents of a file",
+      .hint = NULL,
+      .func = &cat_func,
+      .argtable = &cat_args,
+  };
+  err = esp_console_cmd_register(&cmd_cat);
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register cat command: %s", esp_err_to_name(err));
+
+  rm_args.path = arg_str1(NULL, NULL, "<path>", "File to remove");
+  rm_args.end = arg_end(1);
+  esp_console_cmd_t cmd_rm = {
+      .command = "rm",
+      .help = "Remove a file",
+      .hint = NULL,
+      .func = &rm_func,
+      .argtable = &rm_args,
+  };
+  err = esp_console_cmd_register(&cmd_rm);
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register rm command: %s", esp_err_to_name(err));
 
   xTaskCreate(console_task, "console", 4096, NULL, 15, NULL);
 
