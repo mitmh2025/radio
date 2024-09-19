@@ -31,7 +31,7 @@ board_i2c_init()
       .scl_io_num = GPIO_NUM_40,
       .sda_io_num = GPIO_NUM_41,
       .glitch_ignore_cnt = 7,
-      .flags.enable_internal_pullup = false,
+      .flags.enable_internal_pullup = true,
   };
 
   esp_err_t ret = i2c_new_master_bus(&i2c_cfg, &i2c_handle);
