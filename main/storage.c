@@ -408,6 +408,7 @@ esp_err_t storage_init(void)
       .sclk_io_num = RADIO_SPI_PIN_CLK,
       .isr_cpu_id = ESP_INTR_CPU_AFFINITY_0,
       .flags = SPICOMMON_BUSFLAG_MASTER | SPICOMMON_BUSFLAG_QUAD,
+      .max_transfer_sz = 4096,
   };
   ESP_RETURN_ON_ERROR(spi_bus_initialize(SPI2_HOST, &spi_bus_config, SPI_DMA_CH_AUTO), RADIO_TAG, "Failed to initialize SPI bus for SPI flash");
 
@@ -473,9 +474,8 @@ esp_err_t storage_init(void)
 int block_read(void *context, uint32_t block, uint32_t offset, void *buffer, size_t size)
 {
   // Need to split the read across chips if it crosses a chip boundary and also
-  // account for the SPI max read size of 4092 bytes, so split into chunks of
-  // 2048
-  size_t read_sector_size = 2048;
+  // account for the SPI max read size of 4096 bytes
+  size_t read_sector_size = 4096;
 
   size_t start_addr = (size_t)block * BLOCK_FLASH_ERASE_SIZE + offset;
   size_t end_addr = start_addr + size;
