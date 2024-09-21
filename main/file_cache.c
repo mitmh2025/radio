@@ -637,7 +637,7 @@ static void file_cache_task(void *context)
     if (err != ESP_OK)
     {
       ESP_LOGE(RADIO_TAG, "Failed to refresh file cache: %d (%s); retrying in 10 seconds", err, esp_err_to_name(err));
-      vTaskDelay(pdMS_TO_TICKS(10000));
+      xTaskNotifyWait(0, ULONG_MAX, NULL, pdMS_TO_TICKS(10000));
       continue;
     }
 
