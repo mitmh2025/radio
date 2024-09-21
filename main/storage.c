@@ -482,7 +482,7 @@ esp_err_t storage_init(void)
       .address_bits = 0,
       .dummy_bits = 0,
       .spics_io_num = RADIO_SPI_PIN_CS1,
-      .clock_speed_hz = 20000000,
+      .clock_speed_hz = SPI_MASTER_FREQ_40M,
       .queue_size = 1,
       .flags = SPI_DEVICE_HALFDUPLEX,
   };
