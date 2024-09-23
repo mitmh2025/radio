@@ -28,35 +28,48 @@
 #include "esp_vfs_dev.h"
 #include "driver/usb_serial_jtag.h"
 #include "esp_ota_ops.h"
-#include "esp_adc/adc_oneshot.h"
 
 const char *RADIO_TAG = "radio";
 
 EventGroupHandle_t radio_event_group;
 
-void dac_volume_output_task(void *arg)
+static bool volume_increasing = true;
+static uint8_t last_volume_setting = 0;
+static uint32_t average_volume = 0;
+void dac_volume_callback(adc_digi_output_data_t *result)
 {
-  adc_oneshot_unit_handle_t adc_unit = adc_get_handle();
+  uint32_t new_volume = average_volume - (average_volume >> 3) + (result->type2.data >> 3);
 
-  adc_channel_t channel = VOLUME_ADC_CHANNEL;
-  adc_oneshot_chan_cfg_t chan_cfg = {
-      .atten = ADC_ATTEN_DB_12,
-      .bitwidth = ADC_BITWIDTH_12,
-  };
-  esp_err_t err = adc_oneshot_config_channel(adc_unit, channel, &chan_cfg);
-  if (err != ESP_OK)
+  // Take volume reading down from 12 to 8 bits
+  uint8_t new_volume_setting = new_volume >> 4;
+
+  // If volume was already increasing, pass through any increase. If not,
+  // require 2 steps to introduce some hysteresis. Same for decreasing.
+  if (new_volume_setting - last_volume_setting > (volume_increasing ? 1 : 2))
   {
-    ESP_LOGE(RADIO_TAG, "Failed to configure ADC channel: %d (%s)", err, esp_err_to_name(err));
-    vTaskDelete(NULL);
+    volume_increasing = true;
+    last_volume_setting = new_volume_setting;
+    tas2505_set_volume(new_volume_setting);
+  }
+  else if (last_volume_setting - new_volume_setting > (volume_increasing ? 2 : 1))
+  {
+    volume_increasing = false;
+    last_volume_setting = new_volume_setting;
+    tas2505_set_volume(new_volume_setting);
   }
 
+  average_volume = new_volume;
+}
+
+void dac_output_task(void *arg)
+{
   while (1)
   {
 loop:
     vTaskDelay(pdMS_TO_TICKS(100));
 
     bool gpio;
-    err = tas2505_read_gpio(&gpio);
+    esp_err_t err = tas2505_read_gpio(&gpio);
     if (err != ESP_OK)
     {
       ESP_LOGE(RADIO_TAG, "Failed to read GPIO: %d (%s)", err, esp_err_to_name(err));
@@ -70,27 +83,6 @@ loop:
     else
     {
       tas2505_set_output(TAS2505_OUTPUT_HEADPHONE);
-    }
-
-    int volume_total = 0;
-    for (int i = 0; i < 16; i++)
-    {
-      int volume;
-      err = adc_oneshot_read(adc_unit, channel, &volume);
-      if (err != ESP_OK)
-      {
-        ESP_LOGE(RADIO_TAG, "Failed to read ADC: %d (%s)", err, esp_err_to_name(err));
-        goto loop;
-      }
-      volume_total += volume;
-    }
-    // Shift down by 8 bits: 4 bits for the average and 4 bits to get from
-    // 12-bit ADC precision to 8-bit volume
-    err = tas2505_set_volume(volume_total >> 8);
-    if (err != ESP_OK)
-    {
-      ESP_LOGE(RADIO_TAG, "Failed to set volume: %d (%s)", err, esp_err_to_name(err));
-      goto loop;
     }
   }
 }
@@ -264,8 +256,8 @@ void app_main(void)
     return;
   }
 
-  ESP_ERROR_CHECK(wifi_init());
   ESP_ERROR_CHECK(adc_init());
+  ESP_ERROR_CHECK(wifi_init());
   ESP_ERROR_CHECK(board_i2c_init());
   ESP_ERROR_CHECK(battery_init());
   ESP_ERROR_CHECK(tas2505_init());
@@ -274,7 +266,14 @@ void app_main(void)
   ESP_ERROR_CHECK(webrtc_init());
   ESP_ERROR_CHECK(file_cache_init());
 
-  xTaskCreate(dac_volume_output_task, "dac_volume_output", 4096, NULL, 5, NULL);
+  ESP_ERROR_CHECK(adc_subscribe(&(adc_digi_pattern_config_t){
+                                    .atten = ADC_ATTEN_DB_12,
+                                    .channel = VOLUME_ADC_CHANNEL,
+                                    .unit = ADC_UNIT_1,
+                                    .bit_width = 12,
+                                },
+                                dac_volume_callback));
+  xTaskCreate(dac_output_task, "dac_output", 4096, NULL, 5, NULL);
 
   if (!(xEventGroupGetBits(radio_event_group) & RADIO_EVENT_GROUP_THINGS_PROVISIONED))
   {

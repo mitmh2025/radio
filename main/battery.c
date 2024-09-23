@@ -7,30 +7,36 @@
 
 #include "esp_log.h"
 #include "esp_check.h"
-#include "esp_adc/adc_oneshot.h"
+#include "esp_adc/adc_cali.h"
+#include "esp_adc/adc_cali_scheme.h"
 
+static uint32_t battery_average = 0;
 static adc_cali_handle_t battery_adc_cali;
 static i2c_master_dev_handle_t battery_i2c_device;
 
-static void battery_telemetry_generator()
+static void battery_adc_callback(adc_digi_output_data_t *result)
 {
-  int battery_sample_sum = 0;
-  int battery_sample_count = 64;
-  esp_err_t err = ESP_OK;
-
-  for (int i = 0; i < battery_sample_count; i++)
+  if (battery_average == 0)
   {
-    int sample;
-    err = adc_oneshot_get_calibrated_result(adc_get_handle(), battery_adc_cali, BATTERY_ADC_CHANNEL, &sample);
-    if (err != ESP_OK)
-    {
-      ESP_LOGE(RADIO_TAG, "Failed to get raw ADC sample: %d (%s)", err, esp_err_to_name(err));
-      return;
-    }
-    battery_sample_sum += sample;
+    battery_average = result->type2.data;
+    return;
   }
 
-  things_send_telemetry_float("battery_voltage", (battery_sample_sum / (float)battery_sample_count) * BATTERY_SCALE_FACTOR);
+  battery_average = battery_average - (battery_average >> 3) + (result->type2.data >> 3);
+}
+
+static void battery_telemetry_generator()
+{
+  int millivolts;
+  esp_err_t err = adc_cali_raw_to_voltage(battery_adc_cali, battery_average, &millivolts);
+  if (err != ESP_OK)
+  {
+    ESP_LOGE(RADIO_TAG, "Failed to convert ADC reading to voltage: %d (%s)", err, esp_err_to_name(err));
+  }
+  else
+  {
+    things_send_telemetry_float("battery_voltage", (float)millivolts * BATTERY_SCALE_FACTOR);
+  }
 
   uint8_t addr = IP5306_REG_READ0;
   ip5306_reg_read0_t reg0_value;
@@ -63,22 +69,21 @@ cleanup:
 
 esp_err_t battery_init()
 {
-  adc_channel_t channel = BATTERY_ADC_CHANNEL;
-  adc_oneshot_chan_cfg_t chan_cfg = {
+  adc_digi_pattern_config_t adc_cfg = {
       .atten = ADC_ATTEN_DB_12,
-      .bitwidth = ADC_BITWIDTH_DEFAULT,
+      .channel = BATTERY_ADC_CHANNEL,
+      .unit = ADC_UNIT_1,
+      .bit_width = 12,
   };
-  esp_err_t err = adc_oneshot_config_channel(adc_get_handle(), channel, &chan_cfg);
-  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to configure ADC channel");
+  ESP_RETURN_ON_ERROR(adc_subscribe(&adc_cfg, battery_adc_callback), RADIO_TAG, "Failed to subscribe to ADC channel");
 
   adc_cali_curve_fitting_config_t cali_cfg = {
-      .atten = chan_cfg.atten,
-      .bitwidth = chan_cfg.bitwidth,
-      .unit_id = ADC_UNIT_1,
-      .chan = channel,
+      .atten = adc_cfg.atten,
+      .bitwidth = adc_cfg.bit_width,
+      .unit_id = adc_cfg.unit,
+      .chan = adc_cfg.channel,
   };
-  err = adc_cali_create_scheme_curve_fitting(&cali_cfg, &battery_adc_cali);
-  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to create calibration scheme");
+  ESP_RETURN_ON_ERROR(adc_cali_create_scheme_curve_fitting(&cali_cfg, &battery_adc_cali), RADIO_TAG, "Failed to create calibration scheme");
 
   i2c_master_bus_handle_t i2c_bus = board_i2c_get_handle();
   if (i2c_bus == NULL)
@@ -88,7 +93,7 @@ esp_err_t battery_init()
   }
 
   BOARD_I2C_MUTEX_LOCK();
-  err = i2c_master_probe(i2c_bus, IP5306_I2C_ADDR, 100);
+  esp_err_t err = i2c_master_probe(i2c_bus, IP5306_I2C_ADDR, 100);
   BOARD_I2C_MUTEX_UNLOCK();
   ESP_RETURN_ON_ERROR(err, RADIO_TAG, "i2c_master_probe failed");
 
