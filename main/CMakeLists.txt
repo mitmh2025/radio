@@ -4,6 +4,7 @@ idf_component_register(
   battery.c
   console.c
   file_cache.c
+  led.c
   main.c
   storage.c
   tas2505.c

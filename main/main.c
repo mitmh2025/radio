@@ -5,6 +5,7 @@
 #include "board.h"
 #include "console.h"
 #include "file_cache.h"
+#include "led.h"
 #include "storage.h"
 #include "tas2505.h"
 #include "things.h"
@@ -176,7 +177,7 @@ static void on_webrtc_state_change(webrtc_connection_t conn, void *context, WEBR
 {
   if (state == WEBRTC_CONNECTION_STATE_CONNECTED)
   {
-    xTaskCreate(webrtc_pipeline_start, "webrtc_pipeline", 4096, conn, 10, &webrtc_pipeline_task);
+    xTaskCreatePinnedToCore(webrtc_pipeline_start, "webrtc_pipeline", 4096, conn, 10, &webrtc_pipeline_task, 1);
   }
 }
 
@@ -257,6 +258,7 @@ void app_main(void)
   }
 
   ESP_ERROR_CHECK(adc_init());
+  ESP_ERROR_CHECK(led_init());
   ESP_ERROR_CHECK(wifi_init());
   ESP_ERROR_CHECK(board_i2c_init());
   ESP_ERROR_CHECK(battery_init());

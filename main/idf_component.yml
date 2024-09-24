@@ -1,4 +1,5 @@
 dependencies:
+  espressif/led_strip: "^2.5.5"
   thingsboard/ThingsBoard:
     git: https://github.com/ebroder/thingsboard-client-sdk
     version: 68211abb731065d7b5ea441c93eaaa242c72855b

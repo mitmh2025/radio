@@ -61,6 +61,8 @@ i2c_master_bus_handle_t board_i2c_get_handle(void);
 
 #define VOLUME_ADC_CHANNEL ADC_CHANNEL_0
 
+#define LED_PIN GPIO_NUM_48
+
 #ifdef __cplusplus
 }
 #endif

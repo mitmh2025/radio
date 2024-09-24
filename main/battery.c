@@ -1,7 +1,8 @@
 #include "battery.h"
-#include "things.h"
 #include "main.h"
 #include "adc.h"
+#include "led.h"
+#include "things.h"
 
 #include "board.h"
 
@@ -10,9 +11,71 @@
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
 
+#define DISCHARGE_LOW_BATTERY_THRESHOLD_MV 2500 // 3.7V is roughly 20% of an 18650 * our 2/3 voltage divider
+#define CHARGE_LOW_BATTERY_THRESHOLD 2667       // 4V * 2/3 is roughly 50% charged, but we want to encourage leaving the radio plugged in
+static uint32_t discharge_low_battery_threshold_raw = 0;
+static uint32_t charge_low_battery_threshold_raw = 0;
+
+typedef enum
+{
+  BATTERY_CHARGED,
+  BATTERY_CHARGING,
+  BATTERY_DISCHARGING,
+} battery_status_t;
+
+struct color
+{
+  uint32_t red;
+  uint32_t green;
+  uint32_t blue;
+};
+
+static struct color charged_color = {
+    .red = 10,
+    .green = 64,
+    .blue = 0,
+};
+
+static struct color charging_discharding_color = {
+    .red = 64,
+    .green = 25,
+    .blue = 0,
+};
+
+static struct color low_color = {
+    .red = 64,
+    .green = 0,
+    .blue = 0,
+};
+
 static uint32_t battery_average = 0;
+static bool battery_low = false;
 static adc_cali_handle_t battery_adc_cali;
 static i2c_master_dev_handle_t battery_i2c_device;
+static battery_status_t battery_status = BATTERY_DISCHARGING;
+
+static void battery_update_led()
+{
+  if (battery_low)
+  {
+    led_set_pixel(0, low_color.red, low_color.green, low_color.blue);
+  }
+  else
+  {
+    switch (battery_status)
+    {
+    case BATTERY_CHARGED:
+      led_set_pixel(0, charged_color.red, charged_color.green, charged_color.blue);
+      break;
+    case BATTERY_CHARGING:
+    case BATTERY_DISCHARGING:
+      led_set_pixel(0, charging_discharding_color.red, charging_discharding_color.green, charging_discharding_color.blue);
+      break;
+    default:
+      break;
+    }
+  }
+}
 
 static void battery_adc_callback(adc_digi_output_data_t *result)
 {
@@ -23,6 +86,17 @@ static void battery_adc_callback(adc_digi_output_data_t *result)
   }
 
   battery_average = battery_average - (battery_average >> 3) + (result->type2.data >> 3);
+
+  if (battery_status == BATTERY_DISCHARGING && battery_average < discharge_low_battery_threshold_raw)
+  {
+    battery_low = battery_low || true;
+    battery_update_led();
+  }
+  else if (battery_status != BATTERY_DISCHARGING && battery_average > charge_low_battery_threshold_raw)
+  {
+    battery_low = false;
+    battery_update_led();
+  }
 }
 
 static void battery_telemetry_generator()
@@ -38,32 +112,62 @@ static void battery_telemetry_generator()
     things_send_telemetry_float("battery_voltage", (float)millivolts * BATTERY_SCALE_FACTOR);
   }
 
-  uint8_t addr = IP5306_REG_READ0;
-  ip5306_reg_read0_t reg0_value;
-  ip5306_reg_read1_t reg1_value;
-  BOARD_I2C_MUTEX_LOCK();
-  err = i2c_master_transmit_receive(battery_i2c_device, &addr, 1, &reg0_value.raw, 1, -1);
-  if (err != ESP_OK)
+  const char *status;
+  switch (battery_status)
   {
-    ESP_LOGE(RADIO_TAG, "Failed to read IP5306 register 0");
-    goto cleanup;
+  case BATTERY_CHARGED:
+    status = "charged";
+    break;
+  case BATTERY_CHARGING:
+    status = "charging";
+    break;
+  case BATTERY_DISCHARGING:
+    status = "discharging";
+    break;
+  default:
+    status = "unknown";
+    break;
   }
-  addr = IP5306_REG_READ1;
-  err = i2c_master_transmit_receive(battery_i2c_device, &addr, 1, &reg1_value.raw, 1, -1);
-  if (err != ESP_OK)
-  {
-    ESP_LOGE(RADIO_TAG, "Failed to read IP5306 register 1");
-    goto cleanup;
-  }
+  things_send_telemetry_string("battery_status", status);
+}
 
-cleanup:
-  BOARD_I2C_MUTEX_UNLOCK();
-
-  if (err == ESP_OK)
+static void battery_monitor(void *context)
+{
+  while (true)
   {
-    things_send_telemetry_string("battery_status",
-                                 !reg0_value.parsed.CHARGE_ENABLE ? "discharging" : reg1_value.parsed.CHARGING ? "charging"
-                                                                                                               : "charged");
+    uint8_t addr = IP5306_REG_READ0;
+    ip5306_reg_read0_t reg0_value;
+    ip5306_reg_read1_t reg1_value;
+    BOARD_I2C_MUTEX_LOCK();
+    esp_err_t err = i2c_master_transmit_receive(battery_i2c_device, &addr, 1, &reg0_value.raw, 1, -1);
+    if (err != ESP_OK)
+    {
+      ESP_LOGE(RADIO_TAG, "Failed to read IP5306 register 0");
+      goto cleanup;
+    }
+    addr = IP5306_REG_READ1;
+    err = i2c_master_transmit_receive(battery_i2c_device, &addr, 1, &reg1_value.raw, 1, -1);
+    if (err != ESP_OK)
+    {
+      ESP_LOGE(RADIO_TAG, "Failed to read IP5306 register 1");
+      goto cleanup;
+    }
+
+  cleanup:
+    BOARD_I2C_MUTEX_UNLOCK();
+    if (err == ESP_OK)
+    {
+      battery_status_t new_status = !reg0_value.parsed.CHARGE_ENABLE ? BATTERY_DISCHARGING : reg1_value.parsed.CHARGING ? BATTERY_CHARGING
+                                                                                                                        : BATTERY_CHARGED;
+      if (new_status != battery_status)
+      {
+        battery_status = new_status;
+        battery_telemetry_generator();
+        battery_update_led();
+      }
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(100));
   }
 }
 
@@ -84,6 +188,27 @@ esp_err_t battery_init()
       .chan = adc_cfg.channel,
   };
   ESP_RETURN_ON_ERROR(adc_cali_create_scheme_curve_fitting(&cali_cfg, &battery_adc_cali), RADIO_TAG, "Failed to create calibration scheme");
+
+  // Figure out at what raw value we consider the battery low (note that we shouldn't get anywhere near max value)
+  for (uint32_t i = 0; i < (1 << 12); i++)
+  {
+    int millivolts;
+    adc_cali_raw_to_voltage(battery_adc_cali, i, &millivolts);
+
+    if (discharge_low_battery_threshold_raw == 0 && millivolts > DISCHARGE_LOW_BATTERY_THRESHOLD_MV)
+    {
+      discharge_low_battery_threshold_raw = i - 1;
+    }
+    if (charge_low_battery_threshold_raw == 0 && millivolts > CHARGE_LOW_BATTERY_THRESHOLD)
+    {
+      charge_low_battery_threshold_raw = i - 1;
+    }
+
+    if (discharge_low_battery_threshold_raw != 0 && charge_low_battery_threshold_raw != 0)
+    {
+      break;
+    }
+  }
 
   i2c_master_bus_handle_t i2c_bus = board_i2c_get_handle();
   if (i2c_bus == NULL)
@@ -108,6 +233,7 @@ esp_err_t battery_init()
   BOARD_I2C_MUTEX_UNLOCK();
   ESP_RETURN_ON_ERROR(err, RADIO_TAG, "i2c_master_bus_add_device failed");
 
+  xTaskCreatePinnedToCore(battery_monitor, "battery_monitor", 4096, NULL, 5, NULL, 0);
   things_register_telemetry_generator(battery_telemetry_generator);
 
   return ESP_OK;

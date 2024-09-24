@@ -81,7 +81,7 @@ esp_err_t adc_init()
   ESP_RETURN_ON_ERROR(adc_continuous_new_handle(&cfg, &adc_handle), RADIO_TAG, "adc_init failed");
 
   TaskHandle_t adc_task_handle = NULL;
-  xTaskCreate(adc_task, "adc_task", 4096, NULL, 10, &adc_task_handle);
+  xTaskCreatePinnedToCore(adc_task, "adc_task", 4096, NULL, 10, &adc_task_handle, 0);
 
   adc_continuous_evt_cbs_t cbs = {
       .on_conv_done = adc_conv_done_cb,
