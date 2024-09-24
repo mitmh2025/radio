@@ -14,6 +14,7 @@ static struct adc_config
   void (*callback)(adc_digi_output_data_t *result);
 } adc_configs[SOC_ADC_MAX_CHANNEL_NUM] = {};
 static adc_continuous_handle_t adc_handle = NULL;
+static bool adc_running = false;
 
 static bool IRAM_ATTR adc_conv_done_cb(adc_continuous_handle_t handle, const adc_continuous_evt_data_t *edata, void *user_data)
 {
@@ -102,6 +103,11 @@ static esp_err_t adc_config_and_start()
     }
   }
 
+  if (pattern_count == 0)
+  {
+    return ESP_OK;
+  }
+
   adc_digi_pattern_config_t patterns[pattern_count] = {};
   for (int i = 0, j = 0; i < SOC_ADC_MAX_CHANNEL_NUM; i++)
   {
@@ -122,6 +128,7 @@ static esp_err_t adc_config_and_start()
 
   ESP_RETURN_ON_ERROR(adc_continuous_start(adc_handle), RADIO_TAG, "Failed to start continuous ADC");
 
+  adc_running = true;
   return ESP_OK;
 }
 
@@ -137,7 +144,10 @@ esp_err_t adc_subscribe(adc_digi_pattern_config_t *config, void (*callback)(adc_
 
   ESP_GOTO_ON_FALSE(!adc_configs[config->channel].populated, ESP_ERR_INVALID_STATE, cleanup, RADIO_TAG, "adc_subscribe channel %d already subscribed", config->channel);
 
-  adc_continuous_stop(adc_handle);
+  if (adc_running)
+  {
+    adc_continuous_stop(adc_handle);
+  }
 
   adc_configs[config->channel].populated = true;
   adc_configs[config->channel].config = *config;
