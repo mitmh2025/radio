@@ -4,12 +4,15 @@
 #include "driver/i2c_master.h"
 #include "esp_check.h"
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 #define TAS2505_RST_GPIO PA_ENABLE_GPIO
 
 const char *TAG = "radio:tas2505";
 
 static i2c_master_dev_handle_t i2c_device;
+static TaskHandle_t telemetry_task = NULL;
 
 #define TAS2505_CFG_OP_SET_REG 0
 #define TAS2505_CFG_OP_SET_BITS 1
@@ -194,11 +197,14 @@ end:
   return ret;
 }
 
-static void tas2505_telemetry_generator()
+static void tas2505_telemetry_task()
 {
-  const char *output;
-  switch (current_output)
+  while (true)
   {
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    const char *output;
+    switch (current_output)
+    {
     case TAS2505_OUTPUT_SPEAKER:
       output = "speaker";
       break;
@@ -210,7 +216,7 @@ static void tas2505_telemetry_generator()
       break;
     default:
       output = "unknown";
-  }
+    }
   things_send_telemetry_string("audio_output", output);
 
   const char *input;
@@ -231,6 +237,15 @@ static void tas2505_telemetry_generator()
   things_send_telemetry_string("audio_input", input);
 
   things_send_telemetry_int("audio_volume", current_volume);
+  }
+}
+
+static void tas2505_telemetry_generator()
+{
+  if (telemetry_task != NULL)
+  {
+    xTaskNotifyGive(telemetry_task);
+  }
 }
 
 esp_err_t tas2505_init()
@@ -278,6 +293,7 @@ esp_err_t tas2505_init()
   tas2505_enable_pa(false);
   tas2505_enable_pa(true);
 
+  xTaskCreate(tas2505_telemetry_task, "tas2505_telemetry", 4096, NULL, 5, &telemetry_task);
   things_register_telemetry_generator(tas2505_telemetry_generator);
 
   return ret;
