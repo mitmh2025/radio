@@ -3,13 +3,18 @@
 #include "board.h"
 
 #include "esp_check.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 
 #include "led_strip.h"
 
+static SemaphoreHandle_t led_mutex = NULL;
 static led_strip_handle_t led = NULL;
 
 esp_err_t led_init()
 {
+  led_mutex = xSemaphoreCreateMutex();
+
   led_strip_config_t config = {
       .strip_gpio_num = LED_PIN,
       .max_leds = 2,
@@ -29,9 +34,15 @@ esp_err_t led_init()
 
 esp_err_t led_set_pixel(uint32_t index, uint32_t red, uint32_t green, uint32_t blue)
 {
-  // Our LEDs seem to be RGB, not GRB but the library expects GRB
-  ESP_RETURN_ON_ERROR(led_strip_set_pixel(led, index, green, red, blue), RADIO_TAG, "led_set_pixel failed");
-  ESP_RETURN_ON_ERROR(led_strip_refresh(led), RADIO_TAG, "led_set_pixel flush failed");
+  xSemaphoreTake(led_mutex, portMAX_DELAY);
 
-  return ESP_OK;
+  esp_err_t ret = ESP_OK;
+
+  // Our LEDs seem to be RGB, not GRB but the library expects GRB
+  ESP_GOTO_ON_ERROR(led_strip_set_pixel(led, index, green, red, blue), cleanup, RADIO_TAG, "led_set_pixel failed");
+  ESP_GOTO_ON_ERROR(led_strip_refresh(led), cleanup, RADIO_TAG, "led_set_pixel flush failed");
+
+cleanup:
+  xSemaphoreGive(led_mutex);
+  return ret;
 }
