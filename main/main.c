@@ -35,8 +35,9 @@ const char *RADIO_TAG = "radio";
 EventGroupHandle_t radio_event_group;
 
 static bool volume_increasing = true;
-static uint8_t last_volume_setting = 0;
-static uint32_t average_volume = 0;
+// TAS2505 defaults to max volume, so start at max volume
+static uint8_t last_volume_setting = 0xff;
+static uint32_t average_volume = 0xfff;
 void dac_volume_callback(adc_digi_output_data_t *result)
 {
   uint32_t new_volume = average_volume - (average_volume >> 3) + (result->type2.data >> 3);
