@@ -14,6 +14,7 @@
 #include "driver/usb_serial_jtag.h"
 #include "freertos/FreeRTOS.h"
 #include "lwip/stats.h"
+#include "driver/gpio.h"
 
 #include "esp_littlefs.h"
 
@@ -101,6 +102,12 @@ static int tasks_func(int argc, char **argv)
 static int lwip_func(int argc, char **argv)
 {
   stats_display();
+  return 0;
+}
+
+static int gpio_func(int argc, char **argv)
+{
+  gpio_dump_io_configuration(stdout, SOC_GPIO_VALID_GPIO_MASK);
   return 0;
 }
 
@@ -357,6 +364,14 @@ esp_err_t console_init()
   };
   err = esp_console_cmd_register(&cmd_lwip);
   ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register lwip command: %s", esp_err_to_name(err));
+
+  esp_console_cmd_t cmd_gpio = {
+      .command = "gpio",
+      .help = "Print GPIO configuration",
+      .func = &gpio_func,
+  };
+  err = esp_console_cmd_register(&cmd_gpio);
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register gpio command: %s", esp_err_to_name(err));
 
   provision_args.token = arg_str1(NULL, NULL, "<token>", "ThingsBoard device token");
   provision_args.end = arg_end(1);
