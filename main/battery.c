@@ -53,6 +53,7 @@ static bool battery_low = false;
 static adc_cali_handle_t battery_adc_cali;
 static i2c_master_dev_handle_t battery_i2c_device;
 static battery_status_t battery_status = BATTERY_DISCHARGING;
+static TaskHandle_t battery_monitor_task_handle = NULL;
 
 static void battery_update_led()
 {
@@ -87,15 +88,25 @@ static void battery_adc_callback(adc_digi_output_data_t *result)
 
   battery_average = battery_average - (battery_average >> 3) + (result->type2.data >> 3);
 
-  if (battery_status == BATTERY_DISCHARGING && battery_average < discharge_low_battery_threshold_raw)
+  if (battery_status == BATTERY_DISCHARGING &&
+      battery_average < discharge_low_battery_threshold_raw &&
+      !battery_low)
   {
-    battery_low = battery_low || true;
-    battery_update_led();
+    battery_low = true;
+    if (battery_monitor_task_handle != NULL)
+    {
+      xTaskNotify(battery_monitor_task_handle, 0, eNoAction);
+    }
   }
-  else if (battery_status != BATTERY_DISCHARGING && battery_average > charge_low_battery_threshold_raw)
+  else if (battery_status != BATTERY_DISCHARGING &&
+           battery_average > charge_low_battery_threshold_raw &&
+           battery_low)
   {
     battery_low = false;
-    battery_update_led();
+    if (battery_monitor_task_handle != NULL)
+    {
+      xTaskNotify(battery_monitor_task_handle, 0, eNoAction);
+    }
   }
 }
 
@@ -163,11 +174,11 @@ static void battery_monitor(void *context)
       {
         battery_status = new_status;
         battery_telemetry_generator();
-        battery_update_led();
       }
     }
 
-    vTaskDelay(pdMS_TO_TICKS(100));
+    battery_update_led();
+    xTaskNotifyWait(0, ULONG_MAX, NULL, pdMS_TO_TICKS(1000));
   }
 }
 
@@ -179,8 +190,6 @@ esp_err_t battery_init()
       .unit = ADC_UNIT_1,
       .bit_width = 12,
   };
-  ESP_RETURN_ON_ERROR(adc_subscribe(&adc_cfg, battery_adc_callback), RADIO_TAG, "Failed to subscribe to ADC channel");
-
   adc_cali_curve_fitting_config_t cali_cfg = {
       .atten = adc_cfg.atten,
       .bitwidth = adc_cfg.bit_width,
@@ -188,6 +197,8 @@ esp_err_t battery_init()
       .chan = adc_cfg.channel,
   };
   ESP_RETURN_ON_ERROR(adc_cali_create_scheme_curve_fitting(&cali_cfg, &battery_adc_cali), RADIO_TAG, "Failed to create calibration scheme");
+
+  ESP_RETURN_ON_ERROR(adc_subscribe(&adc_cfg, battery_adc_callback), RADIO_TAG, "Failed to subscribe to ADC channel");
 
   // Figure out at what raw value we consider the battery low (note that we shouldn't get anywhere near max value)
   for (uint32_t i = 0; i < (1 << 12); i++)
@@ -233,7 +244,7 @@ esp_err_t battery_init()
   BOARD_I2C_MUTEX_UNLOCK();
   ESP_RETURN_ON_ERROR(err, RADIO_TAG, "i2c_master_bus_add_device failed");
 
-  xTaskCreatePinnedToCore(battery_monitor, "battery_monitor", 4096, NULL, 5, NULL, 0);
+  xTaskCreatePinnedToCore(battery_monitor, "battery_monitor", 4096, NULL, 5, &battery_monitor_task_handle, 0);
   things_register_telemetry_generator(battery_telemetry_generator);
 
   return ESP_OK;
