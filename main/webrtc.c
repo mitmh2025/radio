@@ -648,7 +648,6 @@ esp_err_t webrtc_wait_buffer_duration(webrtc_connection_t connection, uint32_t d
 struct webrtc_on_frame_data
 {
   webrtc_connection_t connection;
-  audio_element_handle_t el;
   char *buf;
   int buf_len;
 };
@@ -659,8 +658,6 @@ static void webrtc_read_on_frame(UINT64 custom_data, PFrame frame)
 #pragma GCC diagnostic ignored "-Wint-to-pointer-cast"
   struct webrtc_on_frame_data *data = (struct webrtc_on_frame_data *)custom_data;
 #pragma GCC diagnostic pop
-
-  memset(data->buf, 0, data->buf_len);
 
   int decoded = 0;
   size_t bytes_per_sample = 2 /* channels */ * sizeof(opus_int16) / sizeof(data->buf[0]);
@@ -698,7 +695,7 @@ static void webrtc_read_on_frame(UINT64 custom_data, PFrame frame)
   if (decoded < 0)
   {
     ESP_LOGE(RADIO_TAG, "Failed to decode Opus frame with error code %d (%s)", decoded, opus_strerror(decoded));
-    data->buf_len = AEL_IO_FAIL;
+    data->buf_len = -1;
     return;
   }
 
@@ -708,7 +705,7 @@ static void webrtc_read_on_frame(UINT64 custom_data, PFrame frame)
     if (!data->connection->last_received_packet)
     {
       ESP_LOGE(RADIO_TAG, "Failed to allocate memory for last received packet");
-      data->buf_len = AEL_IO_FAIL;
+      data->buf_len = -1;
       return;
     }
     data->connection->last_received_packet_capacity = frame->size;
@@ -719,17 +716,16 @@ static void webrtc_read_on_frame(UINT64 custom_data, PFrame frame)
   data->buf_len = decoded * bytes_per_sample;
 }
 
-audio_element_err_t webrtc_read_audio_sample(audio_element_handle_t el, char *buf, int len, TickType_t ticks_to_wait, void *context)
+int webrtc_read_audio_sample(void *context, char *buf, int len, TickType_t ticks_to_wait)
 {
   webrtc_connection_t connection = (webrtc_connection_t)context;
   if (!connection || connection->state != RTC_PEER_CONNECTION_STATE_CONNECTED)
   {
-    return AEL_IO_FAIL;
+    return -1;
   }
 
   struct webrtc_on_frame_data data = {
       .connection = connection,
-      .el = el,
       .buf = buf,
       .buf_len = len,
   };
@@ -739,5 +735,5 @@ audio_element_err_t webrtc_read_audio_sample(audio_element_handle_t el, char *bu
   transceiverPopFrame(connection->transceiver, (UINT64)&data, webrtc_read_on_frame);
 #pragma GCC diagnostic pop
 
-  return (audio_element_err_t)data.buf_len;
+  return data.buf_len;
 }

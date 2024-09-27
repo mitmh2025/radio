@@ -7,7 +7,7 @@
 #include "freertos/semphr.h"
 
 static SemaphoreHandle_t adc_mutex = NULL;
-static struct adc_config
+static EXT_RAM_BSS_ATTR struct adc_config
 {
   bool populated;
   adc_digi_pattern_config_t config;

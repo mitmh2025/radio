@@ -6,6 +6,7 @@
 #include "console.h"
 #include "file_cache.h"
 #include "led.h"
+#include "mixer.h"
 #include "storage.h"
 #include "tas2505.h"
 #include "things.h"
@@ -93,56 +94,8 @@ void webrtc_pipeline_start(void *context)
 {
   webrtc_connection_t connection = (webrtc_connection_t)context;
 
-  // Create pipeline
-  audio_pipeline_cfg_t pipeline_cfg = DEFAULT_AUDIO_PIPELINE_CONFIG();
-  audio_pipeline_handle_t pipeline = audio_pipeline_init(&pipeline_cfg);
-  if (!pipeline)
-  {
-    ESP_LOGE(RADIO_TAG, "Failed to create audio pipeline");
-    vTaskDelete(NULL);
-  }
-
-  // Create I2S output
-  i2s_stream_cfg_t i2s_cfg = I2S_STREAM_CFG_DEFAULT_WITH_PARA(I2S_NUM_0, 48000, 16, AUDIO_STREAM_WRITER);
-  // Opus decoding will happen in the I2S task so it needs a lot of stack and a
-  // big enough buffer
-  i2s_cfg.task_core = 1;
-  i2s_cfg.task_stack = 30 * 1024;
-  i2s_cfg.stack_in_ext = true;
-  // Need space for 20ms of audio at 48kHz, 16-bit, stereo
-  // TODO: adapt to packet sizes?
-  i2s_cfg.buffer_len = 960 * 2 * 2;
-  i2s_cfg.chan_cfg.dma_frame_num = 960; // 20ms of audio
-  audio_element_handle_t i2s_stream_writer = i2s_stream_init(&i2s_cfg);
-  if (!i2s_stream_writer)
-  {
-    ESP_LOGE(RADIO_TAG, "Failed to create I2S stream");
-    vTaskDelete(NULL);
-  }
-  esp_err_t err = audio_element_set_read_cb(i2s_stream_writer, webrtc_read_audio_sample, connection);
-  if (err != ESP_OK)
-  {
-    ESP_LOGE(RADIO_TAG, "Failed to set read callback for I2S stream: %d (%s)", err, esp_err_to_name(err));
-    vTaskDelete(NULL);
-  }
-
-  // Register audio elements to pipeline and link
-  err = audio_pipeline_register(pipeline, i2s_stream_writer, "i2s");
-  if (err != ESP_OK)
-  {
-    ESP_LOGE(RADIO_TAG, "Failed to register I2S stream: %d (%s)", err, esp_err_to_name(err));
-    vTaskDelete(NULL);
-  }
-  const char *link_tag[] = {"i2s"};
-  err = audio_pipeline_link(pipeline, &link_tag[0], sizeof(link_tag) / sizeof(link_tag[0]));
-  if (err != ESP_OK)
-  {
-    ESP_LOGE(RADIO_TAG, "Failed to link I2S stream: %d (%s)", err, esp_err_to_name(err));
-    vTaskDelete(NULL);
-  }
-
   int64_t start = esp_timer_get_time();
-  err = webrtc_wait_buffer_duration(connection, 48000, 3000);
+  esp_err_t err = webrtc_wait_buffer_duration(connection, 48000, 3000);
   if (err != ESP_OK)
   {
     ESP_LOGE(RADIO_TAG, "Failed to wait for buffer duration: %d (%s)", err, esp_err_to_name(err));
@@ -151,17 +104,18 @@ void webrtc_pipeline_start(void *context)
   int64_t end = esp_timer_get_time();
   ESP_LOGI(RADIO_TAG, "Spent %lldms buffering audio", (end - start) / 1000);
 
-  err = audio_pipeline_run(pipeline);
+  mixer_channel_t channel;
+  err = mixer_play_audio(webrtc_read_audio_sample, connection, &channel);
   if (err != ESP_OK)
   {
-    ESP_LOGE(RADIO_TAG, "Failed to run pipeline: %d (%s)", err, esp_err_to_name(err));
+    ESP_LOGE(RADIO_TAG, "Failed to play audio: %d (%s)", err, esp_err_to_name(err));
     vTaskDelete(NULL);
   }
 
   TaskHandle_t killer = NULL;
   xTaskNotifyWait(0, ULONG_MAX, (uint32_t *)&killer, portMAX_DELAY);
 
-  audio_pipeline_deinit(pipeline);
+  mixer_stop_audio(channel);
   webrtc_free_connection(connection);
 
   if (killer != NULL)
@@ -264,10 +218,7 @@ void app_main(void)
   ESP_ERROR_CHECK(board_i2c_init());
   ESP_ERROR_CHECK(battery_init());
   ESP_ERROR_CHECK(tas2505_init());
-  ESP_ERROR_CHECK(things_init());
-  ESP_ERROR_CHECK(storage_init());
-  ESP_ERROR_CHECK(webrtc_init());
-  ESP_ERROR_CHECK(file_cache_init());
+  ESP_ERROR_CHECK(mixer_init());
 
   ESP_ERROR_CHECK(adc_subscribe(&(adc_digi_pattern_config_t){
                                     .atten = ADC_ATTEN_DB_12,
@@ -277,6 +228,11 @@ void app_main(void)
                                 },
                                 dac_volume_callback));
   xTaskCreate(dac_output_task, "dac_output", 4096, NULL, 5, NULL);
+
+  ESP_ERROR_CHECK(things_init());
+  ESP_ERROR_CHECK(storage_init());
+  ESP_ERROR_CHECK(webrtc_init());
+  ESP_ERROR_CHECK(file_cache_init());
 
   if (!(xEventGroupGetBits(radio_event_group) & RADIO_EVENT_GROUP_THINGS_PROVISIONED))
   {

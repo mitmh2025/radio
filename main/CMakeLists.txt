@@ -6,6 +6,7 @@ idf_component_register(
   file_cache.c
   led.c
   main.c
+  mixer.c
   storage.c
   tas2505.c
   things.cpp
