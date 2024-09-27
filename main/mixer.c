@@ -102,12 +102,13 @@ static void mixer_task(void *arg)
       int read = chan->callback(chan->ctx, (char *)downmix_buffer, MIXER_SAMPLE_NUM * 2 * 2, portMAX_DELAY);
       if (read < 0)
       {
-        ESP_LOGE(RADIO_TAG, "Failed to read audio data from mixer channel");
+        ESP_LOGE(RADIO_TAG, "Failed to read audio data from mixer channel: %d", read);
       }
       break;
 
     default:
     {
+      uint64_t start = esp_timer_get_time();
       mixer_channel_t chan = TAILQ_FIRST(&mixer_channels);
       for (int i = 0; i < downmix_info.source_num && chan != NULL; i++, chan = TAILQ_NEXT(chan, entries))
       {
@@ -116,7 +117,7 @@ static void mixer_task(void *arg)
         int read = chan->callback(chan->ctx, chan->in_buffer, MIXER_SAMPLE_NUM * 2 * 2, portMAX_DELAY);
         if (read < 0)
         {
-          ESP_LOGE(RADIO_TAG, "Failed to read audio data from mixer channel");
+          ESP_LOGE(RADIO_TAG, "Failed to read audio data from mixer channel: %d", read);
         }
       }
 
@@ -161,6 +162,7 @@ esp_err_t mixer_init()
   // TODO: adapt to packet sizes?
   i2s_cfg.buffer_len = MIXER_SAMPLE_NUM * 2 * 2;
   i2s_cfg.chan_cfg.dma_frame_num = MIXER_SAMPLE_NUM; // 20ms of audio
+  i2s_cfg.task_core = 0;
   audio_element_handle_t i2s_stream_writer = i2s_stream_init(&i2s_cfg);
   ESP_RETURN_ON_FALSE(i2s_stream_writer, ESP_FAIL, RADIO_TAG, "Failed to create I2S stream");
   i2s_stream_set_clk(i2s_stream_writer, 48000, 16, 2);
