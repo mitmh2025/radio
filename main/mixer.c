@@ -108,7 +108,6 @@ static void mixer_task(void *arg)
 
     default:
     {
-      uint64_t start = esp_timer_get_time();
       mixer_channel_t chan = TAILQ_FIRST(&mixer_channels);
       for (int i = 0; i < downmix_info.source_num && chan != NULL; i++, chan = TAILQ_NEXT(chan, entries))
       {
