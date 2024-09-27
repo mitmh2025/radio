@@ -1,3 +1,6 @@
+#include "nvs_flash.h"
+#include "nvs_handle.hpp"
+
 #include "../config.h"
 #include "things.h"
 #include "main.h"
@@ -13,8 +16,6 @@
 
 #include "esp_err.h"
 #include "esp_log.h"
-#include "nvs_flash.h"
-#include "nvs_handle.hpp"
 #include "esp_crt_bundle.h"
 #include "esp_app_desc.h"
 #include "esp_check.h"
