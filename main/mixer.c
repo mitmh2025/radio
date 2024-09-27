@@ -50,7 +50,7 @@ static esp_err_t mixer_reopen()
     downmix_handle = NULL;
   }
 
-  if (downmix_info.source_num == 0)
+  if (downmix_info.source_num < 2)
   {
     return ESP_OK;
   }
@@ -90,31 +90,44 @@ static void mixer_task(void *arg)
   {
     xSemaphoreTake(mixer_mutex, portMAX_DELAY);
 
-    if (!downmix_handle)
+    switch (downmix_info.source_num)
     {
+    case 0:
       memset(downmix_buffer, 0, sizeof(downmix_buffer));
-      goto cleanup;
-    }
+      break;
 
-    mixer_channel_t chan = TAILQ_FIRST(&mixer_channels);
-    for (int i = 0; i < downmix_info.source_num && chan != NULL; i++, chan = TAILQ_NEXT(chan, entries))
-    {
-      inbufs[i] = (unsigned char *)chan->in_buffer;
-      memset(chan->in_buffer, 0, sizeof(chan->in_buffer));
-      int read = chan->callback(chan->ctx, chan->in_buffer, MIXER_SAMPLE_NUM * 2 * 2, portMAX_DELAY);
+    case 1:
+      mixer_channel_t chan = TAILQ_FIRST(&mixer_channels);
+      memset(downmix_buffer, 0, sizeof(downmix_buffer));
+      int read = chan->callback(chan->ctx, (char *)downmix_buffer, MIXER_SAMPLE_NUM * 2 * 2, portMAX_DELAY);
       if (read < 0)
       {
         ESP_LOGE(RADIO_TAG, "Failed to read audio data from mixer channel");
       }
-    }
+      break;
 
-    int ret = esp_downmix_process(downmix_handle, inbufs, (unsigned char *)downmix_buffer, sizeof(downmix_buffer) / (2 * 2), ESP_DOWNMIX_WORK_MODE_SWITCH_ON);
-    if (ret < 0)
+    default:
     {
-      ESP_LOGE(RADIO_TAG, "Failed to downmix audio: %d", ret);
+      mixer_channel_t chan = TAILQ_FIRST(&mixer_channels);
+      for (int i = 0; i < downmix_info.source_num && chan != NULL; i++, chan = TAILQ_NEXT(chan, entries))
+      {
+        inbufs[i] = (unsigned char *)chan->in_buffer;
+        memset(chan->in_buffer, 0, sizeof(chan->in_buffer));
+        int read = chan->callback(chan->ctx, chan->in_buffer, MIXER_SAMPLE_NUM * 2 * 2, portMAX_DELAY);
+        if (read < 0)
+        {
+          ESP_LOGE(RADIO_TAG, "Failed to read audio data from mixer channel");
+        }
+      }
+
+      int ret = esp_downmix_process(downmix_handle, inbufs, (unsigned char *)downmix_buffer, sizeof(downmix_buffer) / (2 * 2), ESP_DOWNMIX_WORK_MODE_SWITCH_ON);
+      if (ret < 0)
+      {
+        ESP_LOGE(RADIO_TAG, "Failed to downmix audio: %d", ret);
+      }
+    }
     }
 
-  cleanup:
     xSemaphoreGive(mixer_mutex);
     xTaskNotifyWait(0, ULONG_MAX, NULL, portMAX_DELAY);
   }
