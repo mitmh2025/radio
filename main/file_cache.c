@@ -9,6 +9,7 @@
 
 #include "esp_log.h"
 #include "esp_check.h"
+#include "esp_random.h"
 #include "esp_http_client.h"
 #include "esp_crt_bundle.h"
 
@@ -636,8 +637,9 @@ static void file_cache_task(void *context)
     esp_err_t err = refresh();
     if (err != ESP_OK)
     {
-      ESP_LOGE(RADIO_TAG, "Failed to refresh file cache: %d (%s); retrying in 10 seconds", err, esp_err_to_name(err));
-      xTaskNotifyWait(0, ULONG_MAX, NULL, pdMS_TO_TICKS(10000));
+      uint32_t wait = 10000 + esp_random() % 5000;
+      ESP_LOGE(RADIO_TAG, "Failed to refresh file cache: %d (%s); retrying in %" PRIu32 " seconds", err, esp_err_to_name(err), wait / 1000);
+      xTaskNotifyWait(0, ULONG_MAX, NULL, pdMS_TO_TICKS(wait));
       continue;
     }
 

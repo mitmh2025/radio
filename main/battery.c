@@ -8,6 +8,7 @@
 
 #include "esp_log.h"
 #include "esp_check.h"
+#include "esp_random.h"
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
 
@@ -178,7 +179,8 @@ static void battery_monitor(void *context)
     }
 
     battery_update_led();
-    xTaskNotifyWait(0, ULONG_MAX, NULL, pdMS_TO_TICKS(1000));
+    uint32_t jitter = esp_random() % 100;
+    xTaskNotifyWait(0, ULONG_MAX, NULL, pdMS_TO_TICKS(1000 + jitter));
   }
 }
 

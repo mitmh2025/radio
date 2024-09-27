@@ -20,6 +20,7 @@
 #include "freertos/task.h"
 
 #include "esp_log.h"
+#include "esp_random.h"
 #include "nvs_flash.h"
 #include "esp_event.h"
 #include "audio_pipeline.h"
@@ -69,15 +70,16 @@ void dac_output_task(void *arg)
   while (1)
   {
 loop:
-    vTaskDelay(pdMS_TO_TICKS(100));
+  uint32_t wait = 100 + esp_random() % 100;
+  vTaskDelay(pdMS_TO_TICKS(wait));
 
-    bool gpio;
-    esp_err_t err = tas2505_read_gpio(&gpio);
-    if (err != ESP_OK)
-    {
-      ESP_LOGE(RADIO_TAG, "Failed to read GPIO: %d (%s)", err, esp_err_to_name(err));
-      goto loop;
-    }
+  bool gpio;
+  esp_err_t err = tas2505_read_gpio(&gpio);
+  if (err != ESP_OK)
+  {
+    ESP_LOGE(RADIO_TAG, "Failed to read GPIO: %d (%s)", err, esp_err_to_name(err));
+    goto loop;
+  }
 
     if (gpio)
     {
