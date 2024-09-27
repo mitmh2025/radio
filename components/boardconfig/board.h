@@ -54,16 +54,19 @@ esp_err_t board_i2c_init(void);
 // (including devices) must be protected by i2c_mutex
 i2c_master_bus_handle_t board_i2c_get_handle(void);
 
-#define BOARD_I2C_MUTEX_LOCK()                                                                             \
-do                                                                                                         \
-{                                                                                                          \
-  int64_t start = esp_timer_get_time();                                                                    \
-  xSemaphoreTake(i2c_mutex, portMAX_DELAY);                                                                \
-  int64_t end = esp_timer_get_time();                                                                      \
-  if (end - start > 10000)                                                                                 \
-  {                                                                                                        \
-    ESP_LOGW("radio:board", "%s(%d): Acquiring I2C bus took %lldus", __FUNCTION__, __LINE__, end - start); \
-  }                                                                                                        \
+#define BOARD_I2C_MUTEX_LOCK()                                                                                                             \
+do                                                                                                                                         \
+{                                                                                                                                          \
+  int64_t start = esp_timer_get_time();                                                                                                    \
+  TaskHandle_t holder = xSemaphoreGetMutexHolder(i2c_mutex);                                                                               \
+  xSemaphoreTake(i2c_mutex, portMAX_DELAY);                                                                                                \
+  int64_t end = esp_timer_get_time();                                                                                                      \
+  if (end - start > 10000)                                                                                                                 \
+  {                                                                                                                                        \
+    TaskStatus_t status;                                                                                                                   \
+    vTaskGetInfo(holder, &status, pdTRUE, eInvalid);                                                                                       \
+    ESP_LOGW("radio:board", "%s(%d): Acquiring I2C bus took %lldus (held by %s)", __FUNCTION__, __LINE__, end - start, status.pcTaskName); \
+  }                                                                                                                                        \
 } while (0)
 #define BOARD_I2C_MUTEX_UNLOCK() xSemaphoreGive(i2c_mutex)
 
