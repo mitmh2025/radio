@@ -65,7 +65,7 @@ static esp_err_t mixer_reopen()
     downmix_handle = NULL;
   }
 
-  if (downmix_info.source_num < 2)
+  if (downmix_info.source_num < 1)
   {
     return ESP_OK;
   }
@@ -105,23 +105,11 @@ static void mixer_task(void *arg)
   {
     xSemaphoreTake(mixer_mutex, portMAX_DELAY);
 
-    switch (downmix_info.source_num)
+    if (downmix_info.source_num == 0)
     {
-    case 0:
       memset(downmix_buffer, 0, sizeof(downmix_buffer));
-      break;
-
-    case 1:
-      mixer_channel_t chan = TAILQ_FIRST(&mixer_channels);
-      memset(downmix_buffer, 0, sizeof(downmix_buffer));
-      int read = chan->callback(chan->ctx, (char *)downmix_buffer, MIXER_SAMPLE_NUM * 2 * 2, portMAX_DELAY);
-      if (read < 0)
-      {
-        ESP_LOGE(RADIO_TAG, "Failed to read audio data from mixer channel: %d", read);
-      }
-      break;
-
-    default:
+    }
+    else
     {
       mixer_channel_t chan = TAILQ_FIRST(&mixer_channels);
       for (int i = 0; i < downmix_info.source_num && chan != NULL; i++, chan = TAILQ_NEXT(chan, entries))
@@ -140,7 +128,6 @@ static void mixer_task(void *arg)
       {
         ESP_LOGE(RADIO_TAG, "Failed to downmix audio: %d", ret);
       }
-    }
     }
 
     xSemaphoreGive(mixer_mutex);
