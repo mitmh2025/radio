@@ -15,6 +15,21 @@
 
 #define MIXER_SAMPLE_NUM 960 // 20ms of audio at 48kHz
 
+#define MIXER_MUTEX_LOCK()                                                                                                                       \
+  do                                                                                                                                             \
+  {                                                                                                                                              \
+    int64_t start = esp_timer_get_time();                                                                                                        \
+    TaskHandle_t holder = xSemaphoreGetMutexHolder(mixer_mutex);                                                                                 \
+    xSemaphoreTake(mixer_mutex, portMAX_DELAY);                                                                                                  \
+    int64_t end = esp_timer_get_time();                                                                                                          \
+    if (end - start > 10000)                                                                                                                     \
+    {                                                                                                                                            \
+      TaskStatus_t status;                                                                                                                       \
+      vTaskGetInfo(holder, &status, pdTRUE, eInvalid);                                                                                           \
+      ESP_LOGW("radio:board", "%s(%d): Acquiring mixer mutex took %lldus (held by %s)", __FUNCTION__, __LINE__, end - start, status.pcTaskName); \
+    }                                                                                                                                            \
+  } while (0)
+
 static SemaphoreHandle_t mixer_mutex = NULL;
 static void *downmix_handle = NULL;
 static EXT_RAM_BSS_ATTR esp_downmix_input_info_t downmix_source_info[SOURCE_NUM_MAX] = {};
@@ -26,7 +41,7 @@ static esp_downmix_info_t downmix_info = {
     .output_type = ESP_DOWNMIX_OUTPUT_TYPE_TWO_CHANNEL,
 };
 static EXT_RAM_BSS_ATTR unsigned char downmix_buffer[MIXER_SAMPLE_NUM * 2 * 2]; // 20ms of audio at 48kHz, 16-bit, stereo
-static TaskHandle_t mixer_task_handle = NULL;
+static ringbuf_handle_t mixer_rb = NULL;
 
 struct mixer_channel
 {
@@ -129,18 +144,14 @@ static void mixer_task(void *arg)
     }
 
     xSemaphoreGive(mixer_mutex);
-    xTaskNotifyWait(0, ULONG_MAX, NULL, portMAX_DELAY);
+    rb_write(mixer_rb, (char *)downmix_buffer, sizeof(downmix_buffer), portMAX_DELAY);
   }
 }
 
 static audio_element_err_t mixer_read_cb(
     audio_element_handle_t self, char *buffer, int len, TickType_t ticks_to_wait, void *context)
 {
-  xSemaphoreTake(mixer_mutex, portMAX_DELAY);
-  memcpy(buffer, downmix_buffer, len);
-  xTaskNotifyGive(mixer_task_handle);
-  xSemaphoreGive(mixer_mutex);
-  return len;
+  return rb_read(mixer_rb, buffer, len, ticks_to_wait);
 }
 
 esp_err_t mixer_init()
@@ -148,6 +159,7 @@ esp_err_t mixer_init()
   mixer_mutex = xSemaphoreCreateMutex();
 
   ESP_RETURN_ON_ERROR(mixer_reopen(), RADIO_TAG, "Failed to reopen mixer");
+  mixer_rb = rb_create(MIXER_SAMPLE_NUM * 2 * 2, 1);
   xTaskCreatePinnedToCore(mixer_task, "mixer_task", 30 * 1024, NULL, 5, NULL, 1);
 
   // Create pipeline
