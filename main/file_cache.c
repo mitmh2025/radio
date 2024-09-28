@@ -657,7 +657,7 @@ esp_err_t file_cache_init(void)
 
   // Push all work to a task because we need to wait until storage has been
   // mounted
-  BaseType_t result = xTaskCreate(file_cache_task, "file_cache_task", 6144, NULL, 15, &task_handle);
+  BaseType_t result = xTaskCreatePinnedToCore(file_cache_task, "file_cache_task", 6144, NULL, 15, &task_handle, 0);
 
   if (result != pdPASS)
   {

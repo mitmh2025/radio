@@ -229,7 +229,7 @@ void app_main(void)
                                     .bit_width = 12,
                                 },
                                 dac_volume_callback));
-  xTaskCreate(dac_output_task, "dac_output", 4096, NULL, 5, NULL);
+  xTaskCreatePinnedToCore(dac_output_task, "dac_output", 4096, NULL, 5, NULL, 0);
 
   ESP_ERROR_CHECK(things_init());
   ESP_ERROR_CHECK(storage_init());

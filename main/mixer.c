@@ -148,7 +148,7 @@ esp_err_t mixer_init()
   mixer_mutex = xSemaphoreCreateMutex();
 
   ESP_RETURN_ON_ERROR(mixer_reopen(), RADIO_TAG, "Failed to reopen mixer");
-  xTaskCreatePinnedToCore(mixer_task, "mixer_task", 30 * 1024, NULL, 5, &mixer_task_handle, 1);
+  xTaskCreatePinnedToCore(mixer_task, "mixer_task", 30 * 1024, NULL, 5, NULL, 1);
 
   // Create pipeline
   audio_pipeline_cfg_t pipeline_cfg = DEFAULT_AUDIO_PIPELINE_CONFIG();
@@ -161,7 +161,7 @@ esp_err_t mixer_init()
   // TODO: adapt to packet sizes?
   i2s_cfg.buffer_len = MIXER_SAMPLE_NUM * 2 * 2;
   i2s_cfg.chan_cfg.dma_frame_num = MIXER_SAMPLE_NUM; // 20ms of audio
-  i2s_cfg.task_core = 0;
+  i2s_cfg.task_core = 1;
   audio_element_handle_t i2s_stream_writer = i2s_stream_init(&i2s_cfg);
   ESP_RETURN_ON_FALSE(i2s_stream_writer, ESP_FAIL, RADIO_TAG, "Failed to create I2S stream");
   i2s_stream_set_clk(i2s_stream_writer, 48000, 16, 2);
