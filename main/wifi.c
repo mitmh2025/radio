@@ -70,7 +70,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
     switch (event_id)
     {
     case WIFI_EVENT_STA_START:
-      ESP_LOGI(RADIO_TAG, "Wifi started");
+      ESP_LOGD(RADIO_TAG, "Wifi started");
       ESP_ERROR_CHECK(esp_wifi_connect());
       break;
     case WIFI_EVENT_STA_STOP:
@@ -125,7 +125,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
 
 esp_err_t wifi_init()
 {
-  ESP_LOGI(RADIO_TAG, "Setting up wifi");
+  ESP_LOGD(RADIO_TAG, "Setting up wifi");
 
   xEventGroupSetBits(radio_event_group, RADIO_EVENT_GROUP_WIFI_DISCONNECTED);
 
