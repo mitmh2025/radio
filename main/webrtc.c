@@ -93,20 +93,17 @@ void webrtc_free_connection(webrtc_connection_t connection)
 static VOID webrtc_logger(UINT32 level, const PCHAR tag, const PCHAR fmt, ...)
 {
   int esp_log_level = 0;
+  // kvswebrtc is pretty noisy so we'll cram down some of the log levels
   switch (level)
   {
   case LOG_LEVEL_VERBOSE:
+  case LOG_LEVEL_DEBUG:
     esp_log_level = ESP_LOG_VERBOSE;
     break;
-  case LOG_LEVEL_DEBUG:
-    esp_log_level = ESP_LOG_DEBUG;
-    break;
-  // kvswebrtc is pretty noisy at the warn and error levels, so we'll map them
-  // to info
   case LOG_LEVEL_INFO:
   case LOG_LEVEL_WARN:
   case LOG_LEVEL_ERROR:
-    esp_log_level = ESP_LOG_INFO;
+    esp_log_level = ESP_LOG_DEBUG;
     break;
   case LOG_LEVEL_FATAL:
     esp_log_level = ESP_LOG_ERROR;
@@ -141,7 +138,7 @@ static VOID webrtc_logger(UINT32 level, const PCHAR tag, const PCHAR fmt, ...)
     return;
   }
 
-  ESP_LOG_LEVEL_LOCAL(esp_log_level, tag, "%s", buffer);
+  ESP_LOG_LEVEL_LOCAL(esp_log_level, "kvswebrtc", "%s: %s", tag, buffer);
   free(buffer);
 }
 

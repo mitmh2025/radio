@@ -193,8 +193,10 @@ void things_whep_url_callback(const char *key, things_attribute_t *attr)
 
 void app_main(void)
 {
+  esp_log_set_level_master(ESP_LOG_DEBUG);
   esp_log_level_set("*", ESP_LOG_WARN);
   esp_log_level_set(RADIO_TAG, ESP_LOG_DEBUG);
+  esp_log_level_set("webrtc", ESP_LOG_DEBUG);
 
   esp_err_t err = nvs_flash_init();
   if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND)
