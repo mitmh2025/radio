@@ -23,6 +23,7 @@ idf_component_register(
   audio_stream
   boardconfig
   console
+  file_stream
   esp_app_format
   esp_http_client
   esp_littlefs
