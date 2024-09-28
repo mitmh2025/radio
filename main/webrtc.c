@@ -408,7 +408,7 @@ static void webrtc_connect_task(void *arg)
   connection->user_data = args->config->user_data;
 
   int error;
-  connection->decoder = opus_decoder_create(48000, 2, &error);
+  connection->decoder = opus_decoder_create(48000, 1, &error);
   if (error != OPUS_OK)
   {
     ESP_LOGE(RADIO_TAG, "Failed to create Opus decoder with error code %s", opus_strerror(error));
@@ -658,7 +658,7 @@ static void webrtc_read_on_frame(UINT64 custom_data, PFrame frame)
 #pragma GCC diagnostic pop
 
   int decoded = 0;
-  size_t bytes_per_sample = 2 /* channels */ * sizeof(opus_int16) / sizeof(data->buf[0]);
+  size_t bytes_per_sample = sizeof(opus_int16) / sizeof(data->buf[0]);
 
   if (data->connection->last_received_packet_len == 0)
   {

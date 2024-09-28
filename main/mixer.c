@@ -13,7 +13,8 @@
 #include <string.h>
 #include <sys/queue.h>
 
-#define MIXER_SAMPLE_NUM 960 // 20ms of audio at 48kHz
+#define MIXER_SAMPLE_SIZE (960)                   // 20ms of audio at 48kHz
+#define MIXER_BUFFER_SIZE (MIXER_SAMPLE_SIZE * 2) // 16-bit mono
 
 #define MIXER_MUTEX_LOCK()                                                                                                                       \
   do                                                                                                                                             \
@@ -38,16 +39,16 @@ static esp_downmix_info_t downmix_info = {
     .source_num = 0,
     .out_ctx = ESP_DOWNMIX_OUT_CTX_NORMAL,
     .mode = ESP_DOWNMIX_WORK_MODE_SWITCH_ON,
-    .output_type = ESP_DOWNMIX_OUTPUT_TYPE_TWO_CHANNEL,
+    .output_type = ESP_DOWNMIX_OUTPUT_TYPE_ONE_CHANNEL,
 };
-static EXT_RAM_BSS_ATTR unsigned char downmix_buffer[MIXER_SAMPLE_NUM * 2 * 2]; // 20ms of audio at 48kHz, 16-bit, stereo
+static EXT_RAM_BSS_ATTR unsigned char downmix_buffer[MIXER_BUFFER_SIZE];
 static ringbuf_handle_t mixer_rb = NULL;
 
 struct mixer_channel
 {
   TAILQ_ENTRY(mixer_channel)
   entries;
-  char in_buffer[MIXER_SAMPLE_NUM * 2 * 2]; // 20ms of audio at 48kHz, 16-bit, stereo
+  char in_buffer[MIXER_BUFFER_SIZE];
   mixer_read_callback_t callback;
   void *ctx;
 };
@@ -76,7 +77,7 @@ static esp_err_t mixer_reopen()
   for (i = 0; i < downmix_info.source_num && chan != NULL; i++, chan = TAILQ_NEXT(chan, entries))
   {
     downmix_source_info[i].samplerate = 48000;
-    downmix_source_info[i].channel = 2;
+    downmix_source_info[i].channel = 1;
     downmix_source_info[i].bits_num = 16;
     downmix_source_info[i].gain[0] = 0;
     downmix_source_info[i].gain[1] = 0;
@@ -116,14 +117,14 @@ static void mixer_task(void *arg)
       {
         inbufs[i] = (unsigned char *)chan->in_buffer;
         memset(chan->in_buffer, 0, sizeof(chan->in_buffer));
-        int read = chan->callback(chan->ctx, chan->in_buffer, MIXER_SAMPLE_NUM * 2 * 2, portMAX_DELAY);
+        int read = chan->callback(chan->ctx, chan->in_buffer, MIXER_BUFFER_SIZE, portMAX_DELAY);
         if (read < 0)
         {
           ESP_LOGE(RADIO_TAG, "Failed to read audio data from mixer channel: %d", read);
         }
       }
 
-      int ret = esp_downmix_process(downmix_handle, inbufs, (unsigned char *)downmix_buffer, sizeof(downmix_buffer) / (2 * 2), ESP_DOWNMIX_WORK_MODE_SWITCH_ON);
+      int ret = esp_downmix_process(downmix_handle, inbufs, (unsigned char *)downmix_buffer, sizeof(downmix_buffer) / 2, ESP_DOWNMIX_WORK_MODE_SWITCH_ON);
       if (ret < 0)
       {
         ESP_LOGE(RADIO_TAG, "Failed to downmix audio: %d", ret);
@@ -146,7 +147,7 @@ esp_err_t mixer_init()
   mixer_mutex = xSemaphoreCreateMutex();
 
   ESP_RETURN_ON_ERROR(mixer_reopen(), RADIO_TAG, "Failed to reopen mixer");
-  mixer_rb = rb_create(MIXER_SAMPLE_NUM * 2 * 2, 1);
+  mixer_rb = rb_create(MIXER_BUFFER_SIZE, 1);
   xTaskCreatePinnedToCore(mixer_task, "mixer_task", 30 * 1024, NULL, 5, NULL, 1);
 
   // Create pipeline
@@ -156,14 +157,14 @@ esp_err_t mixer_init()
 
   // Create I2S output
   i2s_stream_cfg_t i2s_cfg = I2S_STREAM_CFG_DEFAULT_WITH_PARA(I2S_NUM_0, 48000, 16, AUDIO_STREAM_WRITER);
-  // Need space for 20ms of audio at 48kHz, 16-bit, stereo
+  // Need space for 20ms of audio at 48kHz, 16-bit, mono
   // TODO: adapt to packet sizes?
-  i2s_cfg.buffer_len = MIXER_SAMPLE_NUM * 2 * 2;
-  i2s_cfg.chan_cfg.dma_frame_num = MIXER_SAMPLE_NUM; // 20ms of audio
+  i2s_cfg.buffer_len = MIXER_BUFFER_SIZE;
+  i2s_cfg.chan_cfg.dma_frame_num = MIXER_SAMPLE_SIZE; // 20ms of audio
   i2s_cfg.task_core = 1;
   audio_element_handle_t i2s_stream_writer = i2s_stream_init(&i2s_cfg);
   ESP_RETURN_ON_FALSE(i2s_stream_writer, ESP_FAIL, RADIO_TAG, "Failed to create I2S stream");
-  i2s_stream_set_clk(i2s_stream_writer, 48000, 16, 2);
+  i2s_stream_set_clk(i2s_stream_writer, 48000, 16, 1);
   audio_element_set_read_cb(i2s_stream_writer, mixer_read_cb, NULL);
 
   // Connect I2S output to pipeline and start
