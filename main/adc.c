@@ -37,9 +37,12 @@ static void adc_task(void *context)
       uint8_t result[SOC_ADC_DIGI_DATA_BYTES_PER_CONV * SOC_ADC_MAX_CHANNEL_NUM] = {};
       uint32_t out_length;
       esp_err_t ret = adc_continuous_read(adc_handle, result, sizeof(result), &out_length, 0);
-      if (ret == ESP_ERR_TIMEOUT)
+      if (
+          ret == ESP_ERR_TIMEOUT          // No pending data
+          || ret == ESP_ERR_INVALID_STATE // The driver is already stopped
+      )
       {
-        // No pending data, wait until the interrupt wakes us up
+        // Wait until the interrupt wakes us up
         break;
       }
       else if (ret != ESP_OK)
@@ -147,6 +150,7 @@ esp_err_t adc_subscribe(adc_digi_pattern_config_t *config, void (*callback)(adc_
   if (adc_running)
   {
     adc_continuous_stop(adc_handle);
+    adc_running = false;
   }
 
   adc_configs[config->channel].populated = true;
