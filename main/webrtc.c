@@ -101,14 +101,12 @@ static VOID webrtc_logger(UINT32 level, const PCHAR tag, const PCHAR fmt, ...)
   case LOG_LEVEL_DEBUG:
     esp_log_level = ESP_LOG_DEBUG;
     break;
+  // kvswebrtc is pretty noisy at the warn and error levels, so we'll map them
+  // to info
   case LOG_LEVEL_INFO:
-    esp_log_level = ESP_LOG_INFO;
-    break;
   case LOG_LEVEL_WARN:
-    esp_log_level = ESP_LOG_WARN;
-    break;
   case LOG_LEVEL_ERROR:
-    esp_log_level = ESP_LOG_ERROR;
+    esp_log_level = ESP_LOG_INFO;
     break;
   case LOG_LEVEL_FATAL:
     esp_log_level = ESP_LOG_ERROR;
