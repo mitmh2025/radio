@@ -21,6 +21,7 @@
 #include "esp_check.h"
 #include "esp_core_dump.h"
 #include "esp_partition.h"
+#include "esp_random.h"
 
 #include "mbedtls/base64.h"
 
@@ -446,6 +447,7 @@ static void things_task(void *arg)
   // until we reconnect and then reconnect to ThingsBoard too
   while (true)
   {
+    int64_t wait = 4000 + esp_random() % 2000;
     xEventGroupWaitBits(radio_event_group, RADIO_EVENT_GROUP_WIFI_CONNECTED, pdFALSE, pdTRUE, portMAX_DELAY);
 
     TaskHandle_t self = xTaskGetCurrentTaskHandle();
@@ -460,7 +462,7 @@ static void things_task(void *arg)
     if (!success)
     {
       ESP_LOGE(RADIO_TAG, "Failed to connect to ThingsBoard. Waiting and trying again...");
-      vTaskDelay(pdMS_TO_TICKS(5000));
+      vTaskDelay(pdMS_TO_TICKS(wait));
       conn->disconnect();
       continue;
     }
@@ -476,7 +478,7 @@ static void things_task(void *arg)
     if (!conn->connected())
     {
       ESP_LOGE(RADIO_TAG, "Failed to connect to ThingsBoard within timeout. Waiting and trying again...");
-      vTaskDelay(pdMS_TO_TICKS(5000));
+      vTaskDelay(pdMS_TO_TICKS(wait));
       continue;
     }
 
@@ -510,14 +512,14 @@ static void things_task(void *arg)
     if (!success)
     {
       ESP_LOGE(RADIO_TAG, "Failed to send firmware info to ThingsBoard. Waiting and trying again...");
-      vTaskDelay(pdMS_TO_TICKS(5000));
+      vTaskDelay(pdMS_TO_TICKS(wait));
       continue;
     }
     success = conn->Firmware_Send_State("UPDATED");
     if (!success)
     {
       ESP_LOGE(RADIO_TAG, "Failed to send firmware state to ThingsBoard. Waiting and trying again...");
-      vTaskDelay(pdMS_TO_TICKS(5000));
+      vTaskDelay(pdMS_TO_TICKS(wait));
       continue;
     }
 
@@ -536,7 +538,7 @@ static void things_task(void *arg)
     if (!success)
     {
       ESP_LOGE(RADIO_TAG, "Failed to subscribe to firmware updates from ThingsBoard. Waiting and trying again...");
-      vTaskDelay(pdMS_TO_TICKS(5000));
+      vTaskDelay(pdMS_TO_TICKS(wait));
       continue;
     }
 
@@ -546,7 +548,7 @@ static void things_task(void *arg)
     if (!success)
     {
       ESP_LOGE(RADIO_TAG, "Failed to request an immediate firmware updates from ThingsBoard. Waiting and trying again...");
-      vTaskDelay(pdMS_TO_TICKS(5000));
+      vTaskDelay(pdMS_TO_TICKS(wait));
       continue;
     }
 
@@ -556,7 +558,7 @@ static void things_task(void *arg)
     if (!success)
     {
       ESP_LOGE(RADIO_TAG, "Failed to subscribe to shared attributes from ThingsBoard. Waiting and trying again...");
-      vTaskDelay(pdMS_TO_TICKS(5000));
+      vTaskDelay(pdMS_TO_TICKS(wait));
       continue;
     }
 
@@ -576,7 +578,7 @@ static void things_task(void *arg)
         if (!success)
         {
           ESP_LOGE(RADIO_TAG, "Failed to request shared attributes from ThingsBoard. Waiting and trying again...");
-          vTaskDelay(pdMS_TO_TICKS(5000));
+          vTaskDelay(pdMS_TO_TICKS(wait));
           continue;
         }
       }
@@ -593,7 +595,8 @@ static void things_task(void *arg)
       }
 
       // If the wifi disconnect bit remains unset after 30 seconds, send telemetry again
-      EventBits_t bits = xEventGroupWaitBits(radio_event_group, RADIO_EVENT_GROUP_WIFI_DISCONNECTED, pdTRUE, pdFALSE, pdMS_TO_TICKS(30000));
+      int64_t wait = 27500 + esp_random() % 5000;
+      EventBits_t bits = xEventGroupWaitBits(radio_event_group, RADIO_EVENT_GROUP_WIFI_DISCONNECTED, pdTRUE, pdFALSE, pdMS_TO_TICKS(wait));
       if (bits & RADIO_EVENT_GROUP_WIFI_DISCONNECTED)
       {
         break;
