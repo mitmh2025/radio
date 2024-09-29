@@ -7,6 +7,7 @@ idf_component_register(
   led.c
   main.c
   mixer.c
+  playback.c
   storage.c
   tas2505.c
   things.cpp
