@@ -32,9 +32,9 @@ static void wifi_clock_synced(struct timeval *tv)
 {
   // Format time as iso8601 string
   struct tm timeinfo;
-  localtime_r(&tv->tv_sec, &timeinfo);
-  char strftime_buf[64];
-  strftime(strftime_buf, sizeof(strftime_buf), "%Y-%m-%dT%H:%M:%S%z", &timeinfo);
+  gmtime_r(&tv->tv_sec, &timeinfo);
+  char strftime_buf[sizeof("2000-01-01T00:00:00Z") + 1];
+  strftime(strftime_buf, sizeof(strftime_buf), "%Y-%m-%dT%H:%M:%SZ", &timeinfo);
   ESP_LOGI(RADIO_TAG, "SNTP time synced to %s", strftime_buf);
 }
 
