@@ -107,7 +107,7 @@ void webrtc_pipeline_start(void *context)
   ESP_LOGI(RADIO_TAG, "Spent %lldms buffering audio", (end - start) / 1000);
 
   mixer_channel_t channel;
-  err = mixer_play_audio(webrtc_read_audio_sample, connection, &channel);
+  err = mixer_play_audio(webrtc_read_audio_sample, connection, false, &channel);
   if (err != ESP_OK)
   {
     ESP_LOGE(RADIO_TAG, "Failed to play audio: %d (%s)", err, esp_err_to_name(err));

@@ -16,6 +16,8 @@
 #define MIXER_SAMPLE_SIZE (960)                   // 20ms of audio at 48kHz
 #define MIXER_BUFFER_SIZE (MIXER_SAMPLE_SIZE * 2) // 16-bit mono
 
+#define MIXER_DUCK_GAIN (-10) // dB
+
 #define MIXER_MUTEX_LOCK()                                                                                                                       \
   do                                                                                                                                             \
   {                                                                                                                                              \
@@ -51,6 +53,7 @@ struct mixer_channel
   char in_buffer[MIXER_BUFFER_SIZE];
   mixer_read_callback_t callback;
   void *ctx;
+  bool duck_others;
 };
 
 TAILQ_HEAD(mixer_channel_list, mixer_channel);
@@ -66,22 +69,43 @@ static esp_err_t mixer_reopen()
     downmix_handle = NULL;
   }
 
+  bool was_ducked = false;
+  for (int i = 0; i < sizeof(downmix_source_info) / sizeof(downmix_source_info[0]); i++)
+  {
+    if (downmix_source_info[i].gain[0] != 0 || downmix_source_info[i].gain[1] != 0)
+    {
+      was_ducked = true;
+      break;
+    }
+  }
+
   if (downmix_info.source_num < 1)
   {
     return ESP_OK;
   }
 
+  bool will_duck = false;
+  mixer_channel_t chan;
+  TAILQ_FOREACH(chan, &mixer_channels, entries)
+  {
+    if (chan->duck_others)
+    {
+      will_duck = true;
+      break;
+    }
+  }
+
   memset(downmix_source_info, 0, sizeof(downmix_source_info));
   int i;
-  mixer_channel_t chan = TAILQ_FIRST(&mixer_channels);
+  chan = TAILQ_FIRST(&mixer_channels);
   for (i = 0; i < downmix_info.source_num && chan != NULL; i++, chan = TAILQ_NEXT(chan, entries))
   {
     downmix_source_info[i].samplerate = 48000;
     downmix_source_info[i].channel = 1;
     downmix_source_info[i].bits_num = 16;
-    downmix_source_info[i].gain[0] = 0;
-    downmix_source_info[i].gain[1] = 0;
-    downmix_source_info[i].transit_time = 0;
+    downmix_source_info[i].gain[0] = was_ducked && !chan->duck_others ? MIXER_DUCK_GAIN : 0;
+    downmix_source_info[i].gain[1] = will_duck && !chan->duck_others ? MIXER_DUCK_GAIN : 0;
+    downmix_source_info[i].transit_time = 250;
   }
   if (i != downmix_info.source_num)
   {
@@ -175,7 +199,7 @@ esp_err_t mixer_init()
   return ESP_OK;
 }
 
-esp_err_t mixer_play_audio(mixer_read_callback_t callback, void *ctx, mixer_channel_t *slot)
+esp_err_t mixer_play_audio(mixer_read_callback_t callback, void *ctx, bool duck_others, mixer_channel_t *slot)
 {
   ESP_RETURN_ON_FALSE(mixer_mutex, ESP_ERR_INVALID_STATE, RADIO_TAG, "mixer_play_audio must be called after mixer_init");
   ESP_RETURN_ON_FALSE(callback, ESP_ERR_INVALID_ARG, RADIO_TAG, "mixer_play_audio callback must not be NULL");
@@ -185,6 +209,7 @@ esp_err_t mixer_play_audio(mixer_read_callback_t callback, void *ctx, mixer_chan
   ESP_RETURN_ON_FALSE(channel, ESP_ERR_NO_MEM, RADIO_TAG, "Failed to allocate memory for mixer channel");
   channel->callback = callback;
   channel->ctx = ctx;
+  channel->duck_others = duck_others;
 
   esp_err_t ret = ESP_OK;
 
