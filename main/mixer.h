@@ -3,6 +3,8 @@
 #include "esp_err.h"
 #include "freertos/FreeRTOS.h"
 
+#include <stdbool.h>
+
 #ifdef __cplusplus
 extern "C"
 {
