@@ -12,8 +12,8 @@
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
 
-#define DISCHARGE_LOW_BATTERY_THRESHOLD_MV 2500 // 3.7V is roughly 20% of an 18650 * our 2/3 voltage divider
-#define CHARGE_LOW_BATTERY_THRESHOLD 2667       // 4V * 2/3 is roughly 50% charged, but we want to encourage leaving the radio plugged in
+#define DISCHARGE_LOW_BATTERY_THRESHOLD_MV (2500) // 3.7V is roughly 20% of an 18650 * our 2/3 voltage divider
+#define CHARGE_LOW_BATTERY_THRESHOLD (2667)       // 4V * 2/3 is roughly 50% charged, but we want to encourage leaving the radio plugged in
 static uint32_t discharge_low_battery_threshold_raw = 0;
 static uint32_t charge_low_battery_threshold_raw = 0;
 

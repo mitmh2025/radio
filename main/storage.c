@@ -102,7 +102,7 @@ typedef struct
 #define BLOCK_FLASH_ERASE_SIZE 4096
 #define BLOCK_FLASH_BLOCK_COUNT (16 /* erase sectors per block */ * 256 /* blocks per chip */)
 #define BLOCK_FLASH_SIZE_BYTES (BLOCK_FLASH_ERASE_SIZE * BLOCK_FLASH_BLOCK_COUNT)
-#define BLOCK_FLASH_COUNT 2
+#define BLOCK_FLASH_COUNT (2)
 
 // One of these two will be populated based on the block type
 static block_flash_t block_flash[BLOCK_FLASH_COUNT] = {};
