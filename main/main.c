@@ -93,7 +93,7 @@ void webrtc_pipeline_start(void *context)
   webrtc_connection_t connection = (webrtc_connection_t)context;
 
   int64_t start = esp_timer_get_time();
-  esp_err_t err = webrtc_wait_buffer_duration(connection, 48000, 3000);
+  esp_err_t err = webrtc_wait_buffer_duration(connection, 4800, 3000);
   if (err != ESP_OK)
   {
     ESP_LOGE(RADIO_TAG, "Failed to wait for buffer duration: %d (%s)", err, esp_err_to_name(err));
