@@ -100,7 +100,7 @@ void webrtc_pipeline_start(void *context)
     vTaskDelete(NULL);
   }
   int64_t end = esp_timer_get_time();
-  ESP_LOGI(RADIO_TAG, "Spent %lldms buffering audio", (end - start) / 1000);
+  ESP_LOGI(RADIO_TAG, "Spent %lldms buffering audio (%" PRIu64 "ms since boot)", (end - start) / 1000, end / 1000);
 
   mixer_channel_t channel;
   err = mixer_play_audio(webrtc_read_audio_sample, connection, 48000, 16, 1, false, &channel);
@@ -231,9 +231,9 @@ void app_main(void)
                                 dac_volume_callback));
   xTaskCreatePinnedToCore(dac_output_task, "dac_output", 4096, NULL, 5, NULL, 0);
 
+  ESP_ERROR_CHECK(webrtc_init());
   ESP_ERROR_CHECK(things_init());
   ESP_ERROR_CHECK(storage_init());
-  ESP_ERROR_CHECK(webrtc_init());
   ESP_ERROR_CHECK(file_cache_init());
 
   if (!(xEventGroupGetBits(radio_event_group) & RADIO_EVENT_GROUP_THINGS_PROVISIONED))
