@@ -231,6 +231,9 @@ void app_main(void)
                                 dac_volume_callback));
   xTaskCreatePinnedToCore(dac_output_task, "dac_output", 4096, NULL, 5, NULL, 0);
 
+  // mark firmware as good before we potentially fetch a new one
+  ESP_ERROR_CHECK_WITHOUT_ABORT(esp_ota_mark_app_valid_cancel_rollback());
+
   ESP_ERROR_CHECK(webrtc_init());
   ESP_ERROR_CHECK(things_init());
   ESP_ERROR_CHECK(storage_init());
@@ -257,9 +260,6 @@ void app_main(void)
   }
 
   ESP_ERROR_CHECK(console_init());
-
-  // If we make it this far, mark the firmware as good
-  ESP_ERROR_CHECK_WITHOUT_ABORT(esp_ota_mark_app_valid_cancel_rollback());
 
   xEventGroupWaitBits(radio_event_group, RADIO_EVENT_GROUP_WIFI_CONNECTED, pdFALSE, pdTRUE, portMAX_DELAY);
 
