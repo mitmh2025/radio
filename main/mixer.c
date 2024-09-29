@@ -60,6 +60,8 @@ TAILQ_HEAD(mixer_channel_list, mixer_channel);
 
 struct mixer_channel_list mixer_channels = TAILQ_HEAD_INITIALIZER(mixer_channels);
 
+// TODO: add telemetry
+
 // Must be called while holding mixer_mutex
 static esp_err_t mixer_reopen()
 {

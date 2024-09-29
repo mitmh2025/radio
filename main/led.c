@@ -11,6 +11,8 @@
 static SemaphoreHandle_t led_mutex = NULL;
 static led_strip_handle_t led = NULL;
 
+// TODO: add telemetry
+
 esp_err_t led_init()
 {
   led_mutex = xSemaphoreCreateMutex();
