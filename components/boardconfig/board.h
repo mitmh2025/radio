@@ -75,6 +75,7 @@ do                                                                              
 
 #define VOLUME_ADC_CHANNEL ADC_CHANNEL_0
 
+#define LED_COUNT (2)
 #define LED_PIN GPIO_NUM_48
 
 #ifdef __cplusplus
