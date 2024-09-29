@@ -163,3 +163,29 @@ cleanup:
   xSemaphoreGive(adc_mutex);
   return ret;
 }
+
+esp_err_t adc_unsubscribe(uint8_t channel)
+{
+  ESP_RETURN_ON_FALSE(adc_mutex, ESP_ERR_INVALID_STATE, RADIO_TAG, "adc_unsubscribe must be called after adc_init");
+  ESP_RETURN_ON_FALSE(channel < SOC_ADC_MAX_CHANNEL_NUM, ESP_ERR_INVALID_ARG, RADIO_TAG, "adc_unsubscribe channel must be less than %d", SOC_ADC_MAX_CHANNEL_NUM);
+
+  xSemaphoreTake(adc_mutex, portMAX_DELAY);
+  esp_err_t ret = ESP_OK;
+
+  ESP_GOTO_ON_FALSE(adc_configs[channel].populated, ESP_ERR_INVALID_STATE, cleanup, RADIO_TAG, "adc_unsubscribe channel %d not subscribed", channel);
+
+  if (adc_running)
+  {
+    adc_continuous_stop(adc_handle);
+    adc_running = false;
+  }
+
+  adc_configs[channel].populated = false;
+  adc_configs[channel].callback = NULL;
+
+  ret = adc_config_and_start();
+
+cleanup:
+  xSemaphoreGive(adc_mutex);
+  return ret;
+}

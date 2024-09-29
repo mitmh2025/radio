@@ -9,6 +9,7 @@ extern "C" {
 
   esp_err_t adc_init();
   esp_err_t adc_subscribe(adc_digi_pattern_config_t *config, void (*callback)(adc_digi_output_data_t *result));
+  esp_err_t adc_unsubscribe(uint8_t channel);
 
 #ifdef __cplusplus
 }
