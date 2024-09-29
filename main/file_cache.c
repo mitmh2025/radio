@@ -668,7 +668,7 @@ esp_err_t file_cache_init(void)
   return ESP_OK;
 }
 
-int file_cache_open_file(char *name)
+int file_cache_open_file(const char *name)
 {
   int ret = -1;
 

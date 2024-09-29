@@ -8,7 +8,7 @@ extern "C"
 #endif
 
   esp_err_t file_cache_init(void);
-  int file_cache_open_file(char *name);
+  int file_cache_open_file(const char *name);
 
 #ifdef __cplusplus
 }
