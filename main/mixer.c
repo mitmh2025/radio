@@ -199,11 +199,14 @@ esp_err_t mixer_init()
   return ESP_OK;
 }
 
-esp_err_t mixer_play_audio(mixer_read_callback_t callback, void *ctx, bool duck_others, mixer_channel_t *slot)
+esp_err_t mixer_play_audio(mixer_read_callback_t callback, void *ctx, int sample_rate, int bits, int channels, bool duck_others, mixer_channel_t *slot)
 {
   ESP_RETURN_ON_FALSE(mixer_mutex, ESP_ERR_INVALID_STATE, RADIO_TAG, "mixer_play_audio must be called after mixer_init");
   ESP_RETURN_ON_FALSE(callback, ESP_ERR_INVALID_ARG, RADIO_TAG, "mixer_play_audio callback must not be NULL");
   ESP_RETURN_ON_FALSE(slot, ESP_ERR_INVALID_ARG, RADIO_TAG, "mixer_play_audio slot must not be NULL");
+  ESP_RETURN_ON_FALSE(sample_rate == 48000, ESP_ERR_NOT_SUPPORTED, RADIO_TAG, "Only 48kHz sample rate is supported");
+  ESP_RETURN_ON_FALSE(bits == 16, ESP_ERR_NOT_SUPPORTED, RADIO_TAG, "Only 16-bit samples are supported");
+  ESP_RETURN_ON_FALSE(channels == 1, ESP_ERR_NOT_SUPPORTED, RADIO_TAG, "Only mono audio is supported");
 
   mixer_channel_t channel = calloc(1, sizeof(struct mixer_channel));
   ESP_RETURN_ON_FALSE(channel, ESP_ERR_NO_MEM, RADIO_TAG, "Failed to allocate memory for mixer channel");
