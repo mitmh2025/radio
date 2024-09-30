@@ -5,6 +5,7 @@
 #include "things.h"
 #include "main.h"
 
+#include <algorithm>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -136,8 +137,8 @@ static void things_telemetry_generator()
     configRUN_TIME_COUNTER_TYPE cpu0_idle_delta = cpu0_idle_counter - things_last_cpu_usage.cpu0_idle_counter;
     configRUN_TIME_COUNTER_TYPE cpu1_idle_delta = cpu1_idle_counter - things_last_cpu_usage.cpu1_idle_counter;
 
-    float cpu0_usage = 100.0 * (run_time_delta - cpu0_idle_delta) / run_time_delta;
-    float cpu1_usage = 100.0 * (run_time_delta - cpu1_idle_delta) / run_time_delta;
+    float cpu0_usage = std::min(100.0f, std::max(0.0f, 100.0f * (run_time_delta - cpu0_idle_delta) / run_time_delta));
+    float cpu1_usage = std::min(100.0f, std::max(0.0f, 100.0f * (run_time_delta - cpu1_idle_delta) / run_time_delta));
 
     things_send_telemetry_float("cpu0_usage_percent", cpu0_usage);
     things_send_telemetry_float("cpu1_usage_percent", cpu1_usage);
