@@ -1,0 +1,18 @@
+#pragma once
+
+#include "esp_err.h"
+#include "driver/gpio.h"
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
+  esp_err_t debounce_init();
+  // Note: handler must be declared with IRAM_ATTR
+  esp_err_t debounce_handler_add(gpio_num_t gpio_num, gpio_int_type_t intr_type, gpio_isr_t isr_handler, void *args, uint64_t timeout_us);
+  esp_err_t debounce_handler_remove(gpio_num_t gpio_num);
+
+#ifdef __cplusplus
+}
+#endif

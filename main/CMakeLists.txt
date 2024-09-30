@@ -3,6 +3,7 @@ idf_component_register(
   adc.c
   battery.c
   console.c
+  debounce.c
   file_cache.c
   led.c
   main.c
