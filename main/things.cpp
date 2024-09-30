@@ -126,8 +126,7 @@ static void things_telemetry_generator()
   // Report basic metrics
   things_send_telemetry_int("uptime", esp_timer_get_time() / (1000 * 1000));
 
-  configRUN_TIME_COUNTER_TYPE run_time_counter = 0;
-  portALT_GET_RUN_TIME_COUNTER_VALUE(run_time_counter);
+  configRUN_TIME_COUNTER_TYPE run_time_counter = esp_timer_get_time();
   configRUN_TIME_COUNTER_TYPE cpu0_idle_counter = ulTaskGetIdleRunTimeCounterForCore(0);
   configRUN_TIME_COUNTER_TYPE cpu1_idle_counter = ulTaskGetIdleRunTimeCounterForCore(1);
 
