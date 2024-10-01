@@ -63,7 +63,7 @@ using RadioThingsBoard = ThingsBoardSized<ESPLogger>;
 
 static constexpr uint8_t FIRMWARE_FAILURE_RETRIES = 12U;
 static constexpr uint16_t FIRMWARE_PACKET_SIZE = 4096U;
-static constexpr uint16_t MAX_MESSAGE_SIZE = UINT16_MAX; // Max core dump size
+static constexpr uint16_t MAX_MESSAGE_SIZE = 256U;
 
 static constexpr char THINGSBOARD_SERVER[] = RADIO_THINGSBOARD_SERVER;
 static constexpr uint16_t THINGSBOARD_PORT = 8883U;
@@ -387,7 +387,9 @@ static void things_upload_coredump(RadioThingsBoard *conn, size_t core_size)
     goto cleanup;
   }
 
+  conn->setBufferSize(UINT16_MAX);
   conn->sendTelemetryData("coredump", base64_core_dump);
+  conn->setBufferSize(MAX_MESSAGE_SIZE);
 
   ESP_LOGI(RADIO_TAG, "Uploading coredump to ThingsBoard");
 
