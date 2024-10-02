@@ -130,7 +130,7 @@ void webrtc_pipeline_start(void *context)
 
 TaskHandle_t webrtc_pipeline_task = NULL;
 
-static void on_webrtc_state_change(webrtc_connection_t conn, void *context, WEBRTC_CONNECTION_STATE state)
+static void on_webrtc_state_change(webrtc_connection_t conn, void *context, webrtc_connection_state_t state)
 {
   if (state == WEBRTC_CONNECTION_STATE_CONNECTED)
   {

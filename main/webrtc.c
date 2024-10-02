@@ -251,7 +251,7 @@ static void webrtc_on_connection_state_change(UINT64 arg, RTC_PEER_CONNECTION_ST
 
   connection->state = state;
 
-  WEBRTC_CONNECTION_STATE new_state;
+  webrtc_connection_state_t new_state;
   switch (state)
   {
   case RTC_PEER_CONNECTION_STATE_NEW:
