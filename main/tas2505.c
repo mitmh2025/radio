@@ -58,7 +58,7 @@ typedef struct
 //
 // Specific values are DOSR=128, MDAC=2, NDAC=8, PLL_P=1, PLL_D=0, PLL_J=32, and
 // PLL_R=2
-static tas2505_cfg_reg_t tas2505_init_registers[] = {
+static const tas2505_cfg_reg_t tas2505_init_registers[] = {
     {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_SOFTWARE_RESET, 0x1},
     {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_LDO_CONTROL, 0x0},
     {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_GPIO_CONTROL, 0x8},
@@ -84,21 +84,21 @@ static tas2505_cfg_reg_t tas2505_init_registers[] = {
 
 static tas2505_output_t current_output = TAS2505_OUTPUT_SPEAKER;
 
-static tas2505_cfg_reg_t tas2505_speaker_output_registers[] = {
+static const tas2505_cfg_reg_t tas2505_speaker_output_registers[] = {
     {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_SPEAKER_VOLUME_RANGE, 0x30},
     {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_AINL_VOLUME, 0x80},
     {TAS2505_CFG_OP_CLEAR_BITS, TAS2505_CFG_REG_OUTPUT_CONTROL, 0x20},
     {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_SPEAKER_CONTROL, 0x2},
 };
 
-static tas2505_cfg_reg_t tas2505_headphone_output_registers[] = {
+static const tas2505_cfg_reg_t tas2505_headphone_output_registers[] = {
     {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_SPEAKER_VOLUME_RANGE, 0},
     {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_AINL_VOLUME, 0x0},
     {TAS2505_CFG_OP_SET_BITS, TAS2505_CFG_REG_OUTPUT_CONTROL, 0x20},
     {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_SPEAKER_CONTROL, 0x0},
 };
 
-static tas2505_cfg_reg_t tas2505_both_output_registers[] = {
+static const tas2505_cfg_reg_t tas2505_both_output_registers[] = {
     {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_SPEAKER_VOLUME_RANGE, 0x30},
     {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_AINL_VOLUME, 0x80},
     {TAS2505_CFG_OP_SET_BITS, TAS2505_CFG_REG_OUTPUT_CONTROL, 0x20},
@@ -107,19 +107,19 @@ static tas2505_cfg_reg_t tas2505_both_output_registers[] = {
 
 static tas2505_input_t current_input = TAS2505_INPUT_DAC;
 
-static tas2505_cfg_reg_t tas2505_dac_on_registers[] = {
+static const tas2505_cfg_reg_t tas2505_dac_on_registers[] = {
     {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_DAC_SETUP1, 0xb0},
 };
 
-static tas2505_cfg_reg_t tas2505_dac_off_registers[] = {
+static const tas2505_cfg_reg_t tas2505_dac_off_registers[] = {
     {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_DAC_SETUP1, 0x00},
 };
 
-static tas2505_cfg_reg_t tas2505_line_on_registers[] = {
+static const tas2505_cfg_reg_t tas2505_line_on_registers[] = {
     {TAS2505_CFG_OP_SET_BITS, TAS2505_CFG_REG_OUTPUT_CONTROL, 0x3},
 };
 
-static tas2505_cfg_reg_t tas2505_line_off_registers[] = {
+static const tas2505_cfg_reg_t tas2505_line_off_registers[] = {
     {TAS2505_CFG_OP_CLEAR_BITS, TAS2505_CFG_REG_OUTPUT_CONTROL, 0x3},
 };
 
@@ -138,7 +138,7 @@ static esp_err_t tas2505_read_register(uint8_t offset, uint8_t *value)
   return ret;
 }
 
-static esp_err_t tas2505_write_registers(tas2505_cfg_reg_t *registers, size_t len)
+static esp_err_t tas2505_write_registers(const tas2505_cfg_reg_t *registers, size_t len)
 {
   esp_err_t ret = ESP_OK;
   uint8_t current_page = 0xff;
