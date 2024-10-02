@@ -94,7 +94,10 @@ void webrtc_pipeline_start(void *context)
   webrtc_connection_t connection = (webrtc_connection_t)context;
 
   int64_t start = esp_timer_get_time();
-  esp_err_t err = webrtc_wait_buffer_duration(connection, 4800, 3000);
+  float rtt = webrtc_get_ice_rtt_ms(connection);
+  uint32_t required_samples = rtt * 4 * /* scale from ms to 48000 hz */ 48;
+  ESP_LOGI(RADIO_TAG, "Waiting to fill %" PRIu32 " samples (4 * %.2fms RTT)", required_samples, rtt);
+  esp_err_t err = webrtc_wait_buffer_duration(connection, required_samples, 3000);
   if (err != ESP_OK)
   {
     ESP_LOGE(RADIO_TAG, "Failed to wait for buffer duration: %d (%s)", err, esp_err_to_name(err));

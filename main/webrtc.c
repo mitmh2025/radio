@@ -732,3 +732,34 @@ int webrtc_read_audio_sample(void *context, char *buf, int len, TickType_t ticks
 
   return data.buf_len;
 }
+
+float webrtc_get_ice_rtt_ms(webrtc_connection_t connection)
+{
+  PRtcStats stats = calloc(1, sizeof(RtcStats));
+  if (!stats)
+  {
+    ESP_LOGE(RADIO_TAG, "Failed to allocate memory for RTC stats");
+    return -1;
+  }
+
+  int ret = -1;
+
+  stats->requestedTypeOfStats = RTC_STATS_TYPE_ICE_SERVER;
+  STATUS status = rtcPeerConnectionGetMetrics(connection->peer_connection, NULL, stats);
+  if (status != STATUS_SUCCESS)
+  {
+    ESP_LOGE(RADIO_TAG, "Failed to get ICE metrics with status code %" PRIx32, status);
+    ret = -1;
+    goto cleanup;
+  }
+  if (stats->rtcStatsObject.iceServerStats.totalRequestsSent == 0)
+  {
+    ret = -1;
+    goto cleanup;
+  }
+  ret = (float)stats->rtcStatsObject.iceServerStats.totalRoundTripTime / stats->rtcStatsObject.iceServerStats.totalRequestsSent;
+  ret /= HUNDREDS_OF_NANOS_IN_A_MILLISECOND;
+cleanup:
+  free(stats);
+  return ret;
+}

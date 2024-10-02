@@ -43,6 +43,7 @@ extern "C"
   esp_err_t webrtc_get_buffer_duration(webrtc_connection_t connection, uint32_t *duration);
   esp_err_t webrtc_wait_buffer_duration(webrtc_connection_t connection, uint32_t duration_samples, uint64_t max_wait_ms);
   int webrtc_read_audio_sample(void *context, char *buf, int len, TickType_t ticks_to_wait);
+  float webrtc_get_ice_rtt_ms(webrtc_connection_t connection);
 
 #ifdef __cplusplus
 }
