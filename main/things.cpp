@@ -1,5 +1,4 @@
 #include "nvs_flash.h"
-#include "nvs_handle.hpp"
 
 #include "../config.h"
 #include "things.h"
