@@ -15,6 +15,7 @@ int8_t get_sdcard_open_file_num_max(void)
 
 static i2c_master_bus_handle_t i2c_handle = 0;
 SemaphoreHandle_t i2c_mutex;
+UBaseType_t i2c_mutex_holder_priority;
 
 esp_err_t
 board_i2c_init()
