@@ -1,25 +1,24 @@
 #include "console.h"
 #include "main.h"
-#include "things.h"
 #include "storage.h"
+#include "things.h"
 
 #include <fcntl.h>
 
-#include "esp_log.h"
+#include "argtable3/argtable3.h"
+#include "driver/gpio.h"
+#include "driver/usb_serial_jtag.h"
 #include "esp_check.h"
 #include "esp_console.h"
+#include "esp_log.h"
 #include "esp_vfs_dev.h"
-#include "linenoise/linenoise.h"
-#include "argtable3/argtable3.h"
-#include "driver/usb_serial_jtag.h"
 #include "freertos/FreeRTOS.h"
+#include "linenoise/linenoise.h"
 #include "lwip/stats.h"
-#include "driver/gpio.h"
 
 #include "esp_littlefs.h"
 
-static void console_task(void *arg)
-{
+static void console_task(void *arg) {
   // TODO: support starting/stopping the console when radio is in/out of debug
   // mode by dup'ing stdin and closing/reopening the original fd as needed
 
@@ -28,78 +27,59 @@ static void console_task(void *arg)
   // connected
 
   const char *prompt = LOG_COLOR_I "radio> " LOG_RESET_COLOR;
-  while (true)
-  {
+  while (true) {
     char *line = linenoise(prompt);
-    if (line == NULL)
-    {
+    if (line == NULL) {
       continue;
     }
     linenoiseHistoryAdd(line);
 
     int ret;
     esp_err_t err = esp_console_run(line, &ret);
-    if (err == ESP_ERR_NOT_FOUND)
-    {
+    if (err == ESP_ERR_NOT_FOUND) {
       printf("Unrecognized command\n");
-    }
-    else if (err == ESP_ERR_INVALID_ARG)
-    {
+    } else if (err == ESP_ERR_INVALID_ARG) {
       // command was empty
-    }
-    else if (err == ESP_OK && ret != ESP_OK)
-    {
-      printf("Command returned non-zero error code: 0x%x (%s)\n", ret, esp_err_to_name(ret));
-    }
-    else if (err != ESP_OK)
-    {
+    } else if (err == ESP_OK && ret != ESP_OK) {
+      printf("Command returned non-zero error code: 0x%x (%s)\n", ret,
+             esp_err_to_name(ret));
+    } else if (err != ESP_OK) {
       printf("Internal error: %s\n", esp_err_to_name(err));
     }
     linenoiseFree(line);
   }
 }
 
-static int restart_func(int argc, char **argv)
-{
+static int restart_func(int argc, char **argv) {
   esp_restart();
   return 0;
 }
 
-static int panic_func(int argc, char **argv)
-{
+static int panic_func(int argc, char **argv) {
   *((int *)0) = 0;
   return 0;
 }
 
-static struct
-{
+static struct {
   struct arg_str *caps;
   struct arg_end *end;
 } heap_args;
 
-static int heap_func(int argc, char **argv)
-{
+static int heap_func(int argc, char **argv) {
   int nerrors = arg_parse(argc, argv, (void **)&heap_args);
 
-  if (nerrors != 0)
-  {
+  if (nerrors != 0) {
     arg_print_errors(stderr, heap_args.end, argv[0]);
     return 1;
   }
 
   uint32_t caps = MALLOC_CAP_DEFAULT;
-  if (heap_args.caps->count == 1)
-  {
-    if (strcasecmp(heap_args.caps->sval[0], "internal") == 0)
-    {
+  if (heap_args.caps->count == 1) {
+    if (strcasecmp(heap_args.caps->sval[0], "internal") == 0) {
       caps = MALLOC_CAP_INTERNAL;
-    }
-    else if (strcasecmp(heap_args.caps->sval[0], "psram") == 0)
-    {
+    } else if (strcasecmp(heap_args.caps->sval[0], "psram") == 0) {
       caps = MALLOC_CAP_SPIRAM;
-    }
-    else
-    {
+    } else {
       arg_print_syntax(stderr, (void **)&heap_args, argv[0]);
       return 1;
     }
@@ -109,13 +89,11 @@ static int heap_func(int argc, char **argv)
   return 0;
 }
 
-static int tasks_func(int argc, char **argv)
-{
+static int tasks_func(int argc, char **argv) {
   const size_t bytes_per_task = 40; /* see vTaskList description */
   const size_t buffer_size = uxTaskGetNumberOfTasks() * bytes_per_task;
   char *task_list_buffer = malloc(buffer_size);
-  if (task_list_buffer == NULL)
-  {
+  if (task_list_buffer == NULL) {
     ESP_LOGE(RADIO_TAG, "failed to allocate buffer for vTaskList output");
     return 1;
   }
@@ -131,43 +109,36 @@ static int tasks_func(int argc, char **argv)
   return 0;
 }
 
-static int lwip_func(int argc, char **argv)
-{
+static int lwip_func(int argc, char **argv) {
   stats_display();
   return 0;
 }
 
-static int gpio_func(int argc, char **argv)
-{
+static int gpio_func(int argc, char **argv) {
   gpio_dump_io_configuration(stdout, SOC_GPIO_VALID_GPIO_MASK);
   return 0;
 }
 
-static struct
-{
+static struct {
   struct arg_str *token;
   struct arg_end *end;
 } provision_args;
 
-static int provision_func(int argc, char **argv)
-{
+static int provision_func(int argc, char **argv) {
   int nerrors = arg_parse(argc, argv, (void **)&provision_args);
 
-  if (nerrors != 0)
-  {
+  if (nerrors != 0) {
     arg_print_errors(stderr, provision_args.end, argv[0]);
     return 1;
   }
 
-  if (provision_args.token->count == 0)
-  {
+  if (provision_args.token->count == 0) {
     arg_print_syntax(stderr, (void **)&provision_args, argv[0]);
     return 1;
   }
 
   esp_err_t err = things_provision(provision_args.token->sval[0]);
-  if (err != ESP_OK)
-  {
+  if (err != ESP_OK) {
     printf("Failed to provision device: %s\n", esp_err_to_name(err));
     return 1;
   }
@@ -175,11 +146,9 @@ static int provision_func(int argc, char **argv)
   return 0;
 }
 
-static int deprovision_func(int argc, char **argv)
-{
+static int deprovision_func(int argc, char **argv) {
   esp_err_t err = things_deprovision();
-  if (err != ESP_OK)
-  {
+  if (err != ESP_OK) {
     printf("Failed to deprovision device: %s\n", esp_err_to_name(err));
     return 1;
   }
@@ -187,54 +156,43 @@ static int deprovision_func(int argc, char **argv)
   return 0;
 }
 
-static struct
-{
+static struct {
   struct arg_str *dir;
   struct arg_lit *long_format;
   struct arg_end *end;
 } list_args;
 
-static int list_func(int argc, char **argv)
-{
+static int list_func(int argc, char **argv) {
   int nerrors = arg_parse(argc, argv, (void **)&list_args);
 
-  if (nerrors != 0)
-  {
+  if (nerrors != 0) {
     arg_print_errors(stderr, list_args.end, argv[0]);
     return 1;
   }
 
-  if (list_args.dir->count == 0)
-  {
+  if (list_args.dir->count == 0) {
     arg_print_syntax(stderr, (void **)&list_args, argv[0]);
     return 1;
   }
 
   DIR *dir = opendir(list_args.dir->sval[0]);
-  if (dir == NULL)
-  {
+  if (dir == NULL) {
     printf("Failed to open directory: %s\n", strerror(errno));
     return 1;
   }
 
   struct dirent *entry;
-  while ((entry = readdir(dir)) != NULL)
-  {
-    if (list_args.long_format->count)
-    {
+  while ((entry = readdir(dir)) != NULL) {
+    if (list_args.long_format->count) {
       struct stat st;
       char path[PATH_MAX];
-      snprintf(path, sizeof(path), "%s/%s", list_args.dir->sval[0], entry->d_name);
-      if (stat(path, &st) == 0)
-      {
-        printf("%s\t%ld\t%s\n",
-               entry->d_type == DT_DIR ? "d" : "-",
-               entry->d_type == DT_DIR ? 0 : st.st_size,
+      snprintf(path, sizeof(path), "%s/%s", list_args.dir->sval[0],
                entry->d_name);
+      if (stat(path, &st) == 0) {
+        printf("%s\t%ld\t%s\n", entry->d_type == DT_DIR ? "d" : "-",
+               entry->d_type == DT_DIR ? 0 : st.st_size, entry->d_name);
       }
-    }
-    else
-    {
+    } else {
       printf("%s%s\n", entry->d_name, entry->d_type == DT_DIR ? "/" : "");
     }
   }
@@ -244,39 +202,33 @@ static int list_func(int argc, char **argv)
   return 0;
 }
 
-static struct
-{
+static struct {
   struct arg_str *path;
   struct arg_end *end;
 } cat_args;
 
-static int cat_func(int argc, char **argv)
-{
+static int cat_func(int argc, char **argv) {
   int nerrors = arg_parse(argc, argv, (void **)&cat_args);
 
-  if (nerrors != 0)
-  {
+  if (nerrors != 0) {
     arg_print_errors(stderr, cat_args.end, argv[0]);
     return 1;
   }
 
-  if (cat_args.path->count == 0)
-  {
+  if (cat_args.path->count == 0) {
     arg_print_syntax(stderr, (void **)&cat_args, argv[0]);
     return 1;
   }
 
   FILE *file = fopen(cat_args.path->sval[0], "r");
-  if (file == NULL)
-  {
+  if (file == NULL) {
     printf("Failed to open file: %s\n", strerror(errno));
     return 1;
   }
 
   char buffer[1024];
   size_t read;
-  while ((read = fread(buffer, 1, sizeof(buffer), file)) > 0)
-  {
+  while ((read = fread(buffer, 1, sizeof(buffer), file)) > 0) {
     fwrite(buffer, 1, read, stdout);
   }
 
@@ -286,30 +238,25 @@ static int cat_func(int argc, char **argv)
   return 0;
 }
 
-static struct
-{
+static struct {
   struct arg_str *path;
   struct arg_end *end;
 } rm_args;
 
-static int rm_func(int argc, char **argv)
-{
+static int rm_func(int argc, char **argv) {
   int nerrors = arg_parse(argc, argv, (void **)&rm_args);
 
-  if (nerrors != 0)
-  {
+  if (nerrors != 0) {
     arg_print_errors(stderr, rm_args.end, argv[0]);
     return 1;
   }
 
-  if (rm_args.path->count == 0)
-  {
+  if (rm_args.path->count == 0) {
     arg_print_syntax(stderr, (void **)&rm_args, argv[0]);
     return 1;
   }
 
-  if (unlink(rm_args.path->sval[0]) != 0)
-  {
+  if (unlink(rm_args.path->sval[0]) != 0) {
     printf("Failed to remove file: %s\n", strerror(errno));
     return 1;
   }
@@ -317,45 +264,48 @@ static int rm_func(int argc, char **argv)
   return 0;
 }
 
-static int df_func(int argc, char **argv)
-{
+static int df_func(int argc, char **argv) {
   size_t total, used;
   int ret = esp_littlefs_mountpoint_info(STORAGE_MOUNTPOINT, &total, &used);
-  if (ret != ESP_OK)
-  {
+  if (ret != ESP_OK) {
     printf("Failed to get storage info: %s\n", esp_err_to_name(ret));
     return 1;
   }
 
   printf("Used:  %8zu bytes (%u%%)\n", used, (used * 100) / total);
-  printf("Free:  %8zu bytes (%u%%)\n", total - used, ((total - used) * 100) / total);
+  printf("Free:  %8zu bytes (%u%%)\n", total - used,
+         ((total - used) * 100) / total);
   printf("Total: %8zu bytes\n", total);
 
   return 0;
 }
 
-esp_err_t console_init()
-{
+esp_err_t console_init() {
   // Block on stdin and stdout
   fcntl(fileno(stdout), F_SETFL, 0);
   fcntl(fileno(stdin), F_SETFL, 0);
 
-  usb_serial_jtag_driver_config_t usb_serial_jtag_config = USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
+  usb_serial_jtag_driver_config_t usb_serial_jtag_config =
+      USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
   esp_err_t err = usb_serial_jtag_driver_install(&usb_serial_jtag_config);
-  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to install USB serial JTAG driver: %s", esp_err_to_name(err));
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG,
+                      "Failed to install USB serial JTAG driver: %s",
+                      esp_err_to_name(err));
 
   esp_vfs_usb_serial_jtag_use_driver();
 
   esp_console_config_t cfg = ESP_CONSOLE_CONFIG_DEFAULT();
   cfg.hint_color = atoi(LOG_COLOR_CYAN);
   err = esp_console_init(&cfg);
-  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to initialize console: %s", esp_err_to_name(err));
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to initialize console: %s",
+                      esp_err_to_name(err));
 
   linenoiseSetCompletionCallback(&esp_console_get_completion);
   linenoiseSetHintsCallback((linenoiseHintsCallback *)&esp_console_get_hint);
 
   err = esp_console_register_help_command();
-  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register help command: %s", esp_err_to_name(err));
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register help command: %s",
+                      esp_err_to_name(err));
 
   esp_console_cmd_t cmd_restart = {
       .command = "restart",
@@ -363,7 +313,8 @@ esp_err_t console_init()
       .func = &restart_func,
   };
   err = esp_console_cmd_register(&cmd_restart);
-  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register restart command: %s", esp_err_to_name(err));
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register restart command: %s",
+                      esp_err_to_name(err));
 
   esp_console_cmd_t cmd_panic = {
       .command = "panic",
@@ -371,9 +322,12 @@ esp_err_t console_init()
       .func = &panic_func,
   };
   err = esp_console_cmd_register(&cmd_panic);
-  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register panic command: %s", esp_err_to_name(err));
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register panic command: %s",
+                      esp_err_to_name(err));
 
-  heap_args.caps = arg_str0(NULL, NULL, "internal|psram", "Limit to these memory capabilities (defaults to all)");
+  heap_args.caps =
+      arg_str0(NULL, NULL, "internal|psram",
+               "Limit to these memory capabilities (defaults to all)");
   heap_args.end = arg_end(1);
   esp_console_cmd_t cmd_heap = {
       .command = "heap",
@@ -383,7 +337,8 @@ esp_err_t console_init()
       .argtable = &heap_args,
   };
   err = esp_console_cmd_register(&cmd_heap);
-  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register heap command: %s", esp_err_to_name(err));
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register heap command: %s",
+                      esp_err_to_name(err));
 
   esp_console_cmd_t cmd_tasks = {
       .command = "tasks",
@@ -391,7 +346,8 @@ esp_err_t console_init()
       .func = &tasks_func,
   };
   err = esp_console_cmd_register(&cmd_tasks);
-  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register tasks command: %s", esp_err_to_name(err));
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register tasks command: %s",
+                      esp_err_to_name(err));
 
   esp_console_cmd_t cmd_lwip = {
       .command = "lwip",
@@ -399,7 +355,8 @@ esp_err_t console_init()
       .func = &lwip_func,
   };
   err = esp_console_cmd_register(&cmd_lwip);
-  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register lwip command: %s", esp_err_to_name(err));
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register lwip command: %s",
+                      esp_err_to_name(err));
 
   esp_console_cmd_t cmd_gpio = {
       .command = "gpio",
@@ -407,9 +364,11 @@ esp_err_t console_init()
       .func = &gpio_func,
   };
   err = esp_console_cmd_register(&cmd_gpio);
-  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register gpio command: %s", esp_err_to_name(err));
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register gpio command: %s",
+                      esp_err_to_name(err));
 
-  provision_args.token = arg_str1(NULL, NULL, "<token>", "ThingsBoard device token");
+  provision_args.token =
+      arg_str1(NULL, NULL, "<token>", "ThingsBoard device token");
   provision_args.end = arg_end(1);
   esp_console_cmd_t cmd_provision = {
       .command = "provision",
@@ -419,15 +378,20 @@ esp_err_t console_init()
       .argtable = &provision_args,
   };
   err = esp_console_cmd_register(&cmd_provision);
-  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register provision command: %s", esp_err_to_name(err));
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG,
+                      "Failed to register provision command: %s",
+                      esp_err_to_name(err));
 
   esp_console_cmd_t cmd_deprovision = {
       .command = "deprovision",
-      .help = "Erase the ThingsBoard device token. (Note that this will have no effect until reset.)",
+      .help = "Erase the ThingsBoard device token. (Note that this will have "
+              "no effect until reset.)",
       .func = &deprovision_func,
   };
   err = esp_console_cmd_register(&cmd_deprovision);
-  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register deprovision command: %s", esp_err_to_name(err));
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG,
+                      "Failed to register deprovision command: %s",
+                      esp_err_to_name(err));
 
   list_args.dir = arg_str1(NULL, NULL, "<dir>", "Directory to list");
   list_args.long_format = arg_lit0("l", "long", "Use a long listing format");
@@ -440,7 +404,8 @@ esp_err_t console_init()
       .argtable = &list_args,
   };
   err = esp_console_cmd_register(&cmd_list);
-  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register ls command: %s", esp_err_to_name(err));
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register ls command: %s",
+                      esp_err_to_name(err));
 
   cat_args.path = arg_str1(NULL, NULL, "<path>", "File to display");
   cat_args.end = arg_end(1);
@@ -452,7 +417,8 @@ esp_err_t console_init()
       .argtable = &cat_args,
   };
   err = esp_console_cmd_register(&cmd_cat);
-  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register cat command: %s", esp_err_to_name(err));
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register cat command: %s",
+                      esp_err_to_name(err));
 
   rm_args.path = arg_str1(NULL, NULL, "<path>", "File to remove");
   rm_args.end = arg_end(1);
@@ -464,7 +430,8 @@ esp_err_t console_init()
       .argtable = &rm_args,
   };
   err = esp_console_cmd_register(&cmd_rm);
-  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register rm command: %s", esp_err_to_name(err));
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register rm command: %s",
+                      esp_err_to_name(err));
 
   esp_console_cmd_t cmd_df = {
       .command = "df",
@@ -472,7 +439,8 @@ esp_err_t console_init()
       .func = &df_func,
   };
   err = esp_console_cmd_register(&cmd_df);
-  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register df command: %s", esp_err_to_name(err));
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register df command: %s",
+                      esp_err_to_name(err));
 
   xTaskCreate(console_task, "console", 4096, NULL, 15, NULL);
 

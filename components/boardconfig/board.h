@@ -1,8 +1,8 @@
 #pragma once
 
-#include "esp_log.h"
-#include "driver/i2c_master.h"
 #include "board_pins_config.h"
+#include "driver/i2c_master.h"
+#include "esp_log.h"
 #include "freertos/semphr.h"
 
 #ifdef __cplusplus
@@ -55,29 +55,28 @@ esp_err_t board_i2c_init(void);
 // (including devices) must be protected by i2c_mutex
 i2c_master_bus_handle_t board_i2c_get_handle(void);
 
-#define BOARD_I2C_MUTEX_LOCK()                                                                                                             \
-do                                                                                                                                         \
-{                                                                                                                                          \
-  int64_t start = esp_timer_get_time();                                                                                                    \
-  TaskHandle_t holder = xSemaphoreGetMutexHolder(i2c_mutex);                                                                               \
-  xSemaphoreTake(i2c_mutex, portMAX_DELAY);                                                                                                \
-  i2c_mutex_holder_priority = uxTaskPriorityGet(NULL);                                                                                     \
-  vTaskPrioritySet(NULL, configMAX_PRIORITIES - 1);                                                                                        \
-  int64_t end = esp_timer_get_time();                                                                                                      \
-  if (end - start > 10000)                                                                                                                 \
-  {                                                                                                                                        \
-    TaskStatus_t status;                                                                                                                   \
-    vTaskGetInfo(holder, &status, pdTRUE, eInvalid);                                                                                       \
-    ESP_LOGW("radio:board", "%s(%d): Acquiring I2C bus took %lldus (held by %s)", __FUNCTION__, __LINE__, end - start, status.pcTaskName); \
-  }                                                                                                                                        \
-} while (0)
-#define BOARD_I2C_MUTEX_UNLOCK()                         \
-do                                                       \
-{                                                        \
-  UBaseType_t orig_priority = i2c_mutex_holder_priority; \
-  xSemaphoreGive(i2c_mutex);                             \
-  vTaskPrioritySet(NULL, orig_priority);                 \
-} while (0)
+#define BOARD_I2C_MUTEX_LOCK()                                                 \
+  do {                                                                         \
+    int64_t start = esp_timer_get_time();                                      \
+    TaskHandle_t holder = xSemaphoreGetMutexHolder(i2c_mutex);                 \
+    xSemaphoreTake(i2c_mutex, portMAX_DELAY);                                  \
+    i2c_mutex_holder_priority = uxTaskPriorityGet(NULL);                       \
+    vTaskPrioritySet(NULL, configMAX_PRIORITIES - 1);                          \
+    int64_t end = esp_timer_get_time();                                        \
+    if (end - start > 10000) {                                                 \
+      TaskStatus_t status;                                                     \
+      vTaskGetInfo(holder, &status, pdTRUE, eInvalid);                         \
+      ESP_LOGW("radio:board",                                                  \
+               "%s(%d): Acquiring I2C bus took %lldus (held by %s)",           \
+               __FUNCTION__, __LINE__, end - start, status.pcTaskName);        \
+    }                                                                          \
+  } while (0)
+#define BOARD_I2C_MUTEX_UNLOCK()                                               \
+  do {                                                                         \
+    UBaseType_t orig_priority = i2c_mutex_holder_priority;                     \
+    xSemaphoreGive(i2c_mutex);                                                 \
+    vTaskPrioritySet(NULL, orig_priority);                                     \
+  } while (0)
 
 #define BATTERY_ADC_CHANNEL ADC_CHANNEL_8
 #define BATTERY_SCALE_FACTOR (3.0f / (2.0f * 1000.0f))

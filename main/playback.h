@@ -5,11 +5,10 @@
 #include "esp_err.h"
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-  esp_err_t playback_file(const char *path, bool duck_others);
+esp_err_t playback_file(const char *path, bool duck_others);
 
 #ifdef __cplusplus
 }

@@ -1,18 +1,17 @@
 #include "webrtc.h"
 #include "main.h"
 
-#include "esp_log.h"
 #include "esp_check.h"
-#include "esp_http_client.h"
 #include "esp_crt_bundle.h"
+#include "esp_http_client.h"
+#include "esp_log.h"
 
 #include "opus.h"
 
-#include "com/amazonaws/kinesis/video/webrtcclient/Include.h"
 #include "com/amazonaws/kinesis/video/common/Include.h"
+#include "com/amazonaws/kinesis/video/webrtcclient/Include.h"
 
-struct webrtc_connection
-{
+struct webrtc_connection {
   webrtc_connection_state_change_callback_t state_change_callback;
   void *user_data;
 
@@ -38,31 +37,26 @@ struct webrtc_connection
   size_t last_received_packet_capacity;
 };
 
-struct webrtc_connect_task_args
-{
+struct webrtc_connect_task_args {
   TaskHandle_t caller;
   webrtc_config_t *config;
   webrtc_connection_t *handle;
   esp_err_t ret;
 };
 
-struct webrtc_connect_http_data
-{
+struct webrtc_connect_http_data {
   webrtc_connection_t connection;
   PRtcSessionDescriptionInit remoteDescription;
 };
 
-void webrtc_free_connection(webrtc_connection_t connection)
-{
-  if (!connection)
-  {
+void webrtc_free_connection(webrtc_connection_t connection) {
+  if (!connection) {
     return;
   }
 
   free(connection->last_received_packet);
 
-  if (connection->decoder)
-  {
+  if (connection->decoder) {
     opus_decoder_destroy(connection->decoder);
   }
 
@@ -72,8 +66,10 @@ void webrtc_free_connection(webrtc_connection_t connection)
   free(connection->local_ice_pwd);
   free(connection->local_media_line);
 
-  for (int i = sizeof(connection->pending_candidates) / sizeof(connection->pending_candidates[0]) - 1; i >= 0; i--)
-  {
+  for (int i = sizeof(connection->pending_candidates) /
+                   sizeof(connection->pending_candidates[0]) -
+               1;
+       i >= 0; i--) {
     free(connection->pending_candidates[i]);
   }
 
@@ -81,8 +77,7 @@ void webrtc_free_connection(webrtc_connection_t connection)
 
   freePeerConnection(&connection->peer_connection);
 
-  if (connection->lock)
-  {
+  if (connection->lock) {
     xSemaphoreTake(connection->lock, portMAX_DELAY);
     vSemaphoreDelete(connection->lock);
   }
@@ -90,12 +85,10 @@ void webrtc_free_connection(webrtc_connection_t connection)
   free(connection);
 }
 
-static VOID webrtc_logger(UINT32 level, const PCHAR tag, const PCHAR fmt, ...)
-{
+static VOID webrtc_logger(UINT32 level, const PCHAR tag, const PCHAR fmt, ...) {
   int esp_log_level = 0;
   // kvswebrtc is pretty noisy so we'll cram down some of the log levels
-  switch (level)
-  {
+  switch (level) {
   case LOG_LEVEL_VERBOSE:
   case LOG_LEVEL_DEBUG:
     esp_log_level = ESP_LOG_VERBOSE;
@@ -117,14 +110,12 @@ static VOID webrtc_logger(UINT32 level, const PCHAR tag, const PCHAR fmt, ...)
   va_start(args, fmt);
   int len = vsnprintf(NULL, 0, fmt, args);
   va_end(args);
-  if (len < 0)
-  {
+  if (len < 0) {
     return;
   }
 
   char *buffer = malloc(len + 1);
-  if (!buffer)
-  {
+  if (!buffer) {
     return;
   }
 
@@ -132,8 +123,7 @@ static VOID webrtc_logger(UINT32 level, const PCHAR tag, const PCHAR fmt, ...)
   len = vsnprintf(buffer, len + 1, fmt, args);
   va_end(args);
 
-  if (len < 0)
-  {
+  if (len < 0) {
     free(buffer);
     return;
   }
@@ -142,13 +132,13 @@ static VOID webrtc_logger(UINT32 level, const PCHAR tag, const PCHAR fmt, ...)
   free(buffer);
 }
 
-esp_err_t webrtc_init()
-{
+esp_err_t webrtc_init() {
   globalCustomLogPrintFn = webrtc_logger;
   uint32_t status = initKvsWebRtc();
-  if (status != STATUS_SUCCESS)
-  {
-    ESP_LOGE(RADIO_TAG, "Failed to initialize KVS WebRTC with status code %" PRIx32, status);
+  if (status != STATUS_SUCCESS) {
+    ESP_LOGE(RADIO_TAG,
+             "Failed to initialize KVS WebRTC with status code %" PRIx32,
+             status);
     return ESP_FAIL;
   }
 
@@ -158,10 +148,8 @@ esp_err_t webrtc_init()
 // KVS WebRTC always uses mid=0 for trickle ICE so we can hardcode this
 static const char *STREAM_MID_LINE = "a=mid:0";
 
-static void webrtc_send_pending_candidates(webrtc_connection_t connection)
-{
-  if (!connection->whep_client)
-  {
+static void webrtc_send_pending_candidates(webrtc_connection_t connection) {
+  if (!connection->whep_client) {
     return;
   }
 
@@ -169,69 +157,68 @@ static void webrtc_send_pending_candidates(webrtc_connection_t connection)
 
   xSemaphoreTake(connection->lock, portMAX_DELAY);
 
-  size_t fragment_len = strlen(connection->local_ice_ufrag) +
-                        strlen(connection->local_ice_pwd) +
-                        strlen(connection->local_media_line) +
-                        strlen(STREAM_MID_LINE) + 8;
+  size_t fragment_len =
+      strlen(connection->local_ice_ufrag) + strlen(connection->local_ice_pwd) +
+      strlen(connection->local_media_line) + strlen(STREAM_MID_LINE) + 8;
   int num_pending_candidates = 0;
 
-  for (int i = 0; i < sizeof(connection->pending_candidates) / sizeof(connection->pending_candidates[0]); i++)
-  {
-    if (connection->pending_candidates[i])
-    {
-      fragment_len += strlen("a=") + strlen(connection->pending_candidates[i]) + 2;
+  for (int i = 0; i < sizeof(connection->pending_candidates) /
+                          sizeof(connection->pending_candidates[0]);
+       i++) {
+    if (connection->pending_candidates[i]) {
+      fragment_len +=
+          strlen("a=") + strlen(connection->pending_candidates[i]) + 2;
       num_pending_candidates++;
-    }
-    else
-    {
+    } else {
       break;
     }
   }
 
-  if (num_pending_candidates == 0)
-  {
+  if (num_pending_candidates == 0) {
     goto cleanup;
   }
 
   fragment_len++; // for null terminator
 
   sdp_fragment = calloc(1, fragment_len);
-  if (!sdp_fragment)
-  {
+  if (!sdp_fragment) {
     ESP_LOGE(RADIO_TAG, "Failed to allocate memory for SDP fragment");
     goto cleanup;
   }
 
   snprintf(sdp_fragment, fragment_len, "%s\r\n%s\r\n%s\r\n%s\r\n",
-           connection->local_ice_ufrag, connection->local_ice_pwd, connection->local_media_line, STREAM_MID_LINE);
+           connection->local_ice_ufrag, connection->local_ice_pwd,
+           connection->local_media_line, STREAM_MID_LINE);
 
-  for (int i = 0; i < num_pending_candidates; i++)
-  {
+  for (int i = 0; i < num_pending_candidates; i++) {
     strlcat(sdp_fragment, "a=", fragment_len);
     strlcat(sdp_fragment, connection->pending_candidates[i], fragment_len);
     strlcat(sdp_fragment, "\r\n", fragment_len);
   }
 
-  ESP_LOGV(RADIO_TAG, "Sending %d trickle ICE candidates to %s", num_pending_candidates, connection->session_url);
+  ESP_LOGV(RADIO_TAG, "Sending %d trickle ICE candidates to %s",
+           num_pending_candidates, connection->session_url);
   esp_http_client_set_method(connection->whep_client, HTTP_METHOD_PATCH);
-  esp_http_client_set_header(connection->whep_client, "Content-Type", "application/trickle-ice-sdpfrag");
-  esp_http_client_set_post_field(connection->whep_client, sdp_fragment, strlen(sdp_fragment));
+  esp_http_client_set_header(connection->whep_client, "Content-Type",
+                             "application/trickle-ice-sdpfrag");
+  esp_http_client_set_post_field(connection->whep_client, sdp_fragment,
+                                 strlen(sdp_fragment));
   esp_err_t err = esp_http_client_perform(connection->whep_client);
-  if (err != ESP_OK)
-  {
-    ESP_LOGE(RADIO_TAG, "Failed to send ICE candidates with error code %d (%s)", err, esp_err_to_name(err));
+  if (err != ESP_OK) {
+    ESP_LOGE(RADIO_TAG, "Failed to send ICE candidates with error code %d (%s)",
+             err, esp_err_to_name(err));
     goto cleanup;
   }
-  ESP_LOGV(RADIO_TAG, "Received HTTP status from trickle ICE request: %d", esp_http_client_get_status_code(connection->whep_client));
-  if (esp_http_client_get_status_code(connection->whep_client) >= 400)
-  {
-    ESP_LOGE(RADIO_TAG, "Failed to send ICE candidates with status code %d", esp_http_client_get_status_code(connection->whep_client));
+  ESP_LOGV(RADIO_TAG, "Received HTTP status from trickle ICE request: %d",
+           esp_http_client_get_status_code(connection->whep_client));
+  if (esp_http_client_get_status_code(connection->whep_client) >= 400) {
+    ESP_LOGE(RADIO_TAG, "Failed to send ICE candidates with status code %d",
+             esp_http_client_get_status_code(connection->whep_client));
     goto cleanup;
   }
 
   // Clear pending candidates
-  for (int i = 0; i < num_pending_candidates; i++)
-  {
+  for (int i = 0; i < num_pending_candidates; i++) {
     free(connection->pending_candidates[i]);
     connection->pending_candidates[i] = NULL;
   }
@@ -242,8 +229,8 @@ cleanup:
   xSemaphoreGive(connection->lock);
 }
 
-static void webrtc_on_connection_state_change(UINT64 arg, RTC_PEER_CONNECTION_STATE state)
-{
+static void webrtc_on_connection_state_change(UINT64 arg,
+                                              RTC_PEER_CONNECTION_STATE state) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wint-to-pointer-cast"
   webrtc_connection_t connection = (webrtc_connection_t)arg;
@@ -252,8 +239,7 @@ static void webrtc_on_connection_state_change(UINT64 arg, RTC_PEER_CONNECTION_ST
   connection->state = state;
 
   webrtc_connection_state_t new_state;
-  switch (state)
-  {
+  switch (state) {
   case RTC_PEER_CONNECTION_STATE_NEW:
     new_state = WEBRTC_CONNECTION_STATE_NEW;
     break;
@@ -277,54 +263,54 @@ static void webrtc_on_connection_state_change(UINT64 arg, RTC_PEER_CONNECTION_ST
     return;
   }
 
-  if (connection->state_change_callback)
-  {
-    connection->state_change_callback(connection, connection->user_data, new_state);
+  if (connection->state_change_callback) {
+    connection->state_change_callback(connection, connection->user_data,
+                                      new_state);
   }
 }
 
-static void webrtc_on_ice_candidate(UINT64 arg, PCHAR candidate)
-{
+static void webrtc_on_ice_candidate(UINT64 arg, PCHAR candidate) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wint-to-pointer-cast"
   webrtc_connection_t connection = (webrtc_connection_t)arg;
 #pragma GCC diagnostic pop
 
-  if (candidate == NULL)
-  {
+  if (candidate == NULL) {
     // All candidates have received
     webrtc_send_pending_candidates(connection);
     return;
   }
 
-  // Need to extract the candidate from the JSON-encoded string (`{"candidate":"...","sdpMid":"0","sdpMLineIndex":0}`)
+  // Need to extract the candidate from the JSON-encoded string
+  // (`{"candidate":"...","sdpMid":"0","sdpMLineIndex":0}`)
   jsmn_parser parser;
   jsmn_init(&parser);
 
   jsmntok_t tokens[7];
-  int ret = jsmn_parse(&parser, candidate, strlen(candidate), tokens, sizeof(tokens) / sizeof(tokens[0]));
-  if (ret <= 0)
-  {
-    ESP_LOGE(RADIO_TAG, "Failed to parse ICE candidate JSON with error code %d", ret);
+  int ret = jsmn_parse(&parser, candidate, strlen(candidate), tokens,
+                       sizeof(tokens) / sizeof(tokens[0]));
+  if (ret <= 0) {
+    ESP_LOGE(RADIO_TAG, "Failed to parse ICE candidate JSON with error code %d",
+             ret);
     return;
   }
 
-  if (tokens[0].type != JSMN_OBJECT)
-  {
-    ESP_LOGE(RADIO_TAG, "Expected JSON object for ICE candidate, got %d", tokens[0].type);
+  if (tokens[0].type != JSMN_OBJECT) {
+    ESP_LOGE(RADIO_TAG, "Expected JSON object for ICE candidate, got %d",
+             tokens[0].type);
     return;
   }
 
   char *candidate_start = NULL;
   char *candidate_end = NULL;
-  for (int i = 1; i < ret - 1; i++)
-  {
-    if (tokens[i].type == JSMN_STRING && strncmp(candidate + tokens[i].start, "candidate", tokens[i].end - tokens[i].start) == 0)
-    {
+  for (int i = 1; i < ret - 1; i++) {
+    if (tokens[i].type == JSMN_STRING &&
+        strncmp(candidate + tokens[i].start, "candidate",
+                tokens[i].end - tokens[i].start) == 0) {
       i++;
-      if (i >= ret || tokens[i].type != JSMN_STRING)
-      {
-        ESP_LOGE(RADIO_TAG, "Expected string for ICE candidate, got %d", tokens[i].type);
+      if (i >= ret || tokens[i].type != JSMN_STRING) {
+        ESP_LOGE(RADIO_TAG, "Expected string for ICE candidate, got %d",
+                 tokens[i].type);
         return;
       }
 
@@ -336,11 +322,12 @@ static void webrtc_on_ice_candidate(UINT64 arg, PCHAR candidate)
 
   xSemaphoreTake(connection->lock, portMAX_DELAY);
 
-  for (int i = 0; i < sizeof(connection->pending_candidates) / sizeof(connection->pending_candidates[0]); i++)
-  {
-    if (!connection->pending_candidates[i])
-    {
-      connection->pending_candidates[i] = strndup(candidate_start, candidate_end - candidate_start);
+  for (int i = 0; i < sizeof(connection->pending_candidates) /
+                          sizeof(connection->pending_candidates[0]);
+       i++) {
+    if (!connection->pending_candidates[i]) {
+      connection->pending_candidates[i] =
+          strndup(candidate_start, candidate_end - candidate_start);
       break;
     }
   }
@@ -350,27 +337,22 @@ static void webrtc_on_ice_candidate(UINT64 arg, PCHAR candidate)
   webrtc_send_pending_candidates(connection);
 }
 
-static esp_err_t webrtc_connect_http_event_handler(esp_http_client_event_t *evt)
-{
-  struct webrtc_connect_http_data *data = (struct webrtc_connect_http_data *)evt->user_data;
+static esp_err_t
+webrtc_connect_http_event_handler(esp_http_client_event_t *evt) {
+  struct webrtc_connect_http_data *data =
+      (struct webrtc_connect_http_data *)evt->user_data;
 
-  if (evt->event_id == HTTP_EVENT_ON_DATA)
-  {
-    if (strlen(data->remoteDescription->sdp) + evt->data_len + 1 >= MAX_SESSION_DESCRIPTION_INIT_SDP_LEN)
-    {
+  if (evt->event_id == HTTP_EVENT_ON_DATA) {
+    if (strlen(data->remoteDescription->sdp) + evt->data_len + 1 >=
+        MAX_SESSION_DESCRIPTION_INIT_SDP_LEN) {
       ESP_LOGE(RADIO_TAG, "SDP offer too large");
       return ESP_FAIL;
     }
     strncat(data->remoteDescription->sdp, evt->data, evt->data_len);
-  }
-  else if (evt->event_id == HTTP_EVENT_ON_HEADER)
-  {
-    if (strcasecmp(evt->header_key, "Location") == 0)
-    {
+  } else if (evt->event_id == HTTP_EVENT_ON_HEADER) {
+    if (strcasecmp(evt->header_key, "Location") == 0) {
       data->connection->session_url = strdup(evt->header_value);
-    }
-    else if (strcasecmp(evt->header_key, "Link") == 0)
-    {
+    } else if (strcasecmp(evt->header_key, "Link") == 0) {
       // TODO: Check for rel="ice-server" and then parse out additional
       // STUN/TURN servers to pass to addConfigToServerList
       //
@@ -378,15 +360,16 @@ static esp_err_t webrtc_connect_http_event_handler(esp_http_client_event_t *evt)
       //
       // Link: <stun:stun.example.net>; rel="ice-server"
       // Link: <turn:turn.example.net?transport=udp>; rel="ice-server";
-      //       username="user"; credential="myPassword"; credential-type="password"
+      //       username="user"; credential="myPassword";
+      //       credential-type="password"
     }
   }
   return ESP_OK;
 }
 
-static void webrtc_connect_task(void *arg)
-{
-  struct webrtc_connect_task_args *args = (struct webrtc_connect_task_args *)arg;
+static void webrtc_connect_task(void *arg) {
+  struct webrtc_connect_task_args *args =
+      (struct webrtc_connect_task_args *)arg;
   PRtcConfiguration cfg = NULL;
   PRtcMediaStreamTrack track = NULL;
   PRtcSessionDescriptionInit offer = NULL;
@@ -394,8 +377,7 @@ static void webrtc_connect_task(void *arg)
   PRtcSessionDescriptionInit remoteDescription = NULL;
 
   webrtc_connection_t connection = calloc(1, sizeof(struct webrtc_connection));
-  if (!connection)
-  {
+  if (!connection) {
     ESP_LOGE(RADIO_TAG, "Failed to allocate memory for webrtc connection");
     args->ret = ESP_ERR_NO_MEM;
     goto cleanup;
@@ -406,9 +388,9 @@ static void webrtc_connect_task(void *arg)
 
   int error;
   connection->decoder = opus_decoder_create(48000, 1, &error);
-  if (error != OPUS_OK)
-  {
-    ESP_LOGE(RADIO_TAG, "Failed to create Opus decoder with error code %s", opus_strerror(error));
+  if (error != OPUS_OK) {
+    ESP_LOGE(RADIO_TAG, "Failed to create Opus decoder with error code %s",
+             opus_strerror(error));
     args->ret = ESP_FAIL;
     goto cleanup;
   }
@@ -416,27 +398,27 @@ static void webrtc_connect_task(void *arg)
   connection->lock = xSemaphoreCreateMutex();
 
   cfg = calloc(1, sizeof(RtcConfiguration));
-  if (!cfg)
-  {
+  if (!cfg) {
     ESP_LOGE(RADIO_TAG, "Failed to allocate memory for RTC configuration");
     args->ret = ESP_ERR_NO_MEM;
     goto cleanup;
   }
   cfg->iceTransportPolicy = ICE_TRANSPORT_POLICY_ALL;
-  strlcpy(cfg->iceServers[0].urls, "stun:stun.l.google.com:19302", sizeof(cfg->iceServers[0].urls));
+  strlcpy(cfg->iceServers[0].urls, "stun:stun.l.google.com:19302",
+          sizeof(cfg->iceServers[0].urls));
   cfg->kvsRtcConfiguration.disableSenderSideBandwidthEstimation = TRUE;
 
   STATUS status = createPeerConnection(cfg, &connection->peer_connection);
-  if (status != STATUS_SUCCESS)
-  {
-    ESP_LOGE(RADIO_TAG, "Failed to create peer connection with status code %" PRIx32, status);
+  if (status != STATUS_SUCCESS) {
+    ESP_LOGE(RADIO_TAG,
+             "Failed to create peer connection with status code %" PRIx32,
+             status);
     args->ret = ESP_FAIL;
     goto cleanup;
   }
 
   track = calloc(1, sizeof(RtcMediaStreamTrack));
-  if (!track)
-  {
+  if (!track) {
     ESP_LOGE(RADIO_TAG, "Failed to allocate memory for media webrtc track");
     args->ret = ESP_ERR_NO_MEM;
     goto cleanup;
@@ -449,26 +431,30 @@ static void webrtc_connect_task(void *arg)
       .direction = RTC_RTP_TRANSCEIVER_DIRECTION_RECVONLY,
   };
 
-  status = addTransceiver(connection->peer_connection, track, &transceiverInit, &connection->transceiver);
-  if (status != STATUS_SUCCESS)
-  {
-    ESP_LOGE(RADIO_TAG, "Failed to add transceiver with status code %" PRIx32, status);
+  status = addTransceiver(connection->peer_connection, track, &transceiverInit,
+                          &connection->transceiver);
+  if (status != STATUS_SUCCESS) {
+    ESP_LOGE(RADIO_TAG, "Failed to add transceiver with status code %" PRIx32,
+             status);
     args->ret = ESP_FAIL;
     goto cleanup;
   }
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wpointer-to-int-cast"
-  peerConnectionOnIceCandidate(connection->peer_connection, (UINT64)connection, webrtc_on_ice_candidate);
-  peerConnectionOnConnectionStateChange(connection->peer_connection, (UINT64)connection, webrtc_on_connection_state_change);
+  peerConnectionOnIceCandidate(connection->peer_connection, (UINT64)connection,
+                               webrtc_on_ice_candidate);
+  peerConnectionOnConnectionStateChange(connection->peer_connection,
+                                        (UINT64)connection,
+                                        webrtc_on_connection_state_change);
 #pragma GCC diagnostic pop
 
   offer = calloc(1, sizeof(RtcSessionDescriptionInit));
   offer->useTrickleIce = TRUE;
   status = createOffer(connection->peer_connection, offer);
-  if (status != STATUS_SUCCESS)
-  {
-    ESP_LOGE(RADIO_TAG, "Failed to create offer with status code %" PRIx32, status);
+  if (status != STATUS_SUCCESS) {
+    ESP_LOGE(RADIO_TAG, "Failed to create offer with status code %" PRIx32,
+             status);
     args->ret = ESP_FAIL;
     goto cleanup;
   }
@@ -476,17 +462,16 @@ static void webrtc_connect_task(void *arg)
   // capture m=, a=ice-ufrag:, and a=ice-pwd: lines from offer for trickle ICE
   char *sdp = offer->sdp;
   char *media_line = strstr(sdp, "m=");
-  if (!media_line)
-  {
+  if (!media_line) {
     ESP_LOGE(RADIO_TAG, "Failed to find media line in SDP offer");
     args->ret = ESP_FAIL;
     goto cleanup;
   }
-  connection->local_media_line = strndup(media_line, strcspn(media_line, "\r\n"));
+  connection->local_media_line =
+      strndup(media_line, strcspn(media_line, "\r\n"));
 
   char *ice_ufrag = strstr(sdp, "a=ice-ufrag:");
-  if (!ice_ufrag)
-  {
+  if (!ice_ufrag) {
     ESP_LOGE(RADIO_TAG, "Failed to find ICE ufrag in SDP offer");
     args->ret = ESP_FAIL;
     goto cleanup;
@@ -494,8 +479,7 @@ static void webrtc_connect_task(void *arg)
   connection->local_ice_ufrag = strndup(ice_ufrag, strcspn(ice_ufrag, "\r\n"));
 
   char *ice_pwd = strstr(sdp, "a=ice-pwd:");
-  if (!ice_pwd)
-  {
+  if (!ice_pwd) {
     ESP_LOGE(RADIO_TAG, "Failed to find ICE pwd in SDP offer");
     args->ret = ESP_FAIL;
     goto cleanup;
@@ -503,17 +487,17 @@ static void webrtc_connect_task(void *arg)
   connection->local_ice_pwd = strndup(ice_pwd, strcspn(ice_pwd, "\r\n"));
 
   status = setLocalDescription(connection->peer_connection, offer);
-  if (status != STATUS_SUCCESS)
-  {
-    ESP_LOGE(RADIO_TAG, "Failed to set local description with status code %" PRIx32, status);
+  if (status != STATUS_SUCCESS) {
+    ESP_LOGE(RADIO_TAG,
+             "Failed to set local description with status code %" PRIx32,
+             status);
     args->ret = ESP_FAIL;
     goto cleanup;
   }
 
   // Send the offer to the WHEP server
   remoteDescription = calloc(1, SIZEOF(RtcSessionDescriptionInit));
-  if (!remoteDescription)
-  {
+  if (!remoteDescription) {
     ESP_LOGE(RADIO_TAG, "Failed to allocate memory for remote description");
     args->ret = ESP_ERR_NO_MEM;
     goto cleanup;
@@ -526,14 +510,15 @@ static void webrtc_connect_task(void *arg)
   esp_http_client_config_t http_config = {
       .url = args->config->whep_url,
       .method = HTTP_METHOD_POST,
-      .transport_type = strcasecmp("https://", args->config->whep_url) == 0 ? HTTP_TRANSPORT_OVER_SSL : HTTP_TRANSPORT_OVER_TCP,
+      .transport_type = strcasecmp("https://", args->config->whep_url) == 0
+                            ? HTTP_TRANSPORT_OVER_SSL
+                            : HTTP_TRANSPORT_OVER_TCP,
       .user_data = &http_data,
       .event_handler = webrtc_connect_http_event_handler,
       .crt_bundle_attach = esp_crt_bundle_attach,
   };
   http_client = esp_http_client_init(&http_config);
-  if (!http_client)
-  {
+  if (!http_client) {
     ESP_LOGE(RADIO_TAG, "Failed to initialize HTTP client");
     args->ret = ESP_FAIL;
     goto cleanup;
@@ -541,23 +526,25 @@ static void webrtc_connect_task(void *arg)
   esp_http_client_set_header(http_client, "Content-Type", "application/sdp");
   esp_http_client_set_post_field(http_client, offer->sdp, strlen(offer->sdp));
   args->ret = esp_http_client_perform(http_client);
-  if (args->ret != ESP_OK)
-  {
-    ESP_LOGE(RADIO_TAG, "Failed to send SDP offer with error code %d (%s)", args->ret, esp_err_to_name(args->ret));
+  if (args->ret != ESP_OK) {
+    ESP_LOGE(RADIO_TAG, "Failed to send SDP offer with error code %d (%s)",
+             args->ret, esp_err_to_name(args->ret));
     goto cleanup;
   }
-  ESP_LOGV(RADIO_TAG, "Received HTTP status from SDP offer request: %d", esp_http_client_get_status_code(http_client));
-  if (esp_http_client_get_status_code(http_client) >= 400)
-  {
-    ESP_LOGE(RADIO_TAG, "Failed to initiate WebRTC session with status code %d", esp_http_client_get_status_code(http_client));
+  ESP_LOGV(RADIO_TAG, "Received HTTP status from SDP offer request: %d",
+           esp_http_client_get_status_code(http_client));
+  if (esp_http_client_get_status_code(http_client) >= 400) {
+    ESP_LOGE(RADIO_TAG, "Failed to initiate WebRTC session with status code %d",
+             esp_http_client_get_status_code(http_client));
     args->ret = ESP_FAIL;
     goto cleanup;
   }
 
   status = setRemoteDescription(connection->peer_connection, remoteDescription);
-  if (status != STATUS_SUCCESS)
-  {
-    ESP_LOGE(RADIO_TAG, "Failed to set remote description with status code %" PRIx32, status);
+  if (status != STATUS_SUCCESS) {
+    ESP_LOGE(RADIO_TAG,
+             "Failed to set remote description with status code %" PRIx32,
+             status);
     args->ret = ESP_FAIL;
     goto cleanup;
   }
@@ -577,8 +564,7 @@ cleanup:
   free(track);
   free(cfg);
 
-  if (args->ret != ESP_OK)
-  {
+  if (args->ret != ESP_OK) {
     webrtc_free_connection(connection);
     *args->handle = NULL;
   }
@@ -587,10 +573,10 @@ cleanup:
   vTaskDelete(NULL);
 }
 
-esp_err_t webrtc_connect(webrtc_config_t *cfg, webrtc_connection_t *handle)
-{
+esp_err_t webrtc_connect(webrtc_config_t *cfg, webrtc_connection_t *handle) {
   ESP_RETURN_ON_FALSE(cfg, ESP_ERR_INVALID_ARG, RADIO_TAG, "Invalid config");
-  ESP_RETURN_ON_FALSE(cfg->whep_url, ESP_ERR_INVALID_ARG, RADIO_TAG, "Invalid WHEP URL");
+  ESP_RETURN_ON_FALSE(cfg->whep_url, ESP_ERR_INVALID_ARG, RADIO_TAG,
+                      "Invalid WHEP URL");
   ESP_RETURN_ON_FALSE(handle, ESP_ERR_INVALID_ARG, RADIO_TAG, "Invalid handle");
 
   // Connecting to webrtc requires a lot of stack space so spin it off into a
@@ -603,9 +589,9 @@ esp_err_t webrtc_connect(webrtc_config_t *cfg, webrtc_connection_t *handle)
   };
 
   TaskHandle_t task;
-  BaseType_t result = xTaskCreate(webrtc_connect_task, "webrtc_connect", 6 * 1024, &args, 10, &task);
-  if (result != pdPASS)
-  {
+  BaseType_t result = xTaskCreate(webrtc_connect_task, "webrtc_connect",
+                                  6 * 1024, &args, 10, &task);
+  if (result != pdPASS) {
     ESP_LOGE(RADIO_TAG, "Failed to create webrtc connect task");
     return ESP_FAIL;
   }
@@ -616,89 +602,86 @@ esp_err_t webrtc_connect(webrtc_config_t *cfg, webrtc_connection_t *handle)
   return args.ret;
 }
 
-esp_err_t webrtc_get_buffer_duration(webrtc_connection_t connection, uint32_t *duration)
-{
+esp_err_t webrtc_get_buffer_duration(webrtc_connection_t connection,
+                                     uint32_t *duration) {
   STATUS ret = transceiverGetBufferDuration(connection->transceiver, duration);
-  if (ret != STATUS_SUCCESS)
-  {
-    ESP_LOGE(RADIO_TAG, "Failed to get buffer duration with status code %" PRIx32, ret);
+  if (ret != STATUS_SUCCESS) {
+    ESP_LOGE(RADIO_TAG,
+             "Failed to get buffer duration with status code %" PRIx32, ret);
     return ESP_FAIL;
   }
 
   return ESP_OK;
 }
 
-esp_err_t webrtc_wait_buffer_duration(webrtc_connection_t connection, uint32_t duration_samples, uint64_t max_wait_ms)
-{
-  STATUS ret = transceiverWaitBufferDuration(connection->transceiver, duration_samples, max_wait_ms * 10);
-  if (ret != STATUS_SUCCESS)
-  {
-    ESP_LOGE(RADIO_TAG, "Failed to wait for buffer duration with status code %" PRIx32, ret);
+esp_err_t webrtc_wait_buffer_duration(webrtc_connection_t connection,
+                                      uint32_t duration_samples,
+                                      uint64_t max_wait_ms) {
+  STATUS ret = transceiverWaitBufferDuration(
+      connection->transceiver, duration_samples, max_wait_ms * 10);
+  if (ret != STATUS_SUCCESS) {
+    ESP_LOGE(RADIO_TAG,
+             "Failed to wait for buffer duration with status code %" PRIx32,
+             ret);
     return ESP_FAIL;
   }
 
   return ESP_OK;
 }
 
-struct webrtc_on_frame_data
-{
+struct webrtc_on_frame_data {
   webrtc_connection_t connection;
   char *buf;
   int buf_len;
 };
 
-static void webrtc_read_on_frame(UINT64 custom_data, PFrame frame)
-{
+static void webrtc_read_on_frame(UINT64 custom_data, PFrame frame) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wint-to-pointer-cast"
-  struct webrtc_on_frame_data *data = (struct webrtc_on_frame_data *)custom_data;
+  struct webrtc_on_frame_data *data =
+      (struct webrtc_on_frame_data *)custom_data;
 #pragma GCC diagnostic pop
 
   int decoded = 0;
   size_t bytes_per_sample = sizeof(opus_int16) / sizeof(data->buf[0]);
 
-  if (data->connection->last_received_packet_len == 0)
-  {
+  if (data->connection->last_received_packet_len == 0) {
     // Missing last packet.
-    if (frame->size == 0)
-    {
+    if (frame->size == 0) {
       // Missing current packet too. Trigger PLC
       ESP_LOGI(RADIO_TAG, "Previous two packets missing, triggering PLC");
       opus_int32 packet_duration;
-      opus_decoder_ctl(data->connection->decoder, OPUS_GET_LAST_PACKET_DURATION(&packet_duration));
-      decoded = opus_decode(data->connection->decoder, NULL, 0, (opus_int16 *)data->buf, packet_duration, 0);
-    }
-    else
-    {
+      opus_decoder_ctl(data->connection->decoder,
+                       OPUS_GET_LAST_PACKET_DURATION(&packet_duration));
+      decoded = opus_decode(data->connection->decoder, NULL, 0,
+                            (opus_int16 *)data->buf, packet_duration, 0);
+    } else {
       // We have a new packet, so trigger FEC
       ESP_LOGV(RADIO_TAG, "Previous packet missing, triggering FEC");
-      decoded = opus_decode(data->connection->decoder, (unsigned char *)frame->frameData, frame->size, (opus_int16 *)data->buf, data->buf_len / bytes_per_sample, 1);
+      decoded = opus_decode(data->connection->decoder,
+                            (unsigned char *)frame->frameData, frame->size,
+                            (opus_int16 *)data->buf,
+                            data->buf_len / bytes_per_sample, 1);
     }
-  }
-  else
-  {
+  } else {
     // Decode the packet
-    decoded = opus_decode(
-        data->connection->decoder,
-        (unsigned char *)frame->frameData,
-        frame->size,
-        (opus_int16 *)data->buf,
-        data->buf_len / bytes_per_sample,
-        0);
+    decoded = opus_decode(data->connection->decoder,
+                          (unsigned char *)frame->frameData, frame->size,
+                          (opus_int16 *)data->buf,
+                          data->buf_len / bytes_per_sample, 0);
   }
 
-  if (decoded < 0)
-  {
-    ESP_LOGE(RADIO_TAG, "Failed to decode Opus frame with error code %d (%s)", decoded, opus_strerror(decoded));
+  if (decoded < 0) {
+    ESP_LOGE(RADIO_TAG, "Failed to decode Opus frame with error code %d (%s)",
+             decoded, opus_strerror(decoded));
     data->buf_len = -1;
     return;
   }
 
-  if (data->connection->last_received_packet_capacity < frame->size)
-  {
-    data->connection->last_received_packet = realloc(data->connection->last_received_packet, frame->size);
-    if (!data->connection->last_received_packet)
-    {
+  if (data->connection->last_received_packet_capacity < frame->size) {
+    data->connection->last_received_packet =
+        realloc(data->connection->last_received_packet, frame->size);
+    if (!data->connection->last_received_packet) {
       ESP_LOGE(RADIO_TAG, "Failed to allocate memory for last received packet");
       data->buf_len = -1;
       return;
@@ -711,11 +694,10 @@ static void webrtc_read_on_frame(UINT64 custom_data, PFrame frame)
   data->buf_len = decoded * bytes_per_sample;
 }
 
-int webrtc_read_audio_sample(void *context, char *buf, int len, TickType_t ticks_to_wait)
-{
+int webrtc_read_audio_sample(void *context, char *buf, int len,
+                             TickType_t ticks_to_wait) {
   webrtc_connection_t connection = (webrtc_connection_t)context;
-  if (!connection || connection->state != RTC_PEER_CONNECTION_STATE_CONNECTED)
-  {
+  if (!connection || connection->state != RTC_PEER_CONNECTION_STATE_CONNECTED) {
     return -1;
   }
 
@@ -727,17 +709,16 @@ int webrtc_read_audio_sample(void *context, char *buf, int len, TickType_t ticks
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wpointer-to-int-cast"
-  transceiverPopFrame(connection->transceiver, (UINT64)&data, webrtc_read_on_frame);
+  transceiverPopFrame(connection->transceiver, (UINT64)&data,
+                      webrtc_read_on_frame);
 #pragma GCC diagnostic pop
 
   return data.buf_len;
 }
 
-float webrtc_get_ice_rtt_ms(webrtc_connection_t connection)
-{
+float webrtc_get_ice_rtt_ms(webrtc_connection_t connection) {
   PRtcStats stats = calloc(1, sizeof(RtcStats));
-  if (!stats)
-  {
+  if (!stats) {
     ESP_LOGE(RADIO_TAG, "Failed to allocate memory for RTC stats");
     return -1;
   }
@@ -745,19 +726,20 @@ float webrtc_get_ice_rtt_ms(webrtc_connection_t connection)
   int ret = -1;
 
   stats->requestedTypeOfStats = RTC_STATS_TYPE_ICE_SERVER;
-  STATUS status = rtcPeerConnectionGetMetrics(connection->peer_connection, NULL, stats);
-  if (status != STATUS_SUCCESS)
-  {
-    ESP_LOGE(RADIO_TAG, "Failed to get ICE metrics with status code %" PRIx32, status);
+  STATUS status =
+      rtcPeerConnectionGetMetrics(connection->peer_connection, NULL, stats);
+  if (status != STATUS_SUCCESS) {
+    ESP_LOGE(RADIO_TAG, "Failed to get ICE metrics with status code %" PRIx32,
+             status);
     ret = -1;
     goto cleanup;
   }
-  if (stats->rtcStatsObject.iceServerStats.totalRequestsSent == 0)
-  {
+  if (stats->rtcStatsObject.iceServerStats.totalRequestsSent == 0) {
     ret = -1;
     goto cleanup;
   }
-  ret = (float)stats->rtcStatsObject.iceServerStats.totalRoundTripTime / stats->rtcStatsObject.iceServerStats.totalRequestsSent;
+  ret = (float)stats->rtcStatsObject.iceServerStats.totalRoundTripTime /
+        stats->rtcStatsObject.iceServerStats.totalRequestsSent;
   ret /= HUNDREDS_OF_NANOS_IN_A_MILLISECOND;
 cleanup:
   free(stats);

@@ -8,35 +8,30 @@
 #define IP5306_REG_READ1 0x71
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-  typedef union
-  {
-    struct
-    {
-      uint8_t reserved : 3;
-      uint8_t CHARGE_ENABLE : 1;
-      uint8_t reserved2 : 4;
-    } parsed;
+typedef union {
+  struct {
+    uint8_t reserved : 3;
+    uint8_t CHARGE_ENABLE : 1;
+    uint8_t reserved2 : 4;
+  } parsed;
 
-    uint8_t raw;
-  } ip5306_reg_read0_t;
+  uint8_t raw;
+} ip5306_reg_read0_t;
 
-  typedef union
-  {
-    struct
-    {
-      uint8_t reserved : 4;
-      uint8_t CHARGING : 1;
-      uint8_t reserved2 : 3;
-    } parsed;
+typedef union {
+  struct {
+    uint8_t reserved : 4;
+    uint8_t CHARGING : 1;
+    uint8_t reserved2 : 3;
+  } parsed;
 
-    uint8_t raw;
-  } ip5306_reg_read1_t;
+  uint8_t raw;
+} ip5306_reg_read1_t;
 
-  esp_err_t battery_init();
+esp_err_t battery_init();
 
 #ifdef __cplusplus
 }
