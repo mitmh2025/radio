@@ -46,7 +46,10 @@ extern "C" {
 #define RADIO_SPI_PIN_SD_CS GPIO_NUM_10
 
 #define BOARD_PA_GAIN (6) /* Power amplifier gain defined by board (dB) */
-#define PA_ENABLE_GPIO GPIO_NUM_15
+#define TAS2505_RST_GPIO GPIO_NUM_15
+#define PA_ENABLE_GPIO TAS2505_RST_GPIO
+
+#define SI4702_RST_GPIO GPIO_NUM_42
 
 extern SemaphoreHandle_t i2c_mutex;
 extern UBaseType_t i2c_mutex_holder_priority;
@@ -82,6 +85,7 @@ i2c_master_bus_handle_t board_i2c_get_handle(void);
 #define BATTERY_SCALE_FACTOR (3.0f / (2.0f * 1000.0f))
 
 #define VOLUME_ADC_CHANNEL ADC_CHANNEL_0
+#define FREQUENCY_ADC_CHANNEL ADC_CHANNEL_1
 
 #define LED_COUNT (2)
 #define LED_PIN GPIO_NUM_48

@@ -7,8 +7,6 @@
 #include "freertos/task.h"
 #include "things.h"
 
-#define TAS2505_RST_GPIO PA_ENABLE_GPIO
-
 const char *TAG = "radio:tas2505";
 
 static i2c_master_dev_handle_t i2c_device;
