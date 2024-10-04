@@ -71,9 +71,41 @@ static int panic_func(int argc, char **argv)
   return 0;
 }
 
+static struct
+{
+  struct arg_str *caps;
+  struct arg_end *end;
+} heap_args;
+
 static int heap_func(int argc, char **argv)
 {
-  heap_caps_print_heap_info(MALLOC_CAP_DEFAULT);
+  int nerrors = arg_parse(argc, argv, (void **)&heap_args);
+
+  if (nerrors != 0)
+  {
+    arg_print_errors(stderr, heap_args.end, argv[0]);
+    return 1;
+  }
+
+  uint32_t caps = MALLOC_CAP_DEFAULT;
+  if (heap_args.caps->count == 1)
+  {
+    if (strcasecmp(heap_args.caps->sval[0], "internal") == 0)
+    {
+      caps = MALLOC_CAP_INTERNAL;
+    }
+    else if (strcasecmp(heap_args.caps->sval[0], "psram") == 0)
+    {
+      caps = MALLOC_CAP_SPIRAM;
+    }
+    else
+    {
+      arg_print_syntax(stderr, (void **)&heap_args, argv[0]);
+      return 1;
+    }
+  }
+
+  heap_caps_print_heap_info(caps);
   return 0;
 }
 
@@ -341,10 +373,14 @@ esp_err_t console_init()
   err = esp_console_cmd_register(&cmd_panic);
   ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register panic command: %s", esp_err_to_name(err));
 
+  heap_args.caps = arg_str0(NULL, NULL, "internal|psram", "Limit to these memory capabilities (defaults to all)");
+  heap_args.end = arg_end(1);
   esp_console_cmd_t cmd_heap = {
       .command = "heap",
       .help = "Print heap usage",
+      .hint = NULL,
       .func = &heap_func,
+      .argtable = &heap_args,
   };
   err = esp_console_cmd_register(&cmd_heap);
   ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register heap command: %s", esp_err_to_name(err));
