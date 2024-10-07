@@ -5,6 +5,7 @@ idf_component_register(
   console.c
   debounce.c
   file_cache.c
+  fm.c
   led.c
   main.c
   mixer.c

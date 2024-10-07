@@ -6,6 +6,7 @@
 #include "console.h"
 #include "debounce.h"
 #include "file_cache.h"
+#include "fm.h"
 #include "led.h"
 #include "mixer.h"
 #include "storage.h"
@@ -215,6 +216,7 @@ void app_main(void) {
   ESP_ERROR_CHECK(board_i2c_init());
   ESP_ERROR_CHECK(battery_init());
   ESP_ERROR_CHECK(tas2505_init());
+  ESP_ERROR_CHECK(fm_init());
   ESP_ERROR_CHECK(mixer_init());
 
   ESP_ERROR_CHECK(adc_subscribe(
