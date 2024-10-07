@@ -249,15 +249,6 @@ void app_main(void) {
              RADIO_THINGSBOARD_SERVER, macstr);
   }
 
-  err = storage_mount();
-  if (err == ESP_FAIL) {
-    ESP_LOGE(
-        RADIO_TAG,
-        "Flash storage not formatted. Use `format` console command to format");
-  } else {
-    ESP_ERROR_CHECK(err);
-  }
-
   ESP_ERROR_CHECK(console_init());
 
   xEventGroupWaitBits(radio_event_group, RADIO_EVENT_GROUP_WIFI_CONNECTED,

@@ -604,11 +604,6 @@ cleanup:
 }
 
 static void file_cache_task(void *context) {
-  // Block until storage is mounted (once it's been mounted, it never gets
-  // unmounted)
-  xEventGroupWaitBits(radio_event_group, RADIO_EVENT_GROUP_STORAGE_MOUNTED,
-                      pdFALSE, pdTRUE, portMAX_DELAY);
-
   // load_manifest will log its own failures, and failures are soft anyway
   load_manifest();
 
