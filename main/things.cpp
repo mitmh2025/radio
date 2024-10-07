@@ -581,7 +581,7 @@ static void things_task(void *arg) {
       }
     }
 
-    while (true) {
+    while (conn->connected()) {
       {
         std::lock_guard<std::mutex> lock(things_telemetry_mutex);
         for (auto const &generator : things_telemetry_generators) {
