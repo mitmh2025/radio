@@ -74,6 +74,7 @@ static const tas2505_cfg_reg_t tas2505_init_registers[] = {
     {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_DAC_SETUP2, 0x4},
     {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_POWER_CONTROL, 0x10},
     {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_OUTPUT_ROUTING, 0xc4},
+    {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_AINL_VOLUME, 0x80},
     {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_SPEAKER_VOLUME, 0x0},
     {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_SPEAKER_VOLUME_RANGE, 0x30},
     {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_HP_GAIN, 0x0},
@@ -83,21 +84,18 @@ static tas2505_output_t current_output = TAS2505_OUTPUT_SPEAKER;
 
 static const tas2505_cfg_reg_t tas2505_speaker_output_registers[] = {
     {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_SPEAKER_VOLUME_RANGE, 0x30},
-    {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_AINL_VOLUME, 0x80},
     {TAS2505_CFG_OP_CLEAR_BITS, TAS2505_CFG_REG_OUTPUT_CONTROL, 0x20},
     {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_SPEAKER_CONTROL, 0x2},
 };
 
 static const tas2505_cfg_reg_t tas2505_headphone_output_registers[] = {
     {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_SPEAKER_VOLUME_RANGE, 0},
-    {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_AINL_VOLUME, 0x0},
     {TAS2505_CFG_OP_SET_BITS, TAS2505_CFG_REG_OUTPUT_CONTROL, 0x20},
     {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_SPEAKER_CONTROL, 0x0},
 };
 
 static const tas2505_cfg_reg_t tas2505_both_output_registers[] = {
     {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_SPEAKER_VOLUME_RANGE, 0x30},
-    {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_AINL_VOLUME, 0x80},
     {TAS2505_CFG_OP_SET_BITS, TAS2505_CFG_REG_OUTPUT_CONTROL, 0x20},
     {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_SPEAKER_CONTROL, 0x2},
 };
@@ -171,10 +169,10 @@ static esp_err_t tas2505_write_registers(const tas2505_cfg_reg_t *registers,
         }
       }
 
-      ret = tas2505_write_register(offset, registers[i].value);
+      ret = tas2505_write_register(offset, val);
       ESP_GOTO_ON_ERROR(ret, end, TAG,
                         "i2c_bus_write_bytes: reg=%d val=%d (idx=%d)", offset,
-                        registers[i].value, i);
+                        val, i);
     }
     }
   }
