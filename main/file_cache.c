@@ -3,9 +3,10 @@
 #include "storage.h"
 #include "things.h"
 
-#include "errno.h"
-#include "string.h"
-#include "sys/stat.h"
+#include <errno.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <sys/time.h>
 
 #include "esp_check.h"
 #include "esp_crt_bundle.h"
@@ -35,10 +36,24 @@ static char *manifest_url = NULL;
 
 static SemaphoreHandle_t manifest_cache_mutex = NULL;
 static file_cache_manifest *manifest_cache = NULL;
+static time_t manifest_cache_last_update = {};
+static esp_err_t manifest_cache_last_update_err = ESP_OK;
 
 static TaskHandle_t task_handle = NULL;
 
-// TODO: telemetry
+static void telemetry_generator(void) {
+  xSemaphoreTake(manifest_cache_mutex, portMAX_DELAY);
+
+  things_send_telemetry_int("file_cache_entry_count",
+                            manifest_cache != NULL ? manifest_cache->entry_count
+                                                   : 0);
+  things_send_telemetry_int("file_cache_last_update",
+                            manifest_cache_last_update);
+  things_send_telemetry_string("file_cache_last_error",
+                               esp_err_to_name(manifest_cache_last_update_err));
+
+  xSemaphoreGive(manifest_cache_mutex);
+}
 
 static int manifest_entry_compare_name(const void *a, const void *b) {
   return strcmp(((file_cache_manifest_entry *)a)->name,
@@ -614,6 +629,10 @@ static void file_cache_task(void *context) {
                         pdFALSE, pdTRUE, portMAX_DELAY);
 
     esp_err_t err = refresh();
+    xSemaphoreTake(manifest_cache_mutex, portMAX_DELAY);
+    manifest_cache_last_update = time(NULL);
+    manifest_cache_last_update_err = err;
+    xSemaphoreGive(manifest_cache_mutex);
     if (err != ESP_OK) {
       uint32_t wait = 10000 + esp_random() % 5000;
       ESP_LOGE(RADIO_TAG,
@@ -623,6 +642,7 @@ static void file_cache_task(void *context) {
       xTaskNotifyWait(0, ULONG_MAX, NULL, pdMS_TO_TICKS(wait));
       continue;
     }
+    telemetry_generator();
 
     // Wait until we get woken up, indicating a new value for the manifest URL
     xTaskNotifyWait(0, ULONG_MAX, NULL, portMAX_DELAY);
@@ -644,6 +664,8 @@ esp_err_t file_cache_init(void) {
     ESP_LOGE(RADIO_TAG, "Failed to create file cache task");
     return ESP_FAIL;
   }
+
+  things_register_telemetry_generator(telemetry_generator);
 
   return ESP_OK;
 }
