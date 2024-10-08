@@ -27,6 +27,9 @@ typedef struct {
   } value;
 } things_attribute_t;
 
+typedef void (*things_attribute_callback_t)(const char *key,
+                                            things_attribute_t *attr);
+
 esp_err_t things_init();
 esp_err_t things_provision(const char *token);
 esp_err_t things_deprovision();
@@ -39,9 +42,8 @@ bool things_send_telemetry_bool(char const *const key, bool value);
 // call the things_send_telemetry_* functions as needed.
 void things_register_telemetry_generator(void (*generator)(void));
 
-esp_err_t things_subscribe_attribute(
-    const char *key,
-    void (*callback)(const char *key, things_attribute_t *attr));
+esp_err_t things_subscribe_attribute(const char *key,
+                                     things_attribute_callback_t callback);
 
 #ifdef __cplusplus
 }
