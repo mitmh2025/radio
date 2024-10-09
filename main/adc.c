@@ -1,6 +1,8 @@
 #include "adc.h"
 #include "main.h"
 
+#include <string.h>
+
 #include "esp_check.h"
 
 #include "freertos/FreeRTOS.h"
@@ -10,7 +12,8 @@ static SemaphoreHandle_t adc_mutex = NULL;
 static EXT_RAM_BSS_ATTR struct adc_config {
   bool populated;
   adc_digi_pattern_config_t config;
-  void (*callback)(adc_digi_output_data_t *result);
+  void (*callback)(void *user_data, adc_digi_output_data_t *result);
+  void *user_data;
 } adc_configs[SOC_ADC_MAX_CHANNEL_NUM] = {};
 static adc_continuous_handle_t adc_handle = NULL;
 static bool adc_running = false;
@@ -50,8 +53,9 @@ static void adc_task(void *context) {
       xSemaphoreTake(adc_mutex, portMAX_DELAY);
       for (int i = 0; i < out_length; i += SOC_ADC_DIGI_RESULT_BYTES) {
         adc_digi_output_data_t *data = (adc_digi_output_data_t *)&result[i];
-        if (adc_configs[data->type2.channel].callback) {
-          adc_configs[data->type2.channel].callback(data);
+        struct adc_config *config = &adc_configs[data->type2.channel];
+        if (config->callback) {
+          config->callback(config->user_data, data);
         } else {
           ESP_LOGW(RADIO_TAG, "No callback for channel %d",
                    data->type2.channel);
@@ -104,10 +108,12 @@ static esp_err_t adc_config_and_start() {
     return ESP_OK;
   }
 
-  adc_digi_pattern_config_t patterns[pattern_count] = {};
+  adc_digi_pattern_config_t patterns[pattern_count];
+  memset(patterns, 0, sizeof(patterns));
   for (int i = 0, j = 0; i < SOC_ADC_MAX_CHANNEL_NUM; i++) {
     if (adc_configs[i].populated) {
-      patterns[j++] = adc_configs[i].config;
+      memcpy(&patterns[j++], &adc_configs[i].config,
+             sizeof(adc_digi_pattern_config_t));
     }
   }
 
@@ -129,7 +135,9 @@ static esp_err_t adc_config_and_start() {
 }
 
 esp_err_t adc_subscribe(adc_digi_pattern_config_t *config,
-                        void (*callback)(adc_digi_output_data_t *result)) {
+                        void (*callback)(void *user_data,
+                                         adc_digi_output_data_t *result),
+                        void *user_data) {
   ESP_RETURN_ON_FALSE(adc_mutex, ESP_ERR_INVALID_STATE, RADIO_TAG,
                       "adc_subscribe must be called after adc_init");
   ESP_RETURN_ON_FALSE(config && callback, ESP_ERR_INVALID_ARG, RADIO_TAG,
@@ -156,6 +164,7 @@ esp_err_t adc_subscribe(adc_digi_pattern_config_t *config,
   adc_configs[config->channel].populated = true;
   adc_configs[config->channel].config = *config;
   adc_configs[config->channel].callback = callback;
+  adc_configs[config->channel].user_data = user_data;
 
   ret = adc_config_and_start();
 

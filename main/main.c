@@ -38,7 +38,7 @@ static bool volume_increasing = true;
 // TAS2505 defaults to max volume, so start at max volume
 static uint8_t last_volume_setting = 0xff;
 static uint32_t average_volume = 0xfff;
-void dac_volume_callback(adc_digi_output_data_t *result) {
+void dac_volume_callback(void *user_data, adc_digi_output_data_t *result) {
   uint32_t new_volume =
       average_volume - (average_volume >> 3) + (result->type2.data >> 3);
 
@@ -226,7 +226,7 @@ void app_main(void) {
           .unit = ADC_UNIT_1,
           .bit_width = 12,
       },
-      dac_volume_callback));
+      dac_volume_callback, NULL));
   xTaskCreatePinnedToCore(dac_output_task, "dac_output", 4096, NULL, 5, NULL,
                           0);
 

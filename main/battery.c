@@ -78,7 +78,8 @@ static void battery_update_led() {
   }
 }
 
-static void battery_adc_callback(adc_digi_output_data_t *result) {
+static void battery_adc_callback(void *user_data,
+                                 adc_digi_output_data_t *result) {
   if (battery_average == 0) {
     battery_average = result->type2.data;
     return;
@@ -189,8 +190,8 @@ esp_err_t battery_init() {
       adc_cali_create_scheme_curve_fitting(&cali_cfg, &battery_adc_cali),
       RADIO_TAG, "Failed to create calibration scheme");
 
-  ESP_RETURN_ON_ERROR(adc_subscribe(&adc_cfg, battery_adc_callback), RADIO_TAG,
-                      "Failed to subscribe to ADC channel");
+  ESP_RETURN_ON_ERROR(adc_subscribe(&adc_cfg, battery_adc_callback, NULL),
+                      RADIO_TAG, "Failed to subscribe to ADC channel");
 
   // Figure out at what raw value we consider the battery low (note that we
   // shouldn't get anywhere near max value)
