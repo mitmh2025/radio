@@ -32,7 +32,6 @@ typedef void (*things_attribute_callback_t)(const char *key,
 
 esp_err_t things_init();
 esp_err_t things_provision(const char *token);
-esp_err_t things_deprovision();
 bool things_send_telemetry_string(char const *const key,
                                   char const *const value);
 bool things_send_telemetry_float(char const *const key, float value);

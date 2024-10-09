@@ -1,3 +1,7 @@
+#define LOG_LOCAL_LEVEL ESP_LOG_DEBUG
+
+#include "nvs_flash.h"
+
 #include "console.h"
 #include "main.h"
 #include "storage.h"
@@ -146,16 +150,6 @@ static int provision_func(int argc, char **argv) {
   return 0;
 }
 
-static int deprovision_func(int argc, char **argv) {
-  esp_err_t err = things_deprovision();
-  if (err != ESP_OK) {
-    printf("Failed to deprovision device: %s\n", esp_err_to_name(err));
-    return 1;
-  }
-
-  return 0;
-}
-
 static struct {
   struct arg_str *dir;
   struct arg_lit *long_format;
@@ -280,6 +274,320 @@ static int df_func(int argc, char **argv) {
   return 0;
 }
 
+static int nvs_stats_func(int argc, char **argv) {
+  nvs_stats_t stats;
+  esp_err_t err = nvs_get_stats(NULL, &stats);
+  if (err != ESP_OK) {
+    printf("Failed to get NVS stats: %s\n", esp_err_to_name(err));
+    return 1;
+  }
+
+  printf("Used entries: %zu\n", stats.used_entries);
+  printf("Free entries: %zu\n", stats.free_entries);
+  printf("Available entries: %zu\n", stats.available_entries);
+  printf("All entries: %zu\n", stats.total_entries);
+  printf("Namespace count: %zu\n", stats.namespace_count);
+
+  return 0;
+}
+
+static int nvs_ls_func(int argc, char **argv) {
+  nvs_iterator_t iter = NULL;
+  esp_err_t err =
+      nvs_entry_find(NVS_DEFAULT_PART_NAME, NULL, NVS_TYPE_ANY, &iter);
+  if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) {
+    printf("Failed to find attributes in NVS: %s\n", esp_err_to_name(err));
+    return 1;
+  }
+
+  printf("Namespace\tKey\tType\n");
+
+  while (iter) {
+    nvs_entry_info_t info;
+    err = nvs_entry_info(iter, &info);
+    if (err != ESP_OK) {
+      printf("Failed to get attribute info: %s\n", esp_err_to_name(err));
+      break;
+    }
+
+    const char *type;
+    switch (info.type) {
+    case NVS_TYPE_I8:
+      type = "i8";
+      break;
+    case NVS_TYPE_U8:
+      type = "u8";
+      break;
+    case NVS_TYPE_I16:
+      type = "i16";
+      break;
+    case NVS_TYPE_U16:
+      type = "u16";
+      break;
+    case NVS_TYPE_I32:
+      type = "i32";
+      break;
+    case NVS_TYPE_U32:
+      type = "u32";
+      break;
+    case NVS_TYPE_I64:
+      type = "i64";
+      break;
+    case NVS_TYPE_U64:
+      type = "u64";
+      break;
+    case NVS_TYPE_STR:
+      type = "str";
+      break;
+    case NVS_TYPE_BLOB:
+      type = "blob";
+      break;
+    default:
+      type = "unknown";
+      break;
+    }
+
+    printf("%s\t%s\t%s\n", info.namespace_name, info.key, type);
+
+    err = nvs_entry_next(&iter);
+    if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) {
+      printf("Failed to find attributes in NVS: %s\n", esp_err_to_name(err));
+      break;
+    }
+  }
+
+  return 0;
+}
+
+static struct {
+  struct arg_str *namespace;
+  struct arg_str *key;
+  struct arg_end *end;
+} nvs_get_args;
+
+int nvs_get(int argc, char **argv) {
+  int nerrors = arg_parse(argc, argv, (void **)&nvs_get_args);
+
+  if (nerrors != 0) {
+    arg_print_errors(stderr, nvs_get_args.end, argv[0]);
+    return 1;
+  }
+
+  if (nvs_get_args.namespace->count == 0 || nvs_get_args.key->count == 0) {
+    arg_print_syntax(stderr, (void **)&nvs_get_args, argv[0]);
+    return 1;
+  }
+
+  int ret = 0;
+  nvs_handle_t handle;
+  char *str_value = NULL;
+  esp_err_t err =
+      nvs_open(nvs_get_args.namespace->sval[0], NVS_READONLY, &handle);
+  if (err != ESP_OK) {
+    printf("Failed to open NVS handle: %s\n", esp_err_to_name(err));
+    return 1;
+  }
+
+  nvs_type_t type;
+  err = nvs_find_key(handle, nvs_get_args.key->sval[0], &type);
+  if (err != ESP_OK) {
+    printf("Failed to find key in NVS: %s\n", esp_err_to_name(err));
+    ret = 1;
+    goto cleanup;
+  }
+
+  switch (type) {
+  case NVS_TYPE_I8: {
+    int8_t value;
+    err = nvs_get_i8(handle, nvs_get_args.key->sval[0], &value);
+    if (err != ESP_OK) {
+      printf("Failed to get value from NVS: %s\n", esp_err_to_name(err));
+      ret = 1;
+      goto cleanup;
+    }
+    printf("%" PRId8 " (0x%" PRIx8 ")\n", value, value);
+    break;
+  }
+  case NVS_TYPE_U8: {
+    uint8_t value;
+    err = nvs_get_u8(handle, nvs_get_args.key->sval[0], &value);
+    if (err != ESP_OK) {
+      printf("Failed to get value from NVS: %s\n", esp_err_to_name(err));
+      ret = 1;
+      goto cleanup;
+    }
+    printf("%" PRIu8 " (0x%" PRIx8 ")\n", value, value);
+    break;
+  }
+  case NVS_TYPE_I16: {
+    int16_t value;
+    err = nvs_get_i16(handle, nvs_get_args.key->sval[0], &value);
+    if (err != ESP_OK) {
+      printf("Failed to get value from NVS: %s\n", esp_err_to_name(err));
+      ret = 1;
+      goto cleanup;
+    }
+    printf("%" PRId16 " (0x%" PRIx16 ")\n", value, value);
+    break;
+  }
+  case NVS_TYPE_U16: {
+    uint16_t value;
+    err = nvs_get_u16(handle, nvs_get_args.key->sval[0], &value);
+    if (err != ESP_OK) {
+      printf("Failed to get value from NVS: %s\n", esp_err_to_name(err));
+      ret = 1;
+      goto cleanup;
+    }
+    printf("%" PRIu16 " (0x%" PRIx16 ")\n", value, value);
+    break;
+  }
+  case NVS_TYPE_I32: {
+    int32_t value;
+    err = nvs_get_i32(handle, nvs_get_args.key->sval[0], &value);
+    if (err != ESP_OK) {
+      printf("Failed to get value from NVS: %s\n", esp_err_to_name(err));
+      ret = 1;
+      goto cleanup;
+    }
+    printf("%" PRId32 " (0x%" PRIx32 ")\n", value, value);
+    break;
+  }
+  case NVS_TYPE_U32: {
+    uint32_t value;
+    err = nvs_get_u32(handle, nvs_get_args.key->sval[0], &value);
+    if (err != ESP_OK) {
+      printf("Failed to get value from NVS: %s\n", esp_err_to_name(err));
+      ret = 1;
+      goto cleanup;
+    }
+    printf("%" PRIu32 " (0x%" PRIx32 ")\n", value, value);
+    break;
+  }
+  case NVS_TYPE_I64: {
+    int64_t value;
+    err = nvs_get_i64(handle, nvs_get_args.key->sval[0], &value);
+    if (err != ESP_OK) {
+      printf("Failed to get value from NVS: %s\n", esp_err_to_name(err));
+      ret = 1;
+      goto cleanup;
+    }
+    printf("%" PRId64 " (0x%" PRIx64 ")\n", value, value);
+    break;
+  }
+  case NVS_TYPE_U64: {
+    uint64_t value;
+    err = nvs_get_u64(handle, nvs_get_args.key->sval[0], &value);
+    if (err != ESP_OK) {
+      printf("Failed to get value from NVS: %s\n", esp_err_to_name(err));
+      ret = 1;
+      goto cleanup;
+    }
+    printf("%" PRIu64 " (0x%" PRIx64 ")\n", value, value);
+    break;
+  }
+  case NVS_TYPE_STR: {
+    size_t length;
+    err = nvs_get_str(handle, nvs_get_args.key->sval[0], NULL, &length);
+    if (err != ESP_OK) {
+      printf("Failed to get value from NVS: %s\n", esp_err_to_name(err));
+      ret = 1;
+      goto cleanup;
+    }
+
+    str_value = malloc(length);
+    if (str_value == NULL) {
+      printf("Failed to allocate memory for string value\n");
+      ret = 1;
+      goto cleanup;
+    }
+
+    err = nvs_get_str(handle, nvs_get_args.key->sval[0], str_value, &length);
+    if (err != ESP_OK) {
+      printf("Failed to get value from NVS: %s\n", esp_err_to_name(err));
+      ret = 1;
+      goto cleanup;
+    }
+
+    printf("%s\n", str_value);
+    break;
+  }
+  case NVS_TYPE_BLOB: {
+    size_t length;
+    err = nvs_get_blob(handle, nvs_get_args.key->sval[0], NULL, &length);
+    if (err != ESP_OK) {
+      printf("Failed to get value from NVS: %s\n", esp_err_to_name(err));
+      ret = 1;
+      goto cleanup;
+    }
+
+    str_value = malloc(length);
+    if (str_value == NULL) {
+      printf("Failed to allocate memory for blob value\n");
+      ret = 1;
+      goto cleanup;
+    }
+
+    err = nvs_get_blob(handle, nvs_get_args.key->sval[0], str_value, &length);
+    if (err != ESP_OK) {
+      printf("Failed to get value from NVS: %s\n", esp_err_to_name(err));
+      ret = 1;
+      goto cleanup;
+    }
+
+    ESP_LOG_BUFFER_HEXDUMP(RADIO_TAG, str_value, length, ESP_LOG_INFO);
+    break;
+  }
+  default:
+    printf("Unsupported attribute type: %d\n", type);
+    break;
+  }
+
+cleanup:
+  if (str_value != NULL) {
+    free(str_value);
+  }
+  nvs_close(handle);
+  return ret;
+}
+
+static struct {
+  struct arg_str *namespace;
+  struct arg_str *key;
+  struct arg_end *end;
+} nvs_rm_args;
+
+int nvs_rm(int argc, char **argv) {
+  int nerrors = arg_parse(argc, argv, (void **)&nvs_rm_args);
+
+  if (nerrors != 0) {
+    arg_print_errors(stderr, nvs_rm_args.end, argv[0]);
+    return 1;
+  }
+
+  if (nvs_rm_args.namespace->count == 0 || nvs_rm_args.key->count == 0) {
+    arg_print_syntax(stderr, (void **)&nvs_rm_args, argv[0]);
+    return 1;
+  }
+
+  nvs_handle_t handle;
+  esp_err_t err =
+      nvs_open(nvs_rm_args.namespace->sval[0], NVS_READWRITE, &handle);
+  if (err != ESP_OK) {
+    printf("Failed to open NVS handle: %s\n", esp_err_to_name(err));
+    return 1;
+  }
+
+  err = nvs_erase_key(handle, nvs_rm_args.key->sval[0]);
+  if (err != ESP_OK) {
+    printf("Failed to erase key from NVS: %s\n", esp_err_to_name(err));
+    nvs_close(handle);
+    return 1;
+  }
+
+  nvs_close(handle);
+  return 0;
+}
+
 esp_err_t console_init() {
   // Block on stdin and stdout
   fcntl(fileno(stdout), F_SETFL, 0);
@@ -382,17 +690,6 @@ esp_err_t console_init() {
                       "Failed to register provision command: %s",
                       esp_err_to_name(err));
 
-  esp_console_cmd_t cmd_deprovision = {
-      .command = "deprovision",
-      .help = "Erase the ThingsBoard device token. (Note that this will have "
-              "no effect until reset.)",
-      .func = &deprovision_func,
-  };
-  err = esp_console_cmd_register(&cmd_deprovision);
-  ESP_RETURN_ON_ERROR(err, RADIO_TAG,
-                      "Failed to register deprovision command: %s",
-                      esp_err_to_name(err));
-
   list_args.dir = arg_str1(NULL, NULL, "<dir>", "Directory to list");
   list_args.long_format = arg_lit0("l", "long", "Use a long listing format");
   list_args.end = arg_end(1);
@@ -440,6 +737,53 @@ esp_err_t console_init() {
   };
   err = esp_console_cmd_register(&cmd_df);
   ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register df command: %s",
+                      esp_err_to_name(err));
+
+  esp_console_cmd_t cmd_nvs_stats = {
+      .command = "nvs-stats",
+      .help = "Print NVS statistics",
+      .func = &nvs_stats_func,
+  };
+  err = esp_console_cmd_register(&cmd_nvs_stats);
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG,
+                      "Failed to register nvs-stats command: %s",
+                      esp_err_to_name(err));
+
+  esp_console_cmd_t cmd_nvs_ls = {
+      .command = "nvs-ls",
+      .help = "List NVS entries",
+      .func = &nvs_ls_func,
+  };
+  err = esp_console_cmd_register(&cmd_nvs_ls);
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register nvs-ls command: %s",
+                      esp_err_to_name(err));
+
+  nvs_get_args.namespace = arg_str1(NULL, NULL, "<namespace>", "NVS namespace");
+  nvs_get_args.key = arg_str1(NULL, NULL, "<key>", "NVS key");
+  nvs_get_args.end = arg_end(2);
+  esp_console_cmd_t cmd_nvs_get = {
+      .command = "nvs-get",
+      .help = "Get a value from NVS",
+      .hint = NULL,
+      .func = &nvs_get,
+      .argtable = &nvs_get_args,
+  };
+  err = esp_console_cmd_register(&cmd_nvs_get);
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register nvs-get command: %s",
+                      esp_err_to_name(err));
+
+  nvs_rm_args.namespace = arg_str1(NULL, NULL, "<namespace>", "NVS namespace");
+  nvs_rm_args.key = arg_str1(NULL, NULL, "<key>", "NVS key");
+  nvs_rm_args.end = arg_end(2);
+  esp_console_cmd_t cmd_nvs_rm = {
+      .command = "nvs-rm",
+      .help = "Remove a value from NVS",
+      .hint = NULL,
+      .func = &nvs_rm,
+      .argtable = &nvs_rm_args,
+  };
+  err = esp_console_cmd_register(&cmd_nvs_rm);
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register nvs-rm command: %s",
                       esp_err_to_name(err));
 
   xTaskCreate(console_task, "console", 4096, NULL, 15, NULL);

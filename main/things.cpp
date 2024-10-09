@@ -666,21 +666,6 @@ esp_err_t things_provision(const char *token) {
   return ESP_OK;
 }
 
-esp_err_t things_deprovision() {
-  if (things_nvs_handle == 0) {
-    return ESP_ERR_INVALID_STATE;
-  }
-
-  esp_err_t err = nvs_erase_key(things_nvs_handle, THINGS_NVS_TOKEN_KEY);
-  if (err != ESP_OK) {
-    ESP_LOGE(RADIO_TAG, "Failed to erase device token: %d (%s)", err,
-             esp_err_to_name(err));
-    return err;
-  }
-
-  return ESP_OK;
-}
-
 bool things_send_telemetry_string(char const *const key,
                                   char const *const value) {
   auto conn = tb.lock();
