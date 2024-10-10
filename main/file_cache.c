@@ -102,7 +102,7 @@ struct http_data {
   bool failed;
 };
 
-esp_err_t event_handler(esp_http_client_event_t *evt) {
+static esp_err_t event_handler(esp_http_client_event_t *evt) {
   struct http_data *data = evt->user_data;
   if (evt->event_id == HTTP_EVENT_ON_DATA) {
     if (data->contents != NULL && *data->contents == NULL) {

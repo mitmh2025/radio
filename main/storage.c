@@ -432,8 +432,8 @@ cleanup:
   return ret;
 }
 
-int block_read(void *context, uint32_t block, uint32_t offset, void *buffer,
-               size_t size) {
+static int block_read(void *context, uint32_t block, uint32_t offset,
+                      void *buffer, size_t size) {
   // Need to split the read across chips if it crosses a chip boundary and also
   // account for the SPI max read size of 4096 bytes
   size_t read_sector_size = 4096;

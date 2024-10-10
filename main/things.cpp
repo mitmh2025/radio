@@ -172,7 +172,7 @@ static void update_attr_subscribers(std::string key,
   }
 }
 
-esp_err_t things_attribute_cache_init() {
+static esp_err_t things_attribute_cache_init() {
   std::lock_guard<std::mutex> lock(things_attribute_mutex);
 
   esp_err_t err = nvs_open(THINGS_ATTR_NVS_NAMESPACE, NVS_READWRITE,

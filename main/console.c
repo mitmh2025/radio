@@ -365,7 +365,7 @@ static struct {
   struct arg_end *end;
 } nvs_get_args;
 
-int nvs_get(int argc, char **argv) {
+static int nvs_get(int argc, char **argv) {
   int nerrors = arg_parse(argc, argv, (void **)&nvs_get_args);
 
   if (nerrors != 0) {
@@ -556,7 +556,7 @@ static struct {
   struct arg_end *end;
 } nvs_rm_args;
 
-int nvs_rm(int argc, char **argv) {
+static int nvs_rm(int argc, char **argv) {
   int nerrors = arg_parse(argc, argv, (void **)&nvs_rm_args);
 
   if (nerrors != 0) {

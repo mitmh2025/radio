@@ -7,7 +7,7 @@
 #include "freertos/task.h"
 #include "things.h"
 
-const char *TAG = "radio:tas2505";
+static const char *TAG = "radio:tas2505";
 
 static i2c_master_dev_handle_t i2c_device;
 static TaskHandle_t telemetry_task = NULL;
@@ -284,7 +284,7 @@ esp_err_t tas2505_deinit(void) {
   return ret;
 }
 
-esp_err_t _force_tas2505_set_output(tas2505_output_t output) {
+static esp_err_t _force_tas2505_set_output(tas2505_output_t output) {
   esp_err_t ret = ESP_OK;
 
   switch (output) {
@@ -329,7 +329,7 @@ esp_err_t tas2505_set_output(tas2505_output_t output) {
   return err;
 }
 
-esp_err_t _force_tas2505_set_input(tas2505_input_t input) {
+static esp_err_t _force_tas2505_set_input(tas2505_input_t input) {
   esp_err_t ret = ESP_OK;
 
   switch (input) {
@@ -431,7 +431,7 @@ esp_err_t tas2505_set_volume(uint8_t volume) {
     return ESP_OK;
   }
 
-  static tas2505_cfg_reg_t volume_registers[] = {
+  tas2505_cfg_reg_t volume_registers[] = {
       {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_HP_VOLUME, 0},
       {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_SPEAKER_VOLUME, 0},
   };

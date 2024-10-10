@@ -21,7 +21,7 @@ static struct {
 } led_colors[LED_COUNT] = {};
 static TaskHandle_t led_telemetry_task_handle = NULL;
 
-void led_telemetry_task(void *arg) {
+static void led_telemetry_task(void *arg) {
   while (true) {
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
     xSemaphoreTake(led_mutex, portMAX_DELAY);
@@ -41,7 +41,7 @@ void led_telemetry_task(void *arg) {
   }
 }
 
-void led_telemetry_generator() {
+static void led_telemetry_generator() {
   if (led_telemetry_task_handle != NULL) {
     xTaskNotifyGive(led_telemetry_task_handle);
   }

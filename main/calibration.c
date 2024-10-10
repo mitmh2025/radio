@@ -10,7 +10,7 @@
 
 #include "nvs_flash.h"
 
-const char *CALIBRATION_NVS_NAMESPACE = "radio:cali";
+static const char *CALIBRATION_NVS_NAMESPACE = "radio:cali";
 
 esp_err_t calibration_load(radio_calibration_t *calibration) {
   ESP_RETURN_ON_FALSE(calibration != NULL, ESP_ERR_INVALID_ARG, RADIO_TAG,
@@ -48,12 +48,12 @@ cleanup:
 #define BUTTON_NOTIFY_INDEX 0
 #define ADC_NOTIFY_INDEX 1
 
-void IRAM_ATTR button_callback(void *user_data) {
+static void IRAM_ATTR button_callback(void *user_data) {
   TaskHandle_t task = (TaskHandle_t)user_data;
   vTaskNotifyGiveIndexedFromISR(task, BUTTON_NOTIFY_INDEX, NULL);
 }
 
-void adc_callback(void *user_data, adc_digi_output_data_t *result) {
+static void adc_callback(void *user_data, adc_digi_output_data_t *result) {
   TaskHandle_t task = (TaskHandle_t)user_data;
   xTaskNotifyIndexed(task, ADC_NOTIFY_INDEX, result->type2.data,
                      eSetValueWithOverwrite);

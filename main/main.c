@@ -37,32 +37,46 @@ EventGroupHandle_t radio_event_group;
 
 static bool volume_increasing = true;
 // TAS2505 defaults to max volume, so start at max volume
+static uint32_t average_volume_raw = 0xfff;
 static uint8_t last_volume_setting = 0xff;
-static uint32_t average_volume = 0xfff;
-void dac_volume_callback(void *user_data, adc_digi_output_data_t *result) {
-  uint32_t new_volume =
-      average_volume - (average_volume >> 3) + (result->type2.data >> 3);
+static void volume_callback(void *user_data, adc_digi_output_data_t *result) {
+  radio_calibration_t *calibration = (radio_calibration_t *)user_data;
 
-  // Take volume reading down from 12 to 8 bits
-  uint8_t new_volume_setting = new_volume >> 4;
+  average_volume_raw = average_volume_raw - (average_volume_raw >> 3) +
+                       (result->type2.data >> 3);
 
-  // If volume was already increasing, pass through any increase. If not,
-  // require 2 steps to introduce some hysteresis. Same for decreasing.
-  if (new_volume_setting - last_volume_setting > (volume_increasing ? 1 : 2)) {
+  // Scale volume from calibration minimum to maximum (with clamping) to 0-512
+  // (one more bit than actual volume setting, to allow for hysteresis)
+  if (average_volume_raw < calibration->volume_min) {
+    average_volume_raw = calibration->volume_min;
+  } else if (average_volume_raw > calibration->volume_max) {
+    average_volume_raw = calibration->volume_max;
+  }
+  uint32_t new_volume_setting =
+      (uint64_t)((average_volume_raw - calibration->volume_min) * 512) /
+      (calibration->volume_max - calibration->volume_min);
+  if (new_volume_setting & 0x1) {
+    if (volume_increasing) {
+      new_volume_setting++;
+    } else {
+      new_volume_setting--;
+    }
+  }
+  new_volume_setting >>= 1;
+
+  if (new_volume_setting > last_volume_setting) {
     volume_increasing = true;
-    last_volume_setting = new_volume_setting;
-    tas2505_set_volume(new_volume_setting);
-  } else if (last_volume_setting - new_volume_setting >
-             (volume_increasing ? 2 : 1)) {
+  } else if (new_volume_setting < last_volume_setting) {
     volume_increasing = false;
-    last_volume_setting = new_volume_setting;
-    tas2505_set_volume(new_volume_setting);
   }
 
-  average_volume = new_volume;
+  if (new_volume_setting != last_volume_setting) {
+    tas2505_set_volume(new_volume_setting);
+    last_volume_setting = new_volume_setting;
+  }
 }
 
-void dac_output_task(void *arg) {
+static void output_task(void *arg) {
   while (1) {
   loop:
     uint32_t wait = 100 + esp_random() % 100;
@@ -84,7 +98,7 @@ void dac_output_task(void *arg) {
   }
 }
 
-void webrtc_pipeline_start(void *context) {
+static void webrtc_pipeline_start(void *context) {
   webrtc_connection_t connection = (webrtc_connection_t)context;
 
   int64_t start = esp_timer_get_time();
@@ -125,7 +139,7 @@ void webrtc_pipeline_start(void *context) {
   vTaskDelete(NULL);
 }
 
-TaskHandle_t webrtc_pipeline_task = NULL;
+static TaskHandle_t webrtc_pipeline_task = NULL;
 
 static void on_webrtc_state_change(webrtc_connection_t conn, void *context,
                                    webrtc_connection_state_t state) {
@@ -138,7 +152,8 @@ static void on_webrtc_state_change(webrtc_connection_t conn, void *context,
 static char *webrtc_current_url = NULL;
 static webrtc_connection_t webrtc_connection = NULL;
 
-void things_whep_url_callback(const char *key, things_attribute_t *attr) {
+static void things_whep_url_callback(const char *key,
+                                     things_attribute_t *attr) {
   const char *url = NULL;
   switch (attr->type) {
   case THINGS_ATTRIBUTE_TYPE_UNSET:
@@ -242,9 +257,8 @@ void app_main(void) {
           .unit = ADC_UNIT_1,
           .bit_width = 12,
       },
-      dac_volume_callback, NULL));
-  xTaskCreatePinnedToCore(dac_output_task, "dac_output", 4096, NULL, 5, NULL,
-                          0);
+      volume_callback, &calibration));
+  xTaskCreatePinnedToCore(output_task, "dac_output", 4096, NULL, 5, NULL, 0);
 
   ESP_ERROR_CHECK_WITHOUT_ABORT(webrtc_init());
   ESP_ERROR_CHECK_WITHOUT_ABORT(things_init());
@@ -268,4 +282,10 @@ void app_main(void) {
 
   ESP_ERROR_CHECK_WITHOUT_ABORT(
       things_subscribe_attribute("whep_url", things_whep_url_callback));
+
+  // Prevent the main task from exiting because we have stack-allocated
+  // variables that we want to keep around
+  while (true) {
+    vTaskDelay(portMAX_DELAY);
+  }
 }

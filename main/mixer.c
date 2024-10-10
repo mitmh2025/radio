@@ -58,7 +58,7 @@ struct mixer_channel {
 
 TAILQ_HEAD(mixer_channel_list, mixer_channel);
 
-struct mixer_channel_list mixer_channels =
+static struct mixer_channel_list mixer_channels =
     TAILQ_HEAD_INITIALIZER(mixer_channels);
 
 // TODO: add telemetry
