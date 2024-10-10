@@ -149,9 +149,6 @@ esp_err_t calibration_calibrate(radio_calibration_t *calibration) {
                          &frequency_physical_max, portMAX_DELAY);
   ESP_LOGW(RADIO_TAG, "Frequency physical max: %" PRIu32 " (0x%" PRIx32 ")",
            frequency_physical_max, frequency_physical_max);
-  ESP_GOTO_ON_FALSE(frequency_physical_max < 0xfff, ESP_FAIL, cleanup,
-                    RADIO_TAG,
-                    "Maximum frequency reads as 0xfff, calibration failed");
 
   // We need to assume that we have roughly 190º of rotation and need to be able
   // to measure 180º of difference, so we want to move the dial until the value
