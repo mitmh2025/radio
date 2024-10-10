@@ -90,6 +90,9 @@ i2c_master_bus_handle_t board_i2c_get_handle(void);
 #define LED_COUNT (2)
 #define LED_PIN GPIO_NUM_48
 
+#define BUTTON_TRIANGLE_PIN GPIO_NUM_4
+#define BUTTON_CIRCLE_PIN GPIO_NUM_33
+
 #ifdef __cplusplus
 }
 #endif

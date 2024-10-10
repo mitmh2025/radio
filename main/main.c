@@ -3,6 +3,7 @@
 #include "adc.h"
 #include "battery.h"
 #include "board.h"
+#include "calibration.h"
 #include "console.h"
 #include "debounce.h"
 #include "file_cache.h"
@@ -216,10 +217,25 @@ void app_main(void) {
   ESP_ERROR_CHECK(board_i2c_init());
   ESP_ERROR_CHECK(battery_init());
   ESP_ERROR_CHECK(tas2505_init());
+  ESP_ERROR_CHECK(storage_init());
   ESP_ERROR_CHECK(fm_init());
   ESP_ERROR_CHECK(mixer_init());
+  ESP_ERROR_CHECK(console_init());
 
-  ESP_ERROR_CHECK(adc_subscribe(
+  // We want to mark the firmware as good fast enough that we're not likely to
+  // run into spurious reboots, but not so fast that we haven't validated
+  // anything. At this point, we've brought up most of the hardware subsystems,
+  // so we're in a good place to mark the firmware as good.
+  ESP_ERROR_CHECK_WITHOUT_ABORT(esp_ota_mark_app_valid_cancel_rollback());
+
+  radio_calibration_t calibration;
+  err = calibration_load(&calibration);
+  if (err == ESP_ERR_NVS_NOT_FOUND) {
+    err = calibration_calibrate(&calibration);
+  }
+  ESP_ERROR_CHECK(err);
+
+  ESP_ERROR_CHECK_WITHOUT_ABORT(adc_subscribe(
       &(adc_digi_pattern_config_t){
           .atten = ADC_ATTEN_DB_12,
           .channel = VOLUME_ADC_CHANNEL,
@@ -230,18 +246,14 @@ void app_main(void) {
   xTaskCreatePinnedToCore(dac_output_task, "dac_output", 4096, NULL, 5, NULL,
                           0);
 
-  // mark firmware as good before we potentially fetch a new one
-  ESP_ERROR_CHECK_WITHOUT_ABORT(esp_ota_mark_app_valid_cancel_rollback());
-
-  ESP_ERROR_CHECK(webrtc_init());
-  ESP_ERROR_CHECK(things_init());
-  ESP_ERROR_CHECK(storage_init());
-  ESP_ERROR_CHECK(file_cache_init());
+  ESP_ERROR_CHECK_WITHOUT_ABORT(webrtc_init());
+  ESP_ERROR_CHECK_WITHOUT_ABORT(things_init());
+  ESP_ERROR_CHECK_WITHOUT_ABORT(file_cache_init());
 
   if (!(xEventGroupGetBits(radio_event_group) &
         RADIO_EVENT_GROUP_THINGS_PROVISIONED)) {
     uint8_t mac[6];
-    ESP_ERROR_CHECK(wifi_get_mac(mac));
+    ESP_ERROR_CHECK_WITHOUT_ABORT(wifi_get_mac(mac));
     char macstr[18];
     snprintf(macstr, sizeof(macstr), MACSTR, MAC2STR(mac));
 
@@ -251,10 +263,9 @@ void app_main(void) {
              RADIO_THINGSBOARD_SERVER, macstr);
   }
 
-  ESP_ERROR_CHECK(console_init());
-
   xEventGroupWaitBits(radio_event_group, RADIO_EVENT_GROUP_WIFI_CONNECTED,
                       pdFALSE, pdTRUE, portMAX_DELAY);
 
-  things_subscribe_attribute("whep_url", things_whep_url_callback);
+  ESP_ERROR_CHECK_WITHOUT_ABORT(
+      things_subscribe_attribute("whep_url", things_whep_url_callback));
 }

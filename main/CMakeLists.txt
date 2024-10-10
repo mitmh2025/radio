@@ -2,6 +2,7 @@ idf_component_register(
   SRCS
   adc.c
   battery.c
+  calibration.c
   console.c
   debounce.c
   file_cache.c
