@@ -64,6 +64,11 @@ static void volume_callback(void *user_data, adc_digi_output_data_t *result) {
   }
   new_volume_setting >>= 1;
 
+  // Clamp one more time
+  if (new_volume_setting > 0xff) {
+    new_volume_setting = 0xff;
+  }
+
   if (new_volume_setting > last_volume_setting) {
     volume_increasing = true;
   } else if (new_volume_setting < last_volume_setting) {

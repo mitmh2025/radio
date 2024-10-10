@@ -191,6 +191,11 @@ esp_err_t calibration_calibrate(radio_calibration_t *calibration) {
            calibration->frequency_max, calibration->frequency_max,
            frequency_max_target, frequency_max_target);
   led_set_pixel(1, 0, 0, 0);
+  ESP_GOTO_ON_FALSE(
+      frequency_physical_max > calibration->frequency_max &&
+          frequency_physical_max - calibration->frequency_max > 8,
+      ESP_FAIL, cleanup, RADIO_TAG,
+      "Maximum frequency is too close to physical limit, calibration failed");
 
   ESP_LOGW(RADIO_TAG,
            "Set frequency dial to 88MHz and press the circle button");
