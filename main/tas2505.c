@@ -10,7 +10,7 @@
 static const char *TAG = "radio:tas2505";
 
 static i2c_master_dev_handle_t i2c_device;
-static TaskHandle_t telemetry_task = NULL;
+static size_t telemetry_index = 0;
 
 #define TAS2505_CFG_OP_SET_REG 0
 #define TAS2505_CFG_OP_SET_BITS 1
@@ -182,49 +182,40 @@ end:
   return ret;
 }
 
-static void tas2505_telemetry_task() {
-  while (true) {
-    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-    const char *output;
-    switch (current_output) {
-    case TAS2505_OUTPUT_SPEAKER:
-      output = "speaker";
-      break;
-    case TAS2505_OUTPUT_HEADPHONE:
-      output = "headphone";
-      break;
-    case TAS2505_OUTPUT_BOTH:
-      output = "both";
-      break;
-    default:
-      output = "unknown";
-    }
-    things_send_telemetry_string("audio_output", output);
-
-    const char *input;
-    switch (current_input) {
-    case TAS2505_INPUT_DAC:
-      input = "DAC";
-      break;
-    case TAS2505_INPUT_LINE:
-      input = "line";
-      break;
-    case TAS2505_INPUT_BOTH:
-      input = "both";
-      break;
-    default:
-      input = "unknown";
-    }
-    things_send_telemetry_string("audio_input", input);
-
-    things_send_telemetry_int("audio_volume", current_volume);
-  }
-}
-
 static void tas2505_telemetry_generator() {
-  if (telemetry_task != NULL) {
-    xTaskNotifyGive(telemetry_task);
+  const char *output;
+  switch (current_output) {
+  case TAS2505_OUTPUT_SPEAKER:
+    output = "speaker";
+    break;
+  case TAS2505_OUTPUT_HEADPHONE:
+    output = "headphone";
+    break;
+  case TAS2505_OUTPUT_BOTH:
+    output = "both";
+    break;
+  default:
+    output = "unknown";
   }
+  things_send_telemetry_string("audio_output", output);
+
+  const char *input;
+  switch (current_input) {
+  case TAS2505_INPUT_DAC:
+    input = "DAC";
+    break;
+  case TAS2505_INPUT_LINE:
+    input = "line";
+    break;
+  case TAS2505_INPUT_BOTH:
+    input = "both";
+    break;
+  default:
+    input = "unknown";
+  }
+  things_send_telemetry_string("audio_input", input);
+
+  things_send_telemetry_int("audio_volume", current_volume);
 }
 
 esp_err_t tas2505_init() {
@@ -270,9 +261,8 @@ esp_err_t tas2505_init() {
   tas2505_enable_pa(false);
   tas2505_enable_pa(true);
 
-  xTaskCreate(tas2505_telemetry_task, "tas2505_telemetry", 4096, NULL, 5,
-              &telemetry_task);
-  things_register_telemetry_generator(tas2505_telemetry_generator);
+  things_register_telemetry_generator(tas2505_telemetry_generator,
+                                      &telemetry_index);
 
   return ret;
 }
@@ -325,7 +315,7 @@ esp_err_t tas2505_set_output(tas2505_output_t output) {
   }
 
   esp_err_t err = _force_tas2505_set_output(output);
-  tas2505_telemetry_generator();
+  things_force_telemetry(telemetry_index);
   return err;
 }
 
@@ -380,7 +370,7 @@ esp_err_t tas2505_set_input(tas2505_input_t input) {
   }
 
   esp_err_t err = _force_tas2505_set_input(input);
-  tas2505_telemetry_generator();
+  things_force_telemetry(telemetry_index);
   return err;
 }
 
@@ -451,7 +441,7 @@ esp_err_t tas2505_set_volume(uint8_t volume) {
 
   if (err == ESP_OK) {
     current_volume = volume;
-    tas2505_telemetry_generator();
+    things_force_telemetry(telemetry_index);
   }
 
   return err;

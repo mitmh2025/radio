@@ -75,7 +75,12 @@ static nvs_handle_t things_nvs_handle;
 
 static std::string things_token;
 static std::mutex things_telemetry_mutex;
-static std::vector<void (*)(void)> things_telemetry_generators;
+static std::vector<things_telemetry_generator_t> things_telemetry_generators;
+static EventGroupHandle_t things_force_telemetry_event_group = nullptr;
+static constexpr size_t event_group_max_bits = 24;
+static things_telemetry_generator_t
+    things_force_telemetry_generators[event_group_max_bits] = {};
+static size_t things_force_telemetry_next_bit = 0;
 
 static constexpr TickType_t CONNECT_TIMEOUT = pdMS_TO_TICKS(5000);
 
@@ -459,6 +464,7 @@ static void things_task(void *arg) {
   // Main loop is around wifi connection. If we get disconnected from wifi, wait
   // until we reconnect and then reconnect to ThingsBoard too
   while (true) {
+  loop:
     int64_t wait = 4000 + esp_random() % 2000;
     xEventGroupWaitBits(radio_event_group, RADIO_EVENT_GROUP_WIFI_CONNECTED,
                         pdFALSE, pdTRUE, portMAX_DELAY);
@@ -605,11 +611,35 @@ static void things_task(void *arg) {
       // If the wifi disconnect bit remains unset after 30 seconds, send
       // telemetry again
       int64_t wait = 27500 + esp_random() % 5000;
-      EventBits_t bits = xEventGroupWaitBits(
-          radio_event_group, RADIO_EVENT_GROUP_WIFI_DISCONNECTED, pdTRUE,
-          pdFALSE, pdMS_TO_TICKS(wait));
-      if (bits & RADIO_EVENT_GROUP_WIFI_DISCONNECTED) {
-        break;
+      TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(wait);
+      while (xTaskGetTickCount() < deadline) {
+        EventBits_t bits = xEventGroupWaitBits(
+            radio_event_group,
+            RADIO_EVENT_GROUP_WIFI_DISCONNECTED |
+                RADIO_EVENT_GROUP_THINGS_FORCE_TELEMETRY,
+            pdFALSE, pdFALSE, deadline - xTaskGetTickCount());
+
+        if (bits & RADIO_EVENT_GROUP_WIFI_DISCONNECTED) {
+          goto loop;
+        }
+
+        if (bits & RADIO_EVENT_GROUP_THINGS_FORCE_TELEMETRY) {
+          xEventGroupClearBits(radio_event_group,
+                               RADIO_EVENT_GROUP_THINGS_FORCE_TELEMETRY);
+          EventBits_t force_bits = xEventGroupWaitBits(
+              things_force_telemetry_event_group,
+              BIT(things_force_telemetry_next_bit) - 1, pdTRUE, pdFALSE, 0);
+          if (force_bits == 0) {
+            continue;
+          }
+
+          std::lock_guard<std::mutex> lock(things_telemetry_mutex);
+          for (size_t i = 0; i < sizeof(EventBits_t) * 8; i++) {
+            if (force_bits & BIT(i)) {
+              things_force_telemetry_generators[i]();
+            }
+          }
+        }
       }
     }
   }
@@ -622,6 +652,8 @@ esp_err_t things_init() {
     ESP_LOGE(RADIO_TAG, "ThingsBoard already initialized");
     return ESP_ERR_INVALID_STATE;
   }
+
+  things_force_telemetry_event_group = xEventGroupCreate();
 
   esp_err_t err =
       nvs_open(THINGS_NVS_NAMESPACE, NVS_READWRITE, &things_nvs_handle);
@@ -647,7 +679,7 @@ esp_err_t things_init() {
     return err;
   }
 
-  things_register_telemetry_generator(things_telemetry_generator);
+  things_register_telemetry_generator(things_telemetry_generator, NULL);
 
   return ESP_OK;
 }
@@ -699,9 +731,33 @@ bool things_send_telemetry_bool(char const *const key, bool value) {
   return conn->sendTelemetryData(key, value);
 }
 
-void things_register_telemetry_generator(void (*generator)(void)) {
+esp_err_t
+things_register_telemetry_generator(things_telemetry_generator_t generator,
+                                    size_t *index) {
+  ESP_RETURN_ON_FALSE(generator != NULL, ESP_ERR_INVALID_ARG, RADIO_TAG,
+                      "Generator must not be NULL");
+  ESP_RETURN_ON_FALSE(
+      index == NULL || things_force_telemetry_next_bit < event_group_max_bits,
+      ESP_ERR_NO_MEM, RADIO_TAG, "No more forceable telemetry generators");
   std::lock_guard<std::mutex> lock(things_telemetry_mutex);
   things_telemetry_generators.push_back(generator);
+
+  if (index != NULL) {
+    *index = things_force_telemetry_next_bit;
+    things_force_telemetry_generators[things_force_telemetry_next_bit++] =
+        generator;
+  }
+
+  return ESP_OK;
+}
+
+void things_force_telemetry(size_t index) {
+  if (things_force_telemetry_event_group == nullptr) {
+    return;
+  }
+  xEventGroupSetBits(things_force_telemetry_event_group, BIT(index));
+  xEventGroupSetBits(radio_event_group,
+                     RADIO_EVENT_GROUP_THINGS_FORCE_TELEMETRY);
 }
 
 esp_err_t things_subscribe_attribute(const char *key,

@@ -277,46 +277,36 @@ static esp_err_t fm_flush_registers(int8_t end_reg) {
   return ESP_OK;
 }
 
-static TaskHandle_t telemetry_task = NULL;
-static void fm_telemetry_task(void *ctx) {
-  while (true) {
-    xSemaphoreTake(si4702_mutex, portMAX_DELAY);
-
-    esp_err_t ret = fm_read_registers(0xb);
-    if (ret != ESP_OK) {
-      ESP_LOGE(TAG, "Unable to fetch status for telemetry: %d (%s)", ret,
-               esp_err_to_name(ret));
-      // Report what we have anyway
-    }
-
-    long long frequency;
-    ret = fm_channel_to_frequency(
-        si4702_shadow_registers.reg0b.refined.READCHAN, &frequency);
-    if (ret != ESP_OK) {
-      ESP_LOGE(TAG, "Unable to convert channel to frequency: %d (%s)", ret,
-               esp_err_to_name(ret));
-      frequency = 0;
-    }
-
-    bool enabled = !si4702_shadow_registers.reg02.refined.DISABLE;
-    uint8_t rssi = si4702_shadow_registers.reg0a.refined.RSSI;
-
-    xSemaphoreGive(si4702_mutex);
-
-    things_send_telemetry_bool("fm_enabled", enabled);
-    if (frequency != 0) {
-      things_send_telemetry_int("fm_frequency", frequency);
-    }
-    things_send_telemetry_int("fm_rssi", rssi);
-
-    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-  }
-}
-
+static size_t telemetry_index = 0;
 static void fm_telemetry_generator() {
-  if (telemetry_task != NULL) {
-    xTaskNotifyGive(telemetry_task);
+  xSemaphoreTake(si4702_mutex, portMAX_DELAY);
+
+  esp_err_t ret = fm_read_registers(0xb);
+  if (ret != ESP_OK) {
+    ESP_LOGE(TAG, "Unable to fetch status for telemetry: %d (%s)", ret,
+             esp_err_to_name(ret));
+    // Report what we have anyway
   }
+
+  long long frequency;
+  ret = fm_channel_to_frequency(si4702_shadow_registers.reg0b.refined.READCHAN,
+                                &frequency);
+  if (ret != ESP_OK) {
+    ESP_LOGE(TAG, "Unable to convert channel to frequency: %d (%s)", ret,
+             esp_err_to_name(ret));
+    frequency = 0;
+  }
+
+  bool enabled = !si4702_shadow_registers.reg02.refined.DISABLE;
+  uint8_t rssi = si4702_shadow_registers.reg0a.refined.RSSI;
+
+  xSemaphoreGive(si4702_mutex);
+
+  things_send_telemetry_bool("fm_enabled", enabled);
+  if (frequency != 0) {
+    things_send_telemetry_int("fm_frequency", frequency);
+  }
+  things_send_telemetry_int("fm_rssi", rssi);
 }
 
 esp_err_t fm_init(void) {
@@ -383,9 +373,7 @@ esp_err_t fm_init(void) {
     ESP_LOGI(TAG, "Register 0x%02x: 0x%04x", i, si4702_shadow_registers.raw[i]);
   }
 
-  xTaskCreate(fm_telemetry_task, "fm_telemetry", 4096, NULL, 5,
-              &telemetry_task);
-  things_register_telemetry_generator(fm_telemetry_generator);
+  things_register_telemetry_generator(fm_telemetry_generator, &telemetry_index);
 
   return ESP_OK;
 }
@@ -398,7 +386,7 @@ esp_err_t fm_enable(void) {
   si4702_shadow_registers.reg02.refined.DISABLE = 0;
   esp_err_t ret = fm_flush_registers(0x02);
   xSemaphoreGive(si4702_mutex);
-  fm_telemetry_generator();
+  things_force_telemetry(telemetry_index);
 
   // Wait 110ms for power up to complete
   vTaskDelay(pdMS_TO_TICKS(110));
@@ -414,7 +402,7 @@ esp_err_t fm_disable(void) {
   si4702_shadow_registers.reg02.refined.DISABLE = 1;
   esp_err_t ret = fm_flush_registers(0x02);
   xSemaphoreGive(si4702_mutex);
-  fm_telemetry_generator();
+  things_force_telemetry(telemetry_index);
   return ret;
 }
 
@@ -450,6 +438,6 @@ esp_err_t fm_tune(uint16_t channel) {
 
 cleanup:
   xSemaphoreGive(si4702_mutex);
-  fm_telemetry_generator();
+  things_force_telemetry(telemetry_index);
   return ret;
 }

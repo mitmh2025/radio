@@ -238,7 +238,7 @@ esp_err_t battery_init() {
 
   xTaskCreatePinnedToCore(battery_monitor, "battery_monitor", 4096, NULL, 5,
                           &battery_monitor_task_handle, 0);
-  things_register_telemetry_generator(battery_telemetry_generator);
+  things_register_telemetry_generator(battery_telemetry_generator, NULL);
 
   return ESP_OK;
 }

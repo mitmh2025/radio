@@ -29,6 +29,7 @@ typedef struct {
 
 typedef void (*things_attribute_callback_t)(const char *key,
                                             things_attribute_t *attr);
+typedef void (*things_telemetry_generator_t)(void);
 
 esp_err_t things_init();
 esp_err_t things_provision(const char *token);
@@ -39,7 +40,10 @@ bool things_send_telemetry_int(char const *const key, long long value);
 bool things_send_telemetry_bool(char const *const key, bool value);
 // Functions which will be called periodically to report telemtry. They should
 // call the things_send_telemetry_* functions as needed.
-void things_register_telemetry_generator(void (*generator)(void));
+esp_err_t
+things_register_telemetry_generator(things_telemetry_generator_t generator,
+                                    size_t *index);
+void things_force_telemetry(size_t index);
 
 esp_err_t things_subscribe_attribute(const char *key,
                                      things_attribute_callback_t callback);

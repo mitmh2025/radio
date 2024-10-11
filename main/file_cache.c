@@ -665,7 +665,7 @@ esp_err_t file_cache_init(void) {
     return ESP_FAIL;
   }
 
-  things_register_telemetry_generator(telemetry_generator);
+  things_register_telemetry_generator(telemetry_generator, NULL);
 
   return ESP_OK;
 }
