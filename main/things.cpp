@@ -133,7 +133,7 @@ static void update_attr_nvs(std::string key,
           },
       },
       value);
-  if (err != ESP_OK) {
+  if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) {
     ESP_LOGE(RADIO_TAG, "Failed to update attribute %s in NVS: %d (%s)",
              key.c_str(), err, esp_err_to_name(err));
   }
