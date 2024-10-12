@@ -83,6 +83,7 @@ static things_telemetry_generator_t
 static size_t things_force_telemetry_next_bit = 0;
 
 static constexpr TickType_t CONNECT_TIMEOUT = pdMS_TO_TICKS(5000);
+static constexpr TickType_t HEALTHCHECK_TIMEOUT = pdMS_TO_TICKS(2000);
 
 template <class... Ts> struct overloaded : Ts... {
   using Ts::operator()...;
@@ -448,6 +449,46 @@ static void things_attribute_callback(JsonObjectConst const &attrs,
   }
 }
 
+static bool things_healthcheck(std::shared_ptr<RadioThingsBoard> conn) {
+  if (!conn->connected()) {
+    ESP_LOGE(RADIO_TAG, "Disconnected from ThingsBoard");
+    return false;
+  }
+
+  // We don't want to wait forever for a response, so it's possible that this
+  // function will return before the callback is invoked. Give the callback a
+  // weak pointer to our task handle so it can notify us when it's done
+  std::shared_ptr<TaskHandle_t> self =
+      std::make_shared<TaskHandle_t>(xTaskGetCurrentTaskHandle());
+  std::weak_ptr<TaskHandle_t> weak_self = self;
+
+  StaticJsonDocument<JSON_OBJECT_SIZE(1)> doc;
+  JsonArray array = doc.to<JsonArray>();
+  uint64_t start = esp_timer_get_time() / 1000;
+  array.add(start);
+  auto callback = RPC_Request_Callback(
+      "ping", &array, [&, weak_self](JsonVariantConst const &repl) {
+        uint64_t server_time = repl["pong"].as<uint64_t>();
+        uint64_t end = esp_timer_get_time() / 1000;
+        ESP_LOGV(RADIO_TAG,
+                 "ThingsBoard healthcheck successful: %" PRIu64
+                 "ms (server time: %" PRIu64 "ms)",
+                 end - start, server_time);
+
+        if (auto self = weak_self.lock()) {
+          xTaskNotify(*self, 0, eNoAction);
+        }
+      });
+  bool success = conn->RPC_Request(callback);
+  if (!success) {
+    ESP_LOGE(RADIO_TAG, "Failed to send healthcheck request to ThingsBoard");
+    return false;
+  }
+
+  // Wait for the callback to notify us
+  return pdTRUE == xTaskNotifyWait(0, ULONG_MAX, NULL, HEALTHCHECK_TIMEOUT);
+}
+
 static void things_task(void *arg) {
   // First, try to pre-populate attributes from NVS - this doesn't require
   // provisioning
@@ -463,6 +504,9 @@ static void things_task(void *arg) {
 
   // Main loop is around wifi connection. If we get disconnected from wifi, wait
   // until we reconnect and then reconnect to ThingsBoard too
+  //
+  // TODO: count how many times we loop without successfully connecting, and at
+  // some point force a wifi reconnect
   while (true) {
   loop:
     int64_t wait = 4000 + esp_random() % 2000;
@@ -600,7 +644,7 @@ static void things_task(void *arg) {
       }
     }
 
-    while (conn->connected()) {
+    while (things_healthcheck(conn)) {
       {
         std::lock_guard<std::mutex> lock(things_telemetry_mutex);
         for (auto const &generator : things_telemetry_generators) {
@@ -644,6 +688,7 @@ static void things_task(void *arg) {
     }
   }
 
+  // (Unreachable)
   vTaskDelete(NULL);
 }
 
