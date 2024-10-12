@@ -182,3 +182,8 @@ esp_err_t wifi_init() {
 
   return ESP_OK;
 }
+
+esp_err_t wifi_force_reconnect() {
+  // TODO: implement
+  return ESP_OK;
+}
