@@ -457,7 +457,8 @@ static bool things_healthcheck(std::shared_ptr<RadioThingsBoard> conn) {
 
   // We don't want to wait forever for a response, so it's possible that this
   // function will return before the callback is invoked. Give the callback a
-  // weak pointer to our task handle so it can notify us when it's done
+  // weak pointer to our task handle so it can notify us when it's done, but
+  // only if we haven't moved on
   std::shared_ptr<TaskHandle_t> self =
       std::make_shared<TaskHandle_t>(xTaskGetCurrentTaskHandle());
   std::weak_ptr<TaskHandle_t> weak_self = self;
