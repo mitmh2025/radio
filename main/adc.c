@@ -30,7 +30,7 @@ static bool IRAM_ATTR adc_conv_done_cb(adc_continuous_handle_t handle,
 
 static void adc_task(void *context) {
   while (true) {
-    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1000));
 
     // Continue reading as long as there is data to read
     while (true) {
