@@ -15,6 +15,7 @@ idf_component_register(
   tas2505.c
   things.cpp
   webrtc.c
+  webrtc_manager.c
   wifi.c
   INCLUDE_DIRS
   "."

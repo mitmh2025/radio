@@ -14,6 +14,7 @@
 #include "tas2505.h"
 #include "things.h"
 #include "webrtc.h"
+#include "webrtc_manager.h"
 #include "wifi.h"
 
 #include <stdio.h>
@@ -102,108 +103,6 @@ static void output_task(void *arg) {
   }
 }
 
-static void webrtc_pipeline_start(void *context) {
-  webrtc_connection_t connection = (webrtc_connection_t)context;
-
-  int64_t start = esp_timer_get_time();
-  float rtt = webrtc_get_ice_rtt_ms(connection);
-  uint32_t required_samples = rtt * 4 * /* scale from ms to 48000 hz */ 48;
-  ESP_LOGI(RADIO_TAG, "Waiting to fill %" PRIu32 " samples (4 * %.2fms RTT)",
-           required_samples, rtt);
-  esp_err_t err =
-      webrtc_wait_buffer_duration(connection, required_samples, 3000);
-  if (err != ESP_OK) {
-    ESP_LOGE(RADIO_TAG, "Failed to wait for buffer duration: %d (%s)", err,
-             esp_err_to_name(err));
-    vTaskDelete(NULL);
-  }
-  int64_t end = esp_timer_get_time();
-  ESP_LOGI(RADIO_TAG, "Spent %lldms buffering audio (%" PRIu64 "ms since boot)",
-           (end - start) / 1000, end / 1000);
-
-  mixer_channel_t channel;
-  err = mixer_play_audio(webrtc_read_audio_sample, connection, 48000, 16, 1,
-                         false, &channel);
-  if (err != ESP_OK) {
-    ESP_LOGE(RADIO_TAG, "Failed to play audio: %d (%s)", err,
-             esp_err_to_name(err));
-    vTaskDelete(NULL);
-  }
-
-  TaskHandle_t killer = NULL;
-  xTaskNotifyWait(0, ULONG_MAX, (uint32_t *)&killer, portMAX_DELAY);
-
-  mixer_stop_audio(channel);
-  webrtc_free_connection(connection);
-
-  if (killer != NULL) {
-    xTaskNotifyGive(killer);
-  }
-
-  vTaskDelete(NULL);
-}
-
-static TaskHandle_t webrtc_pipeline_task = NULL;
-
-static void on_webrtc_state_change(webrtc_connection_t conn, void *context,
-                                   webrtc_connection_state_t state) {
-  if (state == WEBRTC_CONNECTION_STATE_CONNECTED) {
-    xTaskCreatePinnedToCore(webrtc_pipeline_start, "webrtc_pipeline", 4096,
-                            conn, 10, &webrtc_pipeline_task, 1);
-  }
-}
-
-static char *webrtc_current_url = NULL;
-static webrtc_connection_t webrtc_connection = NULL;
-
-static void things_whep_url_callback(const char *key,
-                                     things_attribute_t *attr) {
-  const char *url = NULL;
-  switch (attr->type) {
-  case THINGS_ATTRIBUTE_TYPE_UNSET:
-    break;
-  case THINGS_ATTRIBUTE_TYPE_STRING:
-    url = attr->value.string;
-    break;
-  default:
-    ESP_LOGE(RADIO_TAG, "Expected string for whep_url, got %d", attr->type);
-    return;
-  }
-
-  if (webrtc_current_url != NULL && url != NULL &&
-      strcmp(webrtc_current_url, url) == 0) {
-    ESP_LOGI(RADIO_TAG, "WebRTC URL unchanged");
-    return;
-  }
-
-  if (webrtc_pipeline_task != NULL) {
-    xTaskNotify(webrtc_pipeline_task, (uint32_t)xTaskGetCurrentTaskHandle(),
-                eSetValueWithOverwrite);
-    xTaskNotifyWait(0, ULONG_MAX, NULL, portMAX_DELAY);
-    webrtc_pipeline_task = NULL;
-  }
-
-  if (webrtc_current_url != NULL) {
-    free(webrtc_current_url);
-    webrtc_current_url = NULL;
-  }
-
-  if (url == NULL) {
-    ESP_LOGE(RADIO_TAG, "No WebRTC WHEP URL has been configured. Set the "
-                        "`whep_url` shared attribute in ThingsBoard.");
-    return;
-  }
-
-  ESP_LOGI(RADIO_TAG, "Connecting to WebRTC endpoint %s", url);
-
-  webrtc_current_url = strdup(url);
-  webrtc_config_t cfg = {
-      .whep_url = webrtc_current_url,
-      .state_change_callback = on_webrtc_state_change,
-  };
-  webrtc_connect(&cfg, &webrtc_connection);
-}
-
 void app_main(void) {
   esp_log_set_level_master(ESP_LOG_DEBUG);
   esp_log_level_set("*", ESP_LOG_WARN);
@@ -267,6 +166,7 @@ void app_main(void) {
   ESP_ERROR_CHECK_WITHOUT_ABORT(webrtc_init());
   ESP_ERROR_CHECK_WITHOUT_ABORT(things_init());
   ESP_ERROR_CHECK_WITHOUT_ABORT(file_cache_init());
+  ESP_ERROR_CHECK_WITHOUT_ABORT(webrtc_manager_init());
 
   if (!(xEventGroupGetBits(radio_event_group) &
         RADIO_EVENT_GROUP_THINGS_PROVISIONED)) {
@@ -280,12 +180,6 @@ void app_main(void) {
              "with MAC address %s and use `provision` console command to store",
              RADIO_THINGSBOARD_SERVER, macstr);
   }
-
-  xEventGroupWaitBits(radio_event_group, RADIO_EVENT_GROUP_WIFI_CONNECTED,
-                      pdFALSE, pdTRUE, portMAX_DELAY);
-
-  ESP_ERROR_CHECK_WITHOUT_ABORT(
-      things_subscribe_attribute("whep_url", things_whep_url_callback));
 
   // Prevent the main task from exiting because we have stack-allocated
   // variables that we want to keep around
