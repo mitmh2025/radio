@@ -11,6 +11,7 @@ idf_component_register(
   main.c
   mixer.c
   playback.c
+  static.c
   storage.c
   tas2505.c
   things.cpp
