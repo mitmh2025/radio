@@ -44,7 +44,6 @@ static void whep_url_callback(const char *key, things_attribute_t *attr) {
     goto cleanup;
   } else if (url != NULL && webrtc_current_url != NULL &&
              strcmp(webrtc_current_url, url) == 0) {
-    ESP_LOGI(RADIO_TAG, "WebRTC URL unchanged");
     goto cleanup;
   }
 
