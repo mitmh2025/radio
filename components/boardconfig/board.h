@@ -62,9 +62,10 @@ i2c_master_bus_handle_t board_i2c_get_handle(void);
   do {                                                                         \
     int64_t start = esp_timer_get_time();                                      \
     TaskHandle_t holder = xSemaphoreGetMutexHolder(i2c_mutex);                 \
-    xSemaphoreTake(i2c_mutex, portMAX_DELAY);                                  \
-    i2c_mutex_holder_priority = uxTaskPriorityGet(NULL);                       \
+    UBaseType_t priority = uxTaskPriorityGet(NULL);                            \
     vTaskPrioritySet(NULL, configMAX_PRIORITIES - 1);                          \
+    xSemaphoreTake(i2c_mutex, portMAX_DELAY);                                  \
+    i2c_mutex_holder_priority = priority;                                      \
     int64_t end = esp_timer_get_time();                                        \
     if (end - start > 10000) {                                                 \
       TaskStatus_t status;                                                     \
