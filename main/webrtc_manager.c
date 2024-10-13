@@ -134,11 +134,6 @@ static void webrtc_loop() {
 
       switch (state) {
       case WEBRTC_CONNECTION_STATE_CONNECTED: {
-        if (channel) {
-          // Already playing, skip
-          break;
-        }
-
         float rtt = webrtc_get_ice_rtt_ms(connection);
         target_buffer_duration = rtt * 4 * /* scale from ms to 48000 hz */ 48;
         ESP_LOGI(RADIO_TAG,
