@@ -593,7 +593,7 @@ static void webrtc_read_on_frame(UINT64 custom_data, PFrame frame) {
     // Missing last packet.
     if (frame->size == 0) {
       // Missing current packet too. Trigger PLC
-      ESP_LOGI(RADIO_TAG, "Previous two packets missing, triggering PLC");
+      ESP_LOGD(RADIO_TAG, "Previous two packets missing, triggering PLC");
       opus_int32 packet_duration;
       opus_decoder_ctl(data->connection->decoder,
                        OPUS_GET_LAST_PACKET_DURATION(&packet_duration));
