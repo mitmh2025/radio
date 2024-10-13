@@ -204,6 +204,8 @@ static esp_err_t flash_init(block_flash_t *flash, spi_device_handle_t device) {
 
   uint16_t dev_id = (txn.rx_data[1] << 8) | txn.rx_data[2];
   if (txn.rx_data[0] != 0xef || (dev_id != 0x7018 && dev_id != 0x4018)) {
+    ESP_LOGW(RADIO_TAG, "Unexpected JEDEC ID for SPI flash: 0x%02x%02x%02x",
+             txn.rx_data[0], txn.rx_data[1], txn.rx_data[2]);
     return ESP_ERR_NOT_FOUND;
   }
 
