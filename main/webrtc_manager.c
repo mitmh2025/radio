@@ -88,8 +88,10 @@ static void webrtc_loop() {
   }
 
   char *url = strdup(webrtc_current_url);
+  ulTaskNotifyValueClear(NULL, NOTIFY_URL_CHANGED);
   xSemaphoreGive(webrtc_manager_lock);
 
+  ESP_LOGI(RADIO_TAG, "Connecting to WebRTC at %s", url);
   mixer_channel_t channel = NULL;
   webrtc_connection_t connection = NULL;
   webrtc_config_t cfg = {
