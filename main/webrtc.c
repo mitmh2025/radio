@@ -13,6 +13,7 @@
 
 struct webrtc_connection {
   webrtc_connection_state_change_callback_t state_change_callback;
+  webrtc_connection_buffer_duration_callback_t buffer_duration_callback;
   void *user_data;
 
   PRtcPeerConnection peer_connection;
@@ -262,6 +263,18 @@ static void webrtc_on_connection_state_change(UINT64 arg,
   }
 }
 
+static void webrtc_on_buffer_duration(UINT64 arg, UINT32 duration) {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wint-to-pointer-cast"
+  webrtc_connection_t connection = (webrtc_connection_t)arg;
+#pragma GCC diagnostic pop
+
+  if (connection->buffer_duration_callback) {
+    connection->buffer_duration_callback(connection, connection->user_data,
+                                         duration);
+  }
+}
+
 static void webrtc_on_ice_candidate(UINT64 arg, PCHAR candidate) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wint-to-pointer-cast"
@@ -379,6 +392,7 @@ esp_err_t webrtc_connect(webrtc_config_t *config, webrtc_connection_t *handle) {
                     "Failed to allocate memory for webrtc connection");
   *handle = connection;
   connection->state_change_callback = config->state_change_callback;
+  connection->buffer_duration_callback = config->buffer_duration_callback;
   connection->user_data = config->user_data;
 
   int error;
@@ -426,6 +440,8 @@ esp_err_t webrtc_connect(webrtc_config_t *config, webrtc_connection_t *handle) {
   peerConnectionOnConnectionStateChange(connection->peer_connection,
                                         (UINT64)connection,
                                         webrtc_on_connection_state_change);
+  transceiverOnBufferDuration(connection->transceiver, (UINT64)connection,
+                              webrtc_on_buffer_duration);
 #pragma GCC diagnostic pop
 
   offer = calloc(1, sizeof(RtcSessionDescriptionInit));

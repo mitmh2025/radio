@@ -4,6 +4,7 @@
 #include "things.h"
 #include "webrtc.h"
 
+#include <stdatomic.h>
 #include <string.h>
 
 #include "esp_check.h"
@@ -22,9 +23,11 @@ static TaskHandle_t webrtc_manager_task_handle = NULL;
 
 static SemaphoreHandle_t webrtc_manager_lock = NULL;
 static char *webrtc_current_url = NULL;
+static atomic_uint_least32_t webrtc_buffer_duration = 0;
 
 #define NOTIFY_URL_CHANGED BIT(1)
 #define NOTIFY_STATE_CHANGED BIT(2)
+#define NOTIFY_BUFFER_DURATION_CHANGED BIT(3)
 
 static void whep_url_callback(const char *key, things_attribute_t *attr) {
   const char *url = NULL;
@@ -71,6 +74,13 @@ static void on_state_change(webrtc_connection_t conn, void *context,
   xTaskNotify(task, NOTIFY_STATE_CHANGED, eSetBits);
 }
 
+static void on_buffer_duration(webrtc_connection_t conn, void *context,
+                               uint32_t duration_samples) {
+  TaskHandle_t task = (TaskHandle_t)context;
+  atomic_store(&webrtc_buffer_duration, duration_samples);
+  xTaskNotify(task, NOTIFY_BUFFER_DURATION_CHANGED, eSetBits);
+}
+
 static void webrtc_loop() {
   // Wait for wifi to connect
   xEventGroupWaitBits(radio_event_group, RADIO_EVENT_GROUP_WIFI_CONNECTED,
@@ -96,12 +106,15 @@ static void webrtc_loop() {
   webrtc_config_t cfg = {
       .whep_url = url,
       .state_change_callback = on_state_change,
+      .buffer_duration_callback = on_buffer_duration,
       .user_data = xTaskGetCurrentTaskHandle(),
   };
   esp_err_t ret = webrtc_connect(&cfg, &connection);
   ESP_GOTO_ON_ERROR(ret, cleanup, RADIO_TAG,
                     "Failed to connect to WebRTC: %d (%s)", ret,
                     esp_err_to_name(ret));
+
+  uint32_t target_buffer_duration = 48000;
 
   // Main control loop
   while (true) {
@@ -112,42 +125,25 @@ static void webrtc_loop() {
       // URL changed, reconnect
       ESP_LOGI(RADIO_TAG, "URL changed, reconnecting");
       goto cleanup;
-    } else if (notification & NOTIFY_STATE_CHANGED) {
+    }
+
+    if (notification & NOTIFY_STATE_CHANGED) {
       webrtc_connection_state_t state = webrtc_get_state(connection);
       ESP_LOGI(RADIO_TAG, "WebRTC state changed to %d (%s)", state,
                webrtc_connection_state_to_string(state));
 
       switch (state) {
       case WEBRTC_CONNECTION_STATE_CONNECTED: {
-        // Start the pipeline
-
         if (channel) {
           // Already playing, skip
           break;
         }
 
-        // TODO: don't sleep in the main loop
-        int64_t start = esp_timer_get_time();
         float rtt = webrtc_get_ice_rtt_ms(connection);
-        uint32_t required_samples =
-            rtt * 4 * /* scale from ms to 48000 hz */ 48;
+        target_buffer_duration = rtt * 4 * /* scale from ms to 48000 hz */ 48;
         ESP_LOGI(RADIO_TAG,
                  "Waiting to fill %" PRIu32 " samples (4 * %.2fms RTT)",
-                 required_samples, rtt);
-        ret = webrtc_wait_buffer_duration(connection, required_samples, 3000);
-        ESP_GOTO_ON_ERROR(ret, cleanup, RADIO_TAG,
-                          "Failed to wait for buffer duration: %d (%s)", ret,
-                          esp_err_to_name(ret));
-        int64_t end = esp_timer_get_time();
-        ESP_LOGI(RADIO_TAG,
-                 "Spent %lldms buffering audio (%" PRIu64 "ms since boot)",
-                 (end - start) / 1000, end / 1000);
-
-        ret = mixer_play_audio(webrtc_read_audio_sample, connection, 48000, 16,
-                               1, false, &channel);
-        ESP_GOTO_ON_ERROR(ret, cleanup, RADIO_TAG,
-                          "Failed to play audio: %d (%s)", ret,
-                          esp_err_to_name(ret));
+                 target_buffer_duration, rtt);
 
         break;
       }
@@ -160,9 +156,26 @@ static void webrtc_loop() {
       default:
         break;
       }
-    } else {
-      // TODO: timeout, make sure connection still healthy
     }
+
+    if (notification & NOTIFY_BUFFER_DURATION_CHANGED) {
+      uint32_t duration = atomic_load(&webrtc_buffer_duration);
+      if (duration > target_buffer_duration && !channel) {
+        int64_t end = esp_timer_get_time();
+        ESP_LOGI(RADIO_TAG,
+                 "Finished buffering audio (%" PRIu32 " samples, %" PRIu64
+                 "ms since boot)",
+                 duration, end / 1000);
+
+        ret = mixer_play_audio(webrtc_read_audio_sample, connection, 48000, 16,
+                               1, false, &channel);
+        ESP_GOTO_ON_ERROR(ret, cleanup, RADIO_TAG,
+                          "Failed to play audio: %d (%s)", ret,
+                          esp_err_to_name(ret));
+      }
+    }
+
+    // TODO: make sure connection is still healthy
   }
 
 cleanup:

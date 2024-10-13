@@ -37,10 +37,13 @@ typedef struct webrtc_connection *webrtc_connection_t;
 
 typedef void (*webrtc_connection_state_change_callback_t)(
     webrtc_connection_t conn, void *user_data, webrtc_connection_state_t state);
+typedef void (*webrtc_connection_buffer_duration_callback_t)(
+    webrtc_connection_t conn, void *user_data, uint32_t duration_samples);
 
 typedef struct {
   const char *whep_url;
   webrtc_connection_state_change_callback_t state_change_callback;
+  webrtc_connection_buffer_duration_callback_t buffer_duration_callback;
   void *user_data;
 } webrtc_config_t;
 
