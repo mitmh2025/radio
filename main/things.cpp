@@ -670,6 +670,9 @@ static void things_task(void *arg) {
         }
 
         if (bits & RADIO_EVENT_GROUP_THINGS_FORCE_TELEMETRY) {
+          // Wait a brief period to prevent spamming telemetry
+          vTaskDelay(pdMS_TO_TICKS(90 + esp_random() % 20));
+
           xEventGroupClearBits(radio_event_group,
                                RADIO_EVENT_GROUP_THINGS_FORCE_TELEMETRY);
           EventBits_t force_bits = xEventGroupWaitBits(
