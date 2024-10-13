@@ -56,7 +56,7 @@ esp_err_t led_init() {
   ESP_RETURN_ON_ERROR(led_strip_new_rmt_device(&config, &rmt_config, &led),
                       RADIO_TAG, "led_init failed");
 
-  things_register_telemetry_generator(led_telemetry_generator,
+  things_register_telemetry_generator(led_telemetry_generator, "led",
                                       &telemetry_index);
 
   return ESP_OK;

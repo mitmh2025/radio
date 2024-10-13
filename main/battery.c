@@ -56,6 +56,7 @@ static adc_cali_handle_t battery_adc_cali;
 static i2c_master_dev_handle_t battery_i2c_device;
 static battery_status_t battery_status = BATTERY_DISCHARGING;
 static TaskHandle_t battery_monitor_task_handle = NULL;
+static size_t battery_telemetry_index = 0;
 
 static void battery_update_led() {
   if (battery_low) {
@@ -163,13 +164,13 @@ static void battery_monitor(void *context) {
                                            : BATTERY_CHARGED;
       if (new_status != battery_status) {
         battery_status = new_status;
-        battery_telemetry_generator();
+        things_force_telemetry(battery_telemetry_index);
       }
     }
 
     battery_update_led();
-    uint32_t jitter = esp_random() % 100;
-    xTaskNotifyWait(0, ULONG_MAX, NULL, pdMS_TO_TICKS(1000 + jitter));
+    xTaskNotifyWait(0, ULONG_MAX, NULL,
+                    pdMS_TO_TICKS(1000 + esp_random() % 100));
   }
 }
 
@@ -238,7 +239,8 @@ esp_err_t battery_init() {
 
   xTaskCreatePinnedToCore(battery_monitor, "battery_monitor", 4096, NULL, 5,
                           &battery_monitor_task_handle, 0);
-  things_register_telemetry_generator(battery_telemetry_generator, NULL);
+  things_register_telemetry_generator(battery_telemetry_generator, "battery",
+                                      &battery_telemetry_index);
 
   return ESP_OK;
 }

@@ -178,7 +178,7 @@ esp_err_t wifi_init() {
   ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to initialize SNTP: %s",
                       esp_err_to_name(err));
 
-  things_register_telemetry_generator(&wifi_report_telemetry, NULL);
+  things_register_telemetry_generator(&wifi_report_telemetry, "wifi", NULL);
 
   return ESP_OK;
 }

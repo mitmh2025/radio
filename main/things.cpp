@@ -75,7 +75,8 @@ static nvs_handle_t things_nvs_handle;
 
 static std::string things_token;
 static std::mutex things_telemetry_mutex;
-static std::vector<things_telemetry_generator_t> things_telemetry_generators;
+static std::map<std::string, things_telemetry_generator_t>
+    things_telemetry_generators;
 static EventGroupHandle_t things_force_telemetry_event_group = nullptr;
 static constexpr size_t event_group_max_bits = 24;
 static things_telemetry_generator_t
@@ -476,8 +477,8 @@ static bool things_healthcheck(std::shared_ptr<RadioThingsBoard> conn) {
                  "ms (server time: %" PRIu64 "ms)",
                  end - start, server_time);
 
-        if (auto self = weak_self.lock()) {
-          xTaskNotify(*self, 0, eNoAction);
+        if (auto locked_self = weak_self.lock()) {
+          xTaskNotifyGive(*locked_self);
         }
       });
   bool success = conn->RPC_Request(callback);
@@ -510,7 +511,7 @@ static void things_task(void *arg) {
   // some point force a wifi reconnect
   while (true) {
   loop:
-    int64_t wait = 4000 + esp_random() % 2000;
+    uint32_t wait = 4000 + esp_random() % 2000;
     xEventGroupWaitBits(radio_event_group, RADIO_EVENT_GROUP_WIFI_CONNECTED,
                         pdFALSE, pdTRUE, portMAX_DELAY);
 
@@ -649,7 +650,7 @@ static void things_task(void *arg) {
       {
         std::lock_guard<std::mutex> lock(things_telemetry_mutex);
         for (auto const &generator : things_telemetry_generators) {
-          generator();
+          generator.second();
         }
       }
 
@@ -725,7 +726,8 @@ esp_err_t things_init() {
     return err;
   }
 
-  things_register_telemetry_generator(things_telemetry_generator, NULL);
+  things_register_telemetry_generator(things_telemetry_generator, "things",
+                                      NULL);
 
   return ESP_OK;
 }
@@ -779,14 +781,14 @@ bool things_send_telemetry_bool(char const *const key, bool value) {
 
 esp_err_t
 things_register_telemetry_generator(things_telemetry_generator_t generator,
-                                    size_t *index) {
+                                    const char *name, size_t *index) {
   ESP_RETURN_ON_FALSE(generator != NULL, ESP_ERR_INVALID_ARG, RADIO_TAG,
                       "Generator must not be NULL");
   ESP_RETURN_ON_FALSE(
       index == NULL || things_force_telemetry_next_bit < event_group_max_bits,
       ESP_ERR_NO_MEM, RADIO_TAG, "No more forceable telemetry generators");
   std::lock_guard<std::mutex> lock(things_telemetry_mutex);
-  things_telemetry_generators.push_back(generator);
+  things_telemetry_generators[name] = generator;
 
   if (index != NULL) {
     *index = things_force_telemetry_next_bit;

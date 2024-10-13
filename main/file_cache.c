@@ -38,6 +38,7 @@ static SemaphoreHandle_t manifest_cache_mutex = NULL;
 static file_cache_manifest *manifest_cache = NULL;
 static time_t manifest_cache_last_update = {};
 static esp_err_t manifest_cache_last_update_err = ESP_OK;
+static size_t telemetry_index = 0;
 
 static TaskHandle_t task_handle = NULL;
 
@@ -642,7 +643,7 @@ static void file_cache_task(void *context) {
       xTaskNotifyWait(0, ULONG_MAX, NULL, pdMS_TO_TICKS(wait));
       continue;
     }
-    telemetry_generator();
+    things_force_telemetry(telemetry_index);
 
     // Wait until we get woken up, indicating a new value for the manifest URL
     xTaskNotifyWait(0, ULONG_MAX, NULL, portMAX_DELAY);
@@ -665,7 +666,8 @@ esp_err_t file_cache_init(void) {
     return ESP_FAIL;
   }
 
-  things_register_telemetry_generator(telemetry_generator, NULL);
+  things_register_telemetry_generator(telemetry_generator, "file_cache",
+                                      &telemetry_index);
 
   return ESP_OK;
 }

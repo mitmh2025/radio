@@ -42,7 +42,7 @@ bool things_send_telemetry_bool(char const *const key, bool value);
 // call the things_send_telemetry_* functions as needed.
 esp_err_t
 things_register_telemetry_generator(things_telemetry_generator_t generator,
-                                    size_t *index);
+                                    const char *name, size_t *index);
 void things_force_telemetry(size_t index);
 
 esp_err_t things_subscribe_attribute(const char *key,

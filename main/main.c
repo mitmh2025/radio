@@ -84,8 +84,7 @@ static void volume_callback(void *user_data, adc_digi_output_data_t *result) {
 static void output_task(void *arg) {
   while (1) {
   loop:
-    uint32_t wait = 100 + esp_random() % 100;
-    vTaskDelay(pdMS_TO_TICKS(wait));
+    vTaskDelay(pdMS_TO_TICKS(100 + esp_random() % 100));
 
     bool gpio;
     esp_err_t err = tas2505_read_gpio(&gpio);

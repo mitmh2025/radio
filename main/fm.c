@@ -373,7 +373,8 @@ esp_err_t fm_init(void) {
     ESP_LOGI(TAG, "Register 0x%02x: 0x%04x", i, si4702_shadow_registers.raw[i]);
   }
 
-  things_register_telemetry_generator(fm_telemetry_generator, &telemetry_index);
+  things_register_telemetry_generator(fm_telemetry_generator, "fm",
+                                      &telemetry_index);
 
   return ESP_OK;
 }

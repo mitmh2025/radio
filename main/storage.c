@@ -682,7 +682,8 @@ esp_err_t storage_init(void) {
   ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to mount LittleFS: %d (%s)", err,
                       esp_err_to_name(err));
 
-  things_register_telemetry_generator(storage_telemetry_generator, NULL);
+  things_register_telemetry_generator(storage_telemetry_generator, "storage",
+                                      NULL);
 
   return ESP_OK;
 }

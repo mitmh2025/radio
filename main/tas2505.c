@@ -261,7 +261,7 @@ esp_err_t tas2505_init() {
   tas2505_enable_pa(false);
   tas2505_enable_pa(true);
 
-  things_register_telemetry_generator(tas2505_telemetry_generator,
+  things_register_telemetry_generator(tas2505_telemetry_generator, "tas2505",
                                       &telemetry_index);
 
   return ret;
