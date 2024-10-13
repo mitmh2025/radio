@@ -370,7 +370,7 @@ static esp_err_t flash_write(block_flash_t *flash, size_t addr,
   ESP_GOTO_ON_ERROR(flash_wait_ready(flash, pdMS_TO_TICKS(100)), cleanup,
                     RADIO_TAG, "SPI flash did not become ready after write");
   int64_t end = esp_timer_get_time();
-  if (end - start > 4000) {
+  if (end - start > 20000) {
     ESP_LOGW(RADIO_TAG, "SPI flash write of %zu bytes took %lldus", size,
              end - start);
   }
