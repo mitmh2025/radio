@@ -709,7 +709,7 @@ esp_err_t things_init() {
 
   // TODO: Can we get log streaming to perform well enough?
 
-  xTaskCreate(things_task, "things_task", 4096, NULL, 10, NULL);
+  xTaskCreate(things_task, "things_task", 4096, NULL, 7, NULL);
 
   size_t length;
   err = nvs_get_str(things_nvs_handle, THINGS_NVS_TOKEN_KEY, NULL, &length);

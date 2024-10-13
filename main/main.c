@@ -161,7 +161,7 @@ void app_main(void) {
           .bit_width = 12,
       },
       volume_callback, &calibration));
-  xTaskCreatePinnedToCore(output_task, "dac_output", 4096, NULL, 5, NULL, 0);
+  xTaskCreatePinnedToCore(output_task, "dac_output", 4096, NULL, 17, NULL, 0);
 
   ESP_ERROR_CHECK_WITHOUT_ABORT(webrtc_init());
   ESP_ERROR_CHECK_WITHOUT_ABORT(things_init());

@@ -83,7 +83,7 @@ esp_err_t adc_init() {
                       "adc_init failed");
 
   TaskHandle_t adc_task_handle = NULL;
-  xTaskCreatePinnedToCore(adc_task, "adc_task", 4096, NULL, 10,
+  xTaskCreatePinnedToCore(adc_task, "adc_task", 4096, NULL, 18,
                           &adc_task_handle, 0);
 
   adc_continuous_evt_cbs_t cbs = {

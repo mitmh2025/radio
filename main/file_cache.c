@@ -659,7 +659,7 @@ esp_err_t file_cache_init(void) {
   // Push all work to a task because we need to wait until storage has been
   // mounted
   BaseType_t result = xTaskCreatePinnedToCore(
-      file_cache_task, "file_cache_task", 6144, NULL, 15, &task_handle, 0);
+      file_cache_task, "file_cache_task", 6144, NULL, 4, &task_handle, 0);
 
   if (result != pdPASS) {
     ESP_LOGE(RADIO_TAG, "Failed to create file cache task");

@@ -192,7 +192,7 @@ esp_err_t webrtc_manager_init() {
 
   webrtc_manager_task_handle = xTaskCreateStaticPinnedToCore(
       webrtc_manager_task, "webrtc_manager",
-      sizeof(webrtc_manager_task_stack) / sizeof(StackType_t), NULL, 5,
+      sizeof(webrtc_manager_task_stack) / sizeof(StackType_t), NULL, 10,
       webrtc_manager_task_stack, &webrtc_manager_task_buffer, 1);
   ESP_RETURN_ON_FALSE(webrtc_manager_task_handle != NULL, ESP_FAIL, RADIO_TAG,
                       "Failed to create WebRTC manager task");
