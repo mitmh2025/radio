@@ -244,3 +244,17 @@ cleanup:
   nvs_close(handle);
   return ret;
 }
+
+esp_err_t calibration_erase() {
+  nvs_handle_t handle;
+  ESP_RETURN_ON_ERROR(
+      nvs_open(CALIBRATION_NVS_NAMESPACE, NVS_READWRITE, &handle), RADIO_TAG,
+      "Failed to open NVS handle for calibration");
+
+  esp_err_t ret = ESP_OK;
+  ESP_GOTO_ON_ERROR(nvs_erase_all(handle), cleanup, RADIO_TAG,
+                    "Failed to erase calibration NVS");
+cleanup:
+  nvs_close(handle);
+  return ret;
+}

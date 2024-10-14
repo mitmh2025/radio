@@ -2,6 +2,7 @@
 
 #include "nvs_flash.h"
 
+#include "calibration.h"
 #include "console.h"
 #include "main.h"
 #include "storage.h"
@@ -147,6 +148,17 @@ static int provision_func(int argc, char **argv) {
     return 1;
   }
 
+  return 0;
+}
+
+static int recalibrate_func(int argc, char **argv) {
+  esp_err_t err = calibration_erase();
+  if (err != ESP_OK) {
+    printf("Failed to erase calibration: %s\n", esp_err_to_name(err));
+    return 1;
+  }
+
+  esp_restart();
   return 0;
 }
 
@@ -688,6 +700,16 @@ esp_err_t console_init() {
   err = esp_console_cmd_register(&cmd_provision);
   ESP_RETURN_ON_ERROR(err, RADIO_TAG,
                       "Failed to register provision command: %s",
+                      esp_err_to_name(err));
+
+  esp_console_cmd_t cmd_recalibrate = {
+      .command = "recalibrate",
+      .help = "Erase calibration data and restart",
+      .func = &recalibrate_func,
+  };
+  err = esp_console_cmd_register(&cmd_recalibrate);
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG,
+                      "Failed to register recalibrate command: %s",
                       esp_err_to_name(err));
 
   list_args.dir = arg_str1(NULL, NULL, "<dir>", "Directory to list");

@@ -15,6 +15,7 @@ typedef struct {
 
 esp_err_t calibration_load(radio_calibration_t *calibration);
 esp_err_t calibration_calibrate(radio_calibration_t *calibration);
+esp_err_t calibration_erase();
 
 #ifdef __cplusplus
 }
