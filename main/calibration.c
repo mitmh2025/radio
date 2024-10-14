@@ -48,7 +48,7 @@ cleanup:
 #define BUTTON_NOTIFY_INDEX 0
 #define ADC_NOTIFY_INDEX 1
 
-static void IRAM_ATTR button_callback(void *user_data) {
+static void IRAM_ATTR button_callback(void *user_data, bool state) {
   TaskHandle_t task = (TaskHandle_t)user_data;
   vTaskNotifyGiveIndexedFromISR(task, BUTTON_NOTIFY_INDEX, NULL);
 }

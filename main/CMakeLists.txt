@@ -39,3 +39,5 @@ idf_component_register(
   kvswebrtcclient
   opus
   sdmmc)
+
+  target_compile_options(${COMPONENT_LIB} PRIVATE -Werror)
