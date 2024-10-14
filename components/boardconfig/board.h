@@ -69,10 +69,13 @@ i2c_master_bus_handle_t board_i2c_get_handle(void);
     int64_t end = esp_timer_get_time();                                        \
     if (end - start > 10000) {                                                 \
       TaskStatus_t status;                                                     \
-      vTaskGetInfo(holder, &status, pdTRUE, eInvalid);                         \
+      if (holder) {                                                            \
+        vTaskGetInfo(holder, &status, pdFALSE, eInvalid);                      \
+      }                                                                        \
       ESP_LOGW("radio:board",                                                  \
                "%s(%d): Acquiring I2C bus took %lldus (held by %s)",           \
-               __FUNCTION__, __LINE__, end - start, status.pcTaskName);        \
+               __FUNCTION__, __LINE__, end - start,                            \
+               holder ? status.pcTaskName : "unknown");                        \
     }                                                                          \
   } while (0)
 #define BOARD_I2C_MUTEX_UNLOCK()                                               \
