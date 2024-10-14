@@ -7,6 +7,7 @@
 #include "main.h"
 #include "mixer.h"
 #include "tas2505.h"
+#include "things.h"
 #include "webrtc_manager.h"
 
 #include "esp_check.h"
@@ -15,8 +16,6 @@
 #include <stdatomic.h>
 #include <stdbool.h>
 #include <stdint.h>
-
-// TODO: telemetry
 
 #define FREQUENCY_PM_MIN ((float)(M_PI))
 #define FREQUENCY_PM_MAX ((float)(2 * M_PI))
@@ -68,6 +67,17 @@ static atomic_uint_least32_t current_raw_frequency = 0;
 static tuner_mode_t current_radio_mode = TUNER_MODE_PM;
 static frequency_spec_t *current_frequency = NULL;
 static TaskHandle_t tuner_task_handle = NULL;
+static radio_calibration_t *tuner_calibration = NULL;
+static size_t telemetry_index = 0;
+
+static void telemetry_generator() {
+  things_send_telemetry_string(
+      "tuner_mode", current_radio_mode == TUNER_MODE_PM ? "PM" : "FM");
+  things_send_telemetry_int("tuner_min", tuner_calibration->frequency_min);
+  things_send_telemetry_int("tuner_max", tuner_calibration->frequency_max);
+  things_send_telemetry_int("tuner_raw", atomic_load(&current_raw_frequency));
+  things_send_telemetry_bool("tuner_entuned", current_frequency != NULL);
+}
 
 static void entune_pm() {
   ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_default_static(true));
@@ -190,12 +200,16 @@ static void tuner_task(void *ctx) {
       current_frequency->entune(current_frequency->ctx);
     }
 
+    things_force_telemetry(telemetry_index);
+
   next:
     xTaskNotifyWait(0, ULONG_MAX, NULL, portMAX_DELAY);
   }
 }
 
 esp_err_t tuner_init(radio_calibration_t *calibration) {
+  tuner_calibration = calibration;
+
   // Populate FM frequencies
   for (int i = 0; i < sizeof(fm_frequencies) / sizeof(fm_frequencies[0]); i++) {
     fm_frequencies[i].frequency =
@@ -338,6 +352,10 @@ esp_err_t tuner_init(radio_calibration_t *calibration) {
                       RADIO_TAG, "Failed to subscribe to ADC channel");
   xTaskCreatePinnedToCore(tuner_task, "tuner", 4096, NULL, 12,
                           &tuner_task_handle, 1);
+
+  ESP_RETURN_ON_ERROR(things_register_telemetry_generator(
+                          telemetry_generator, "tuner", &telemetry_index),
+                      RADIO_TAG, "Failed to register telemetry generator");
 
   return ESP_OK;
 }
