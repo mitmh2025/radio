@@ -15,6 +15,8 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 
+// TODO: telemetry
+
 static StaticTask_t webrtc_manager_task_buffer;
 // 6KB stack size - kvswebrtc needs a lot of stack space
 static EXT_RAM_BSS_ATTR StackType_t

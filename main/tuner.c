@@ -16,6 +16,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+// TODO: telemetry
+
 #define FREQUENCY_PM_MIN ((float)(M_PI))
 #define FREQUENCY_PM_MAX ((float)(2 * M_PI))
 // Channel is roughly 4% of the band
