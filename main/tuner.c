@@ -85,6 +85,16 @@ static void entune_fm() {
 
 static void detune_fm() { ESP_ERROR_CHECK_WITHOUT_ABORT(fm_disable()); }
 
+static void entune_two_pi(void *ctx) {
+  webrtc_manager_entune();
+  ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_default_static(false));
+}
+
+static void detune_two_pi(void *ctx) {
+  ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_default_static(true));
+  webrtc_manager_detune();
+}
+
 static struct {
   void (*entune)();
   void (*detune)();
@@ -101,8 +111,8 @@ frequency_spec_t pm_frequencies[] = {
     {
         .frequency = (2 * M_PI),
         .enabled = true,
-        .entune = webrtc_manager_entune,
-        .detune = webrtc_manager_detune,
+        .entune = entune_two_pi,
+        .detune = detune_two_pi,
     },
 };
 frequency_spec_t fm_frequencies[FREQUENCY_COUNT] = {};

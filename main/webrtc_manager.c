@@ -227,14 +227,14 @@ esp_err_t webrtc_manager_init() {
   return ESP_OK;
 }
 
-void webrtc_manager_entune(void *) {
+void webrtc_manager_entune() {
   atomic_store(&webrtc_entuned, true);
   if (webrtc_manager_task_handle) {
     xTaskNotify(webrtc_manager_task_handle, NOTIFY_ENTUNE_CHANGED, eSetBits);
   }
 }
 
-void webrtc_manager_detune(void *) {
+void webrtc_manager_detune() {
   atomic_store(&webrtc_entuned, false);
   if (webrtc_manager_task_handle) {
     xTaskNotify(webrtc_manager_task_handle, NOTIFY_ENTUNE_CHANGED, eSetBits);
