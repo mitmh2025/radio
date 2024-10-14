@@ -13,6 +13,7 @@
 #include "storage.h"
 #include "tas2505.h"
 #include "things.h"
+#include "tuner.h"
 #include "webrtc.h"
 #include "webrtc_manager.h"
 #include "wifi.h"
@@ -167,6 +168,7 @@ void app_main(void) {
   ESP_ERROR_CHECK_WITHOUT_ABORT(things_init());
   ESP_ERROR_CHECK_WITHOUT_ABORT(file_cache_init());
   ESP_ERROR_CHECK_WITHOUT_ABORT(webrtc_manager_init());
+  ESP_ERROR_CHECK_WITHOUT_ABORT(tuner_init(&calibration));
 
   if (!(xEventGroupGetBits(radio_event_group) &
         RADIO_EVENT_GROUP_THINGS_PROVISIONED)) {

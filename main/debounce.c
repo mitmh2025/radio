@@ -15,7 +15,7 @@ struct debounce_config {
 
   gpio_int_type_t intr_type;
   uint64_t timeout;
-  gpio_isr_t isr;
+  debounce_isr_t isr;
   void *arg;
 };
 static struct debounce_config debounce_handlers[GPIO_NUM_MAX] = {};
@@ -38,12 +38,10 @@ static void IRAM_ATTR debounce_isr(void *ctx) {
 
   handler->last_trigger = now;
   handler->state = new_state;
-  if (handler->intr_type == GPIO_INTR_POSEDGE && new_state) {
-    handler->isr(handler->arg);
-  } else if (handler->intr_type == GPIO_INTR_NEGEDGE && !new_state) {
-    handler->isr(handler->arg);
-  } else if (handler->intr_type == GPIO_INTR_ANYEDGE) {
-    handler->isr(handler->arg);
+  if (handler->intr_type == GPIO_INTR_ANYEDGE ||
+      (handler->intr_type == GPIO_INTR_POSEDGE && new_state) ||
+      (handler->intr_type == GPIO_INTR_NEGEDGE && !new_state)) {
+    handler->isr(handler->arg, new_state);
   }
   portEXIT_CRITICAL_ISR(&debounce_spinlock);
 }
@@ -53,7 +51,7 @@ esp_err_t debounce_init() {
 }
 
 esp_err_t debounce_handler_add(gpio_num_t gpio_num, gpio_int_type_t intr_type,
-                               gpio_isr_t isr_handler, void *args,
+                               debounce_isr_t isr_handler, void *args,
                                uint64_t timeout_us) {
   ESP_RETURN_ON_FALSE(GPIO_IS_VALID_GPIO(gpio_num), ESP_ERR_INVALID_ARG,
                       RADIO_TAG, "Invalid GPIO number: %d", gpio_num);

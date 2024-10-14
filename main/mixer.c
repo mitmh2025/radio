@@ -36,7 +36,7 @@
   } while (0)
 
 static SemaphoreHandle_t mixer_mutex = NULL;
-static atomic_bool default_static = true;
+static atomic_bool default_static = false;
 static void *downmix_handle = NULL;
 static EXT_RAM_BSS_ATTR esp_downmix_input_info_t
     downmix_source_info[SOURCE_NUM_MAX] = {};

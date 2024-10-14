@@ -20,7 +20,7 @@ static StaticTask_t webrtc_manager_task_buffer;
 static EXT_RAM_BSS_ATTR StackType_t
     webrtc_manager_task_stack[6 * 1024 / sizeof(StackType_t)];
 static TaskHandle_t webrtc_manager_task_handle = NULL;
-static atomic_bool webrtc_entuned = true;
+static atomic_bool webrtc_entuned = false;
 
 static SemaphoreHandle_t webrtc_manager_lock = NULL;
 static char *webrtc_current_url = NULL;
@@ -139,7 +139,8 @@ static void webrtc_loop() {
         float rtt = webrtc_get_ice_rtt_ms(connection);
         target_buffer_duration = rtt * 4 * /* scale from ms to 48000 hz */ 48;
         ESP_LOGI(RADIO_TAG,
-                 "Waiting to fill %" PRIu32 " samples (4 * %.2fms RTT)",
+                 "Setting target buffer duration of %" PRIu32
+                 " samples (4 * %.2fms RTT)",
                  target_buffer_duration, rtt);
 
         break;
@@ -157,9 +158,12 @@ static void webrtc_loop() {
 
     uint32_t duration = atomic_load(&webrtc_buffer_duration);
 
-    bool should_play =
-        atomic_load(&webrtc_entuned) && duration > target_buffer_duration;
-    if (should_play && !channel) {
+    bool entuned = atomic_load(&webrtc_entuned);
+    if (channel && !entuned) {
+      ESP_LOGI(RADIO_TAG, "Detuning WebRTC");
+      mixer_stop_audio(channel);
+      channel = NULL;
+    } else if (!channel && duration > target_buffer_duration && entuned) {
       int64_t end = esp_timer_get_time();
       ESP_LOGI(RADIO_TAG,
                "Starting webrtc playback (%" PRIu32
@@ -171,10 +175,15 @@ static void webrtc_loop() {
       ESP_GOTO_ON_ERROR(ret, cleanup, RADIO_TAG,
                         "Failed to play audio: %d (%s)", ret,
                         esp_err_to_name(ret));
-    } else if (!should_play && channel) {
-      ESP_LOGI(RADIO_TAG, "Stopping webrtc playback");
-      mixer_stop_audio(channel);
-      channel = NULL;
+    }
+
+    if (!channel) {
+      // bleed down the buffer
+      while (duration > target_buffer_duration) {
+        webrtc_read_audio_sample(connection, NULL, 960, portMAX_DELAY);
+        ESP_GOTO_ON_ERROR(webrtc_get_buffer_duration(connection, &duration),
+                          cleanup, RADIO_TAG, "Failed to get buffer duration");
+      }
     }
 
     // TODO: make sure connection is still healthy
@@ -216,14 +225,14 @@ esp_err_t webrtc_manager_init() {
   return ESP_OK;
 }
 
-void webrtc_manager_entune() {
+void webrtc_manager_entune(void *) {
   atomic_store(&webrtc_entuned, true);
   if (webrtc_manager_task_handle) {
     xTaskNotify(webrtc_manager_task_handle, NOTIFY_ENTUNE_CHANGED, eSetBits);
   }
 }
 
-void webrtc_manager_disentune() {
+void webrtc_manager_detune(void *) {
   atomic_store(&webrtc_entuned, false);
   if (webrtc_manager_task_handle) {
     xTaskNotify(webrtc_manager_task_handle, NOTIFY_ENTUNE_CHANGED, eSetBits);

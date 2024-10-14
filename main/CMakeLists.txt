@@ -15,6 +15,7 @@ idf_component_register(
   storage.c
   tas2505.c
   things.cpp
+  tuner.c
   webrtc.c
   webrtc_manager.c
   wifi.c

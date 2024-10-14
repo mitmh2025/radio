@@ -93,6 +93,7 @@ i2c_master_bus_handle_t board_i2c_get_handle(void);
 
 #define BUTTON_TRIANGLE_PIN GPIO_NUM_4
 #define BUTTON_CIRCLE_PIN GPIO_NUM_33
+#define TOGGLE_PIN GPIO_NUM_34
 
 #ifdef __cplusplus
 }

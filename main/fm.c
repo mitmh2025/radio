@@ -183,8 +183,7 @@ static i2c_master_dev_handle_t i2c_device;
 static const char *TAG = "radio:si4702";
 
 // Frequency is units of kHz
-static esp_err_t fm_channel_to_frequency(uint16_t channel,
-                                         long long *frequency) {
+esp_err_t fm_channel_to_frequency(uint16_t channel, long long *frequency) {
   ESP_RETURN_ON_FALSE(frequency != NULL, ESP_ERR_INVALID_ARG, TAG,
                       "frequency must not be NULL");
   long long frequency_base =
@@ -195,8 +194,7 @@ static esp_err_t fm_channel_to_frequency(uint16_t channel,
   return ESP_OK;
 }
 
-static esp_err_t fm_frequency_to_channel(long long frequency,
-                                         uint16_t *channel) {
+esp_err_t fm_frequency_to_channel(long long frequency, uint16_t *channel) {
   ESP_RETURN_ON_FALSE(channel != NULL, ESP_ERR_INVALID_ARG, TAG,
                       "channel must not be NULL");
   long long frequency_base =
