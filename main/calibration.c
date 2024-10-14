@@ -48,15 +48,21 @@ cleanup:
 #define BUTTON_NOTIFY_INDEX 0
 #define ADC_NOTIFY_INDEX 1
 
+static uint32_t adc_value = UINT32_MAX;
+
 static void IRAM_ATTR button_callback(void *user_data, bool state) {
   TaskHandle_t task = (TaskHandle_t)user_data;
   vTaskNotifyGiveIndexedFromISR(task, BUTTON_NOTIFY_INDEX, NULL);
 }
 
 static void adc_callback(void *user_data, adc_digi_output_data_t *result) {
+  if (adc_value == UINT32_MAX) {
+    adc_value = result->type2.data;
+  } else {
+    adc_value = adc_value - (adc_value >> 3) + (result->type2.data >> 3);
+  }
   TaskHandle_t task = (TaskHandle_t)user_data;
-  xTaskNotifyIndexed(task, ADC_NOTIFY_INDEX, result->type2.data,
-                     eSetValueWithOverwrite);
+  xTaskNotifyIndexed(task, ADC_NOTIFY_INDEX, adc_value, eSetValueWithOverwrite);
 }
 
 esp_err_t calibration_calibrate(radio_calibration_t *calibration) {
@@ -147,34 +153,27 @@ esp_err_t calibration_calibrate(radio_calibration_t *calibration) {
   uint32_t frequency_physical_max;
   xTaskNotifyWaitIndexed(ADC_NOTIFY_INDEX, ULONG_MAX, ULONG_MAX,
                          &frequency_physical_max, portMAX_DELAY);
-  ESP_LOGW(RADIO_TAG, "Frequency physical max: %" PRIu32 " (0x%" PRIx32 ")",
-           frequency_physical_max, frequency_physical_max);
-
   // We need to assume that we have roughly 190º of rotation and need to be able
   // to measure 180º of difference, so we want to move the dial until the value
-  // decreases by 5º, or 2.5%
-  uint32_t frequency_max_target = 0.975 * frequency_physical_max;
+  // decreases by 5º, or 2.5% (plus some margin of error)
+  uint32_t frequency_max_target = 0.96 * frequency_physical_max;
+  ESP_LOGW(RADIO_TAG,
+           "Frequency physical max: %" PRIu32 " (0x%" PRIx32 "), "
+           "target: %" PRIu32 " (0x%" PRIx32 ")",
+           frequency_physical_max, frequency_physical_max, frequency_max_target,
+           frequency_max_target);
 
   ESP_LOGW(RADIO_TAG,
            "Turn frequency dial down until green LED turns on, then attach "
            "knob pointing at 108MHz, then press the circle button");
   xTaskNotifyStateClearIndexed(NULL, BUTTON_NOTIFY_INDEX);
-  uint32_t average_frequency = UINT16_MAX;
   uint32_t frequency;
   while (xTaskNotifyWaitIndexed(BUTTON_NOTIFY_INDEX, 0, ULONG_MAX, NULL, 0) ==
          pdFALSE) {
     // Take a reading, adjust the LED
     xTaskNotifyWaitIndexed(ADC_NOTIFY_INDEX, ULONG_MAX, ULONG_MAX, &frequency,
                            portMAX_DELAY);
-    if (average_frequency == UINT16_MAX) {
-      average_frequency = frequency;
-    } else {
-      average_frequency =
-          average_frequency - (average_frequency >> 3) + (frequency >> 3);
-    }
-
-    uint32_t error =
-        imaxabs((int32_t)(average_frequency - frequency_max_target));
+    uint32_t error = imaxabs((int32_t)(frequency - frequency_max_target));
     // Our tolerance for error is 1/2 of the difference between the target and
     // the physical max
     uint32_t tolerance = (frequency_physical_max - frequency_max_target) >> 1;
@@ -184,7 +183,7 @@ esp_err_t calibration_calibrate(radio_calibration_t *calibration) {
       led_set_pixel(1, 255, 0, 0);
     }
   }
-  calibration->frequency_max = average_frequency;
+  calibration->frequency_max = frequency;
   ESP_LOGW(RADIO_TAG,
            "Frequency max: %" PRIu32 " (0x%" PRIx32 "), target: %" PRIu32
            " (0x%" PRIx32 ")",
