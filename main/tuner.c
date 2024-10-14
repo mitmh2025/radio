@@ -70,6 +70,10 @@ static TaskHandle_t tuner_task_handle = NULL;
 static radio_calibration_t *tuner_calibration = NULL;
 static size_t telemetry_index = 0;
 
+static inline bool gpio_to_tuner_mode(bool state) {
+  return state ? TUNER_MODE_FM : TUNER_MODE_PM;
+}
+
 static void telemetry_generator() {
   things_send_telemetry_string(
       "tuner_mode", current_radio_mode == TUNER_MODE_PM ? "PM" : "FM");
@@ -132,7 +136,7 @@ static void entune_fm_channel(void *ctx) {
 }
 
 static void IRAM_ATTR modulation_callback(void *user_data, bool state) {
-  desired_radio_mode = state ? TUNER_MODE_PM : TUNER_MODE_FM;
+  desired_radio_mode = gpio_to_tuner_mode(state);
   if (tuner_task_handle) {
     xTaskNotifyFromISR(tuner_task_handle, 0, eNoAction, NULL);
   }
@@ -330,9 +334,8 @@ esp_err_t tuner_init(radio_calibration_t *calibration) {
   };
   ESP_RETURN_ON_ERROR(gpio_config(&config), RADIO_TAG,
                       "Failed to configure modulation pin");
-  bool toggle_level = gpio_get_level(TOGGLE_PIN);
-  current_radio_mode = toggle_level ? TUNER_MODE_PM : TUNER_MODE_FM;
-  modulation_callback(NULL, toggle_level);
+  current_radio_mode = gpio_to_tuner_mode(gpio_get_level(TOGGLE_PIN));
+  desired_radio_mode = current_radio_mode;
 
   if (mode_tuners[current_radio_mode].entune) {
     mode_tuners[current_radio_mode].entune();
