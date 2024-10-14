@@ -1,5 +1,6 @@
 #include "mixer.h"
 #include "main.h"
+#include "static.h"
 
 #include "audio_pipeline.h"
 #include "esp_check.h"
@@ -10,6 +11,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 
+#include <stdatomic.h>
 #include <string.h>
 #include <sys/queue.h>
 
@@ -34,6 +36,7 @@
   } while (0)
 
 static SemaphoreHandle_t mixer_mutex = NULL;
+static atomic_bool default_static = true;
 static void *downmix_handle = NULL;
 static EXT_RAM_BSS_ATTR esp_downmix_input_info_t
     downmix_source_info[SOURCE_NUM_MAX] = {};
@@ -129,6 +132,14 @@ static void mixer_task(void *arg) {
 
     if (downmix_info.source_num == 0) {
       memset(downmix_buffer, 0, sizeof(downmix_buffer));
+
+      if (atomic_load(&default_static)) {
+        int ret = static_read_audio(NULL, (char *)downmix_buffer,
+                                    sizeof(downmix_buffer), portMAX_DELAY);
+        if (ret < 0) {
+          ESP_LOGE(RADIO_TAG, "Failed to read static audio: %d", ret);
+        }
+      }
     } else {
       mixer_channel_t chan = TAILQ_FIRST(&mixer_channels);
       for (int i = 0; i < downmix_info.source_num && chan != NULL;
@@ -263,4 +274,13 @@ cleanup:
   xSemaphoreGive(mixer_mutex);
   free(slot);
   return ret;
+}
+
+esp_err_t mixer_set_default_static(bool enable) {
+  ESP_RETURN_ON_FALSE(mixer_mutex, ESP_ERR_INVALID_STATE, RADIO_TAG,
+                      "mixer_play_audio must be called after mixer_init");
+
+  atomic_store(&default_static, enable);
+
+  return ESP_OK;
 }

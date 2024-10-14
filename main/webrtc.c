@@ -605,30 +605,32 @@ static void webrtc_read_on_frame(UINT64 custom_data, PFrame frame) {
   int decoded = 0;
   size_t bytes_per_sample = sizeof(opus_int16) / sizeof(data->buf[0]);
 
-  if (data->connection->last_received_packet_len == 0) {
-    // Missing last packet.
-    if (frame->size == 0) {
-      // Missing current packet too. Trigger PLC
-      ESP_LOGD(RADIO_TAG, "Previous two packets missing, triggering PLC");
-      opus_int32 packet_duration;
-      opus_decoder_ctl(data->connection->decoder,
-                       OPUS_GET_LAST_PACKET_DURATION(&packet_duration));
-      decoded = opus_decode(data->connection->decoder, NULL, 0,
-                            (opus_int16 *)data->buf, packet_duration, 0);
+  if (data->buf != NULL) {
+    if (data->connection->last_received_packet_len == 0) {
+      // Missing last packet.
+      if (frame->size == 0) {
+        // Missing current packet too. Trigger PLC
+        ESP_LOGD(RADIO_TAG, "Previous two packets missing, triggering PLC");
+        opus_int32 packet_duration;
+        opus_decoder_ctl(data->connection->decoder,
+                         OPUS_GET_LAST_PACKET_DURATION(&packet_duration));
+        decoded = opus_decode(data->connection->decoder, NULL, 0,
+                              (opus_int16 *)data->buf, packet_duration, 0);
+      } else {
+        // We have a new packet, so trigger FEC
+        ESP_LOGV(RADIO_TAG, "Previous packet missing, triggering FEC");
+        decoded = opus_decode(data->connection->decoder,
+                              (unsigned char *)frame->frameData, frame->size,
+                              (opus_int16 *)data->buf,
+                              data->buf_len / bytes_per_sample, 1);
+      }
     } else {
-      // We have a new packet, so trigger FEC
-      ESP_LOGV(RADIO_TAG, "Previous packet missing, triggering FEC");
+      // Decode the packet
       decoded = opus_decode(data->connection->decoder,
                             (unsigned char *)frame->frameData, frame->size,
                             (opus_int16 *)data->buf,
-                            data->buf_len / bytes_per_sample, 1);
+                            data->buf_len / bytes_per_sample, 0);
     }
-  } else {
-    // Decode the packet
-    decoded = opus_decode(data->connection->decoder,
-                          (unsigned char *)frame->frameData, frame->size,
-                          (opus_int16 *)data->buf,
-                          data->buf_len / bytes_per_sample, 0);
   }
 
   if (decoded < 0) {

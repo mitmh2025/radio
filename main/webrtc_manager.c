@@ -20,6 +20,7 @@ static StaticTask_t webrtc_manager_task_buffer;
 static EXT_RAM_BSS_ATTR StackType_t
     webrtc_manager_task_stack[6 * 1024 / sizeof(StackType_t)];
 static TaskHandle_t webrtc_manager_task_handle = NULL;
+static atomic_bool webrtc_entuned = true;
 
 static SemaphoreHandle_t webrtc_manager_lock = NULL;
 static char *webrtc_current_url = NULL;
@@ -28,6 +29,7 @@ static atomic_uint_least32_t webrtc_buffer_duration = 0;
 #define NOTIFY_URL_CHANGED BIT(1)
 #define NOTIFY_STATE_CHANGED BIT(2)
 #define NOTIFY_BUFFER_DURATION_CHANGED BIT(3)
+#define NOTIFY_ENTUNE_CHANGED BIT(4)
 
 static void whep_url_callback(const char *key, things_attribute_t *attr) {
   const char *url = NULL;
@@ -153,21 +155,26 @@ static void webrtc_loop() {
       }
     }
 
-    if (notification & NOTIFY_BUFFER_DURATION_CHANGED) {
-      uint32_t duration = atomic_load(&webrtc_buffer_duration);
-      if (duration > target_buffer_duration && !channel) {
-        int64_t end = esp_timer_get_time();
-        ESP_LOGI(RADIO_TAG,
-                 "Finished buffering audio (%" PRIu32 " samples, %" PRIu64
-                 "ms since boot)",
-                 duration, end / 1000);
+    uint32_t duration = atomic_load(&webrtc_buffer_duration);
 
-        ret = mixer_play_audio(webrtc_read_audio_sample, connection, 48000, 16,
-                               1, false, &channel);
-        ESP_GOTO_ON_ERROR(ret, cleanup, RADIO_TAG,
-                          "Failed to play audio: %d (%s)", ret,
-                          esp_err_to_name(ret));
-      }
+    bool should_play =
+        atomic_load(&webrtc_entuned) && duration > target_buffer_duration;
+    if (should_play && !channel) {
+      int64_t end = esp_timer_get_time();
+      ESP_LOGI(RADIO_TAG,
+               "Starting webrtc playback (%" PRIu32
+               " samples in buffer, %" PRIu64 "ms since boot)",
+               duration, end / 1000);
+
+      ret = mixer_play_audio(webrtc_read_audio_sample, connection, 48000, 16, 1,
+                             false, &channel);
+      ESP_GOTO_ON_ERROR(ret, cleanup, RADIO_TAG,
+                        "Failed to play audio: %d (%s)", ret,
+                        esp_err_to_name(ret));
+    } else if (!should_play && channel) {
+      ESP_LOGI(RADIO_TAG, "Stopping webrtc playback");
+      mixer_stop_audio(channel);
+      channel = NULL;
     }
 
     // TODO: make sure connection is still healthy
@@ -207,4 +214,18 @@ esp_err_t webrtc_manager_init() {
                       "Failed to create WebRTC manager task");
 
   return ESP_OK;
+}
+
+void webrtc_manager_entune() {
+  atomic_store(&webrtc_entuned, true);
+  if (webrtc_manager_task_handle) {
+    xTaskNotify(webrtc_manager_task_handle, NOTIFY_ENTUNE_CHANGED, eSetBits);
+  }
+}
+
+void webrtc_manager_disentune() {
+  atomic_store(&webrtc_entuned, false);
+  if (webrtc_manager_task_handle) {
+    xTaskNotify(webrtc_manager_task_handle, NOTIFY_ENTUNE_CHANGED, eSetBits);
+  }
 }

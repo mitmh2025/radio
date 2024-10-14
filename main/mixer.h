@@ -18,6 +18,9 @@ esp_err_t mixer_play_audio(mixer_read_callback_t callback, void *ctx,
                            int sample_rate, int bits, int channel,
                            bool duck_others, mixer_channel_t *slot);
 esp_err_t mixer_stop_audio(mixer_channel_t slot);
+// Configure whether the mixer should play static when there are no active audio
+// sources
+esp_err_t mixer_set_default_static(bool enable);
 
 #ifdef __cplusplus
 }

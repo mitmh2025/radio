@@ -6,9 +6,10 @@
 // mixer param)
 int static_read_audio(void *ctx, char *data, int len,
                       TickType_t ticks_to_wait) {
-  uint16_t *samples = (uint16_t *)data;
+  int16_t *samples = (int16_t *)data;
   for (int i = 0; i < len / 2; i++) {
-    samples[i] = (uint16_t)(rand() & 0xFFFF);
+    // Hard code a gain of 0.25 for now
+    samples[i] = (int16_t)(rand() & 0xFFFF) >> 2;
   }
   return len;
 }
