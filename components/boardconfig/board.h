@@ -52,7 +52,6 @@ extern "C" {
 #define SI4702_RST_GPIO GPIO_NUM_42
 
 extern SemaphoreHandle_t i2c_mutex;
-extern UBaseType_t i2c_mutex_holder_priority;
 esp_err_t board_i2c_init(void);
 // Note: ESP-IDF I2C APIs are not threadsafe, so any usage of this I2C bus
 // (including devices) must be protected by i2c_mutex
@@ -62,10 +61,7 @@ i2c_master_bus_handle_t board_i2c_get_handle(void);
   do {                                                                         \
     int64_t start = esp_timer_get_time();                                      \
     TaskHandle_t holder = xSemaphoreGetMutexHolder(i2c_mutex);                 \
-    UBaseType_t priority = uxTaskPriorityGet(NULL);                            \
-    vTaskPrioritySet(NULL, configMAX_PRIORITIES - 1);                          \
     xSemaphoreTake(i2c_mutex, portMAX_DELAY);                                  \
-    i2c_mutex_holder_priority = priority;                                      \
     int64_t end = esp_timer_get_time();                                        \
     if (end - start > 10000) {                                                 \
       TaskStatus_t status;                                                     \
@@ -80,9 +76,7 @@ i2c_master_bus_handle_t board_i2c_get_handle(void);
   } while (0)
 #define BOARD_I2C_MUTEX_UNLOCK()                                               \
   do {                                                                         \
-    UBaseType_t orig_priority = i2c_mutex_holder_priority;                     \
     xSemaphoreGive(i2c_mutex);                                                 \
-    vTaskPrioritySet(NULL, orig_priority);                                     \
   } while (0)
 
 #define BATTERY_ADC_CHANNEL ADC_CHANNEL_8
