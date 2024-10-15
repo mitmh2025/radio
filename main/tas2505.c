@@ -12,6 +12,11 @@ static const char *TAG = "radio:tas2505";
 static i2c_master_dev_handle_t i2c_device;
 static size_t telemetry_index = 0;
 
+// TODO: These should potentially be atomics
+static tas2505_output_t current_output = TAS2505_OUTPUT_SPEAKER;
+static tas2505_input_t current_input = TAS2505_INPUT_DAC;
+static uint8_t current_volume = 0xff;
+
 #define TAS2505_CFG_OP_SET_REG 0
 #define TAS2505_CFG_OP_SET_BITS 1
 #define TAS2505_CFG_OP_CLEAR_BITS 2
@@ -80,8 +85,6 @@ static const tas2505_cfg_reg_t tas2505_init_registers[] = {
     {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_HP_GAIN, 0x0},
 };
 
-static tas2505_output_t current_output = TAS2505_OUTPUT_SPEAKER;
-
 static const tas2505_cfg_reg_t tas2505_speaker_output_registers[] = {
     {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_SPEAKER_VOLUME_RANGE, 0x30},
     {TAS2505_CFG_OP_CLEAR_BITS, TAS2505_CFG_REG_OUTPUT_CONTROL, 0x20},
@@ -100,8 +103,6 @@ static const tas2505_cfg_reg_t tas2505_both_output_registers[] = {
     {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_SPEAKER_CONTROL, 0x2},
 };
 
-static tas2505_input_t current_input = TAS2505_INPUT_DAC;
-
 static const tas2505_cfg_reg_t tas2505_dac_on_registers[] = {
     {TAS2505_CFG_OP_SET_REG, TAS2505_CFG_REG_DAC_SETUP1, 0xb0},
 };
@@ -117,8 +118,6 @@ static const tas2505_cfg_reg_t tas2505_line_on_registers[] = {
 static const tas2505_cfg_reg_t tas2505_line_off_registers[] = {
     {TAS2505_CFG_OP_CLEAR_BITS, TAS2505_CFG_REG_OUTPUT_CONTROL, 0x3},
 };
-
-static uint8_t current_volume = 0xff;
 
 static esp_err_t tas2505_write_register(uint8_t offset, uint8_t value) {
   uint8_t data[2] = {offset, value};

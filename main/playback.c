@@ -79,6 +79,7 @@ esp_err_t playback_file(const char *path, bool duck_others) {
   ESP_GOTO_ON_ERROR(audio_pipeline_run(pipeline), cleanup, RADIO_TAG,
                     "Failed to start audio pipeline");
 
+  // TODO: we need some way for the caller to interrupt playback
   while (1) {
     audio_event_iface_msg_t msg;
     esp_err_t ret = audio_event_iface_listen(evt, &msg, portMAX_DELAY);

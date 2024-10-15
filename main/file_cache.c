@@ -38,9 +38,9 @@ static SemaphoreHandle_t manifest_cache_mutex = NULL;
 static file_cache_manifest *manifest_cache = NULL;
 static time_t manifest_cache_last_update = {};
 static esp_err_t manifest_cache_last_update_err = ESP_OK;
-static size_t telemetry_index = 0;
 
 static TaskHandle_t task_handle = NULL;
+static size_t telemetry_index = 0;
 
 static void telemetry_generator(void) {
   xSemaphoreTake(manifest_cache_mutex, portMAX_DELAY);

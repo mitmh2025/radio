@@ -62,6 +62,7 @@ typedef enum {
   TUNER_MODE_PM,
   TUNER_MODE_FM,
 } tuner_mode_t;
+// TODO: some of these should potentially be atomics
 static tuner_mode_t desired_radio_mode = TUNER_MODE_PM;
 static atomic_uint_least32_t current_raw_frequency = 0;
 static tuner_mode_t current_radio_mode = TUNER_MODE_PM;

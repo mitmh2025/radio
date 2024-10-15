@@ -50,11 +50,13 @@ static struct color low_color = {
     .blue = 0,
 };
 
+// TODO: these should be atomics
 static uint32_t battery_average = 0;
 static bool battery_low = false;
+static battery_status_t battery_status = BATTERY_DISCHARGING;
+
 static adc_cali_handle_t battery_adc_cali;
 static i2c_master_dev_handle_t battery_i2c_device;
-static battery_status_t battery_status = BATTERY_DISCHARGING;
 static TaskHandle_t battery_monitor_task_handle = NULL;
 static size_t battery_telemetry_index = 0;
 
