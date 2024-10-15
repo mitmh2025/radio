@@ -104,6 +104,9 @@ static std::map<std::string, things_attribute_cache_entry_t>
 static std::multimap<std::string, things_attribute_callback_t>
     things_attribute_subscribers;
 
+static std::mutex things_rpc_mutex;
+static std::map<std::string, things_rpc_handler_t> things_rpc_handlers;
+
 // Must be called while holding things_attribute_mutex
 static void update_attr_cache(std::string key,
                               things_attribute_cache_entry_t value) {
@@ -147,31 +150,36 @@ static void update_attr_nvs(std::string key,
   }
 }
 
+static void cache_entry_to_attribute(things_attribute_cache_entry_t &entry,
+                                     things_attribute_t *attr) {
+  std::visit(
+      overloaded{
+          [&](std::monostate &) { attr->type = THINGS_ATTRIBUTE_TYPE_UNSET; },
+          [&](std::string &v) {
+            attr->type = THINGS_ATTRIBUTE_TYPE_STRING;
+            attr->value.string = v.c_str();
+          },
+          [&](float &v) {
+            attr->type = THINGS_ATTRIBUTE_TYPE_FLOAT;
+            attr->value.f = v;
+          },
+          [&](long long &v) {
+            attr->type = THINGS_ATTRIBUTE_TYPE_INT;
+            attr->value.i = v;
+          },
+          [&](bool &v) {
+            attr->type = THINGS_ATTRIBUTE_TYPE_BOOL;
+            attr->value.b = v;
+          },
+      },
+      entry);
+}
+
 // Must be called while holding things_attribute_mutex
 static void update_attr_subscribers(std::string key,
                                     things_attribute_cache_entry_t value) {
   things_attribute_t update = {};
-  std::visit(
-      overloaded{
-          [&](std::monostate &) { update.type = THINGS_ATTRIBUTE_TYPE_UNSET; },
-          [&](std::string &v) {
-            update.type = THINGS_ATTRIBUTE_TYPE_STRING;
-            update.value.string = v.c_str();
-          },
-          [&](float &v) {
-            update.type = THINGS_ATTRIBUTE_TYPE_FLOAT;
-            update.value.f = v;
-          },
-          [&](long long &v) {
-            update.type = THINGS_ATTRIBUTE_TYPE_INT;
-            update.value.i = v;
-          },
-          [&](bool &v) {
-            update.type = THINGS_ATTRIBUTE_TYPE_BOOL;
-            update.value.b = v;
-          },
-      },
-      value);
+  cache_entry_to_attribute(value, &update);
 
   auto range = things_attribute_subscribers.equal_range(key);
   for (auto it = range.first; it != range.second; ++it) {
@@ -450,6 +458,44 @@ static void things_attribute_callback(JsonObjectConst const &attrs,
   }
 }
 
+static void things_rpc_callback(std::string method,
+                                const JsonVariantConst &data,
+                                JsonDocument &response) {
+  std::lock_guard<std::mutex> lock(things_rpc_mutex);
+
+  auto it = things_rpc_handlers.find(method);
+  if (it == things_rpc_handlers.end()) {
+    ESP_LOGE(RADIO_TAG, "No handler for RPC method %s", method.c_str());
+    return;
+  }
+
+  things_attribute_cache_entry_t cacheent;
+  if (data.isNull()) {
+  } else if (data.is<std::string>()) {
+    cacheent.emplace<std::string>(data.as<std::string>());
+  } else if (data.is<float>()) {
+    cacheent.emplace<float>(data.as<float>());
+  } else if (data.is<long long>()) {
+    cacheent.emplace<long long>(data.as<long long>());
+  } else if (data.is<bool>()) {
+    cacheent.emplace<bool>(data.as<bool>());
+  } else {
+    ESP_LOGE(RADIO_TAG, "Unsupported parameter type for RPC method %s",
+             method.c_str());
+    // Call with an unset value
+  }
+  things_attribute_t param;
+  cache_entry_to_attribute(cacheent, &param);
+
+  esp_err_t err = it->second(&param);
+  if (err != ESP_OK) {
+    ESP_LOGE(RADIO_TAG, "Failed to handle RPC method %s: %d (%s)",
+             method.c_str(), err, esp_err_to_name(err));
+  }
+
+  response["status"] = esp_err_to_name(err);
+}
+
 static bool things_healthcheck(std::shared_ptr<RadioThingsBoard> conn) {
   if (!conn->connected()) {
     ESP_LOGE(RADIO_TAG, "Disconnected from ThingsBoard");
@@ -620,6 +666,30 @@ static void things_task(void *arg) {
                           "ThingsBoard. Waiting and trying again...");
       vTaskDelay(pdMS_TO_TICKS(wait));
       continue;
+    }
+
+    // Subscribe to incoming RPCs
+    {
+      std::lock_guard<std::mutex> lock(things_rpc_mutex);
+      std::vector<RPC_Callback> rpc_callbacks;
+      for (auto const &[method, callback] : things_rpc_handlers) {
+        rpc_callbacks.emplace_back(
+            method.c_str(),
+            [method](JsonVariantConst const &data, JsonDocument &response) {
+              things_rpc_callback(method, data, response);
+            });
+      }
+
+      if (!rpc_callbacks.empty()) {
+        success =
+            conn->RPC_Subscribe(rpc_callbacks.begin(), rpc_callbacks.end());
+        if (!success) {
+          ESP_LOGE(RADIO_TAG, "Failed to subscribe to RPCs from ThingsBoard. "
+                              "Waiting and trying again...");
+          vTaskDelay(pdMS_TO_TICKS(wait));
+          continue;
+        }
+      }
     }
 
     {
@@ -843,6 +913,34 @@ esp_err_t things_subscribe_attribute(const char *key,
   // our local cache, since the request callback won't fire until we release the
   // lock
   update_attr_subscribers(key, things_attribute_cache[key]);
+
+  return ESP_OK;
+}
+
+esp_err_t things_register_rpc(const char *method,
+                              things_rpc_handler_t handler) {
+  ESP_RETURN_ON_FALSE(method != NULL, ESP_ERR_INVALID_ARG, RADIO_TAG,
+                      "Method must not be NULL");
+  ESP_RETURN_ON_FALSE(handler != NULL, ESP_ERR_INVALID_ARG, RADIO_TAG,
+                      "Handler must not be NULL");
+
+  std::string method_str{method};
+
+  std::lock_guard<std::mutex> lock(things_rpc_mutex);
+  things_rpc_handlers[method_str] = handler;
+
+  RPC_Callback callback{method, [method_str](const JsonVariantConst &data,
+                                             JsonDocument &response) {
+                          things_rpc_callback(method_str, data, response);
+                        }};
+  auto conn = tb.lock();
+  if (conn && conn->connected()) {
+    bool ret = conn->RPC_Subscribe(callback);
+    if (!ret) {
+      ESP_LOGE(RADIO_TAG, "Failed to subscribe to RPC method %s", method);
+      return ESP_FAIL;
+    }
+  }
 
   return ESP_OK;
 }

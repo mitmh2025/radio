@@ -30,6 +30,7 @@ typedef struct {
 typedef void (*things_attribute_callback_t)(const char *key,
                                             things_attribute_t *attr);
 typedef void (*things_telemetry_generator_t)(void);
+typedef esp_err_t (*things_rpc_handler_t)(things_attribute_t *param);
 
 esp_err_t things_init();
 esp_err_t things_provision(const char *token);
@@ -47,6 +48,7 @@ void things_force_telemetry(size_t index);
 
 esp_err_t things_subscribe_attribute(const char *key,
                                      things_attribute_callback_t callback);
+esp_err_t things_register_rpc(const char *method, things_rpc_handler_t handler);
 
 #ifdef __cplusplus
 }
