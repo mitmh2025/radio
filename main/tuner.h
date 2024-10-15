@@ -22,6 +22,8 @@ typedef struct {
 
 esp_err_t tuner_register_pm_frequency(frequency_config_t *config,
                                       frequency_handle_t *handle);
+// We don't support disabling a frequency once it's been enabled
+esp_err_t tuner_enable_pm_frequency(frequency_handle_t handle);
 esp_err_t tuner_init(radio_calibration_t *calibration);
 
 #ifdef __cplusplus

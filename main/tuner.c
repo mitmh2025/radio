@@ -347,3 +347,14 @@ esp_err_t tuner_init(radio_calibration_t *calibration) {
 
   return ESP_OK;
 }
+
+esp_err_t tuner_enable_pm_frequency(frequency_handle_t handle) {
+  ESP_RETURN_ON_FALSE(handle, ESP_ERR_INVALID_ARG, RADIO_TAG,
+                      "Invalid frequency handle");
+  handle->enabled = true;
+  // Wake up the tuner just in case
+  if (tuner_task_handle) {
+    xTaskNotifyGive(tuner_task_handle);
+  }
+  return ESP_OK;
+}
