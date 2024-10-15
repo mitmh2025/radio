@@ -1,21 +1,19 @@
 #include "tuner.h"
 #include "adc.h"
 #include "board.h"
-#include "calibration.h"
 #include "debounce.h"
 #include "fm.h"
 #include "main.h"
 #include "mixer.h"
 #include "tas2505.h"
 #include "things.h"
-#include "webrtc_manager.h"
 
 #include "esp_check.h"
 
 #include <math.h>
 #include <stdatomic.h>
-#include <stdbool.h>
 #include <stdint.h>
+#include <sys/queue.h>
 
 #define FREQUENCY_PM_MIN ((float)(M_PI))
 #define FREQUENCY_PM_MAX ((float)(2 * M_PI))
@@ -24,14 +22,16 @@
 
 #define FREQUENCY_FM_MIN (88.0f)
 #define FREQUENCY_FM_MAX (108.0f)
-#define FREQUENCY_FM_CHAN_MIN (88.1f)
 // Channel is roughly 1.5% of the band - this means channels will be partially
 // overlapping, so we need to handle that in our hysteresis logic
 #define FREQUENCY_FM_WIDTH (0.3f)
-#define FREQUENCY_FM_SEPARATION (0.2f)
-#define FREQUENCY_COUNT (100)
 
-typedef struct frequency_spec {
+#define FREQUENCY_FM_CHAN_MIN (88.1f)
+#define FREQUENCY_FM_SEPARATION (0.2f)
+
+struct frequency_handle {
+  TAILQ_ENTRY(frequency_handle) next;
+
   float frequency;
   bool enabled;
   void (*entune)(void *ctx);
@@ -43,20 +43,7 @@ typedef struct frequency_spec {
   uint32_t frequency_low;
   uint32_t frequency_center;
   uint32_t frequency_high;
-} frequency_spec_t;
-
-static int frequency_spec_compare(const void *a, const void *b) {
-  frequency_spec_t *spec_a = (frequency_spec_t *)a;
-  frequency_spec_t *spec_b = (frequency_spec_t *)b;
-
-  if (spec_a->frequency < spec_b->frequency) {
-    return -1;
-  }
-  if (spec_a->frequency > spec_b->frequency) {
-    return 1;
-  }
-  return 0;
-}
+};
 
 typedef enum {
   TUNER_MODE_PM,
@@ -66,7 +53,7 @@ typedef enum {
 static tuner_mode_t desired_radio_mode = TUNER_MODE_PM;
 static atomic_uint_least32_t current_raw_frequency = 0;
 static tuner_mode_t current_radio_mode = TUNER_MODE_PM;
-static frequency_spec_t *current_frequency = NULL;
+static struct frequency_handle *current_frequency = NULL;
 static TaskHandle_t tuner_task_handle = NULL;
 static radio_calibration_t *tuner_calibration = NULL;
 static size_t telemetry_index = 0;
@@ -100,16 +87,6 @@ static void entune_fm() {
 
 static void detune_fm() { ESP_ERROR_CHECK_WITHOUT_ABORT(fm_disable()); }
 
-static void entune_two_pi(void *ctx) {
-  webrtc_manager_entune();
-  ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_default_static(false));
-}
-
-static void detune_two_pi(void *ctx) {
-  ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_default_static(true));
-  webrtc_manager_detune();
-}
-
 static struct {
   void (*entune)();
   void (*detune)();
@@ -118,19 +95,9 @@ static struct {
     [TUNER_MODE_FM] = {.entune = entune_fm, .detune = detune_fm},
 };
 
-frequency_spec_t pm_frequencies[] = {
-    {
-        .frequency = M_PI,
-        .enabled = false,
-    },
-    {
-        .frequency = (2 * M_PI),
-        .enabled = true,
-        .entune = entune_two_pi,
-        .detune = detune_two_pi,
-    },
-};
-frequency_spec_t fm_frequencies[FREQUENCY_COUNT] = {};
+TAILQ_HEAD(frequency_list, frequency_handle);
+struct frequency_list pm_frequencies = TAILQ_HEAD_INITIALIZER(pm_frequencies);
+struct frequency_list fm_frequencies = TAILQ_HEAD_INITIALIZER(fm_frequencies);
 
 static void entune_fm_channel(void *ctx) {
   ESP_ERROR_CHECK_WITHOUT_ABORT(fm_tune((uint16_t)(uintptr_t)ctx));
@@ -184,18 +151,13 @@ static void tuner_task(void *ctx) {
     }
 
     // Find the frequency we're currently tuned to
-    frequency_spec_t *frequencies =
-        current_radio_mode == TUNER_MODE_PM ? pm_frequencies : fm_frequencies;
-    size_t frequency_count =
-        current_radio_mode == TUNER_MODE_PM
-            ? sizeof(pm_frequencies) / sizeof(pm_frequencies[0])
-            : sizeof(fm_frequencies) / sizeof(fm_frequencies[0]);
-    frequency_spec_t *new_frequency = NULL;
-    for (int i = 0; i < frequency_count; i++) {
-      if (frequencies[i].enabled &&
-          frequency_raw > frequencies[i].frequency_low &&
-          frequency_raw < frequencies[i].frequency_high) {
-        new_frequency = &frequencies[i];
+    struct frequency_list *frequencies =
+        current_radio_mode == TUNER_MODE_PM ? &pm_frequencies : &fm_frequencies;
+    struct frequency_handle *new_frequency = NULL;
+    TAILQ_FOREACH(new_frequency, frequencies, next) {
+      if (new_frequency->enabled &&
+          frequency_raw > new_frequency->frequency_low &&
+          frequency_raw < new_frequency->frequency_high) {
         break;
       }
     }
@@ -212,120 +174,142 @@ static void tuner_task(void *ctx) {
   }
 }
 
+esp_err_t tuner_register_pm_frequency(frequency_config_t *config,
+                                      frequency_handle_t *handle) {
+  ESP_RETURN_ON_FALSE(config, ESP_ERR_INVALID_ARG, RADIO_TAG, "Config is NULL");
+  ESP_RETURN_ON_FALSE(handle, ESP_ERR_INVALID_ARG, RADIO_TAG, "Handle is NULL");
+  ESP_RETURN_ON_FALSE(tuner_task_handle == NULL, ESP_ERR_INVALID_STATE,
+                      RADIO_TAG, "Tuner has already been initialized");
+
+  struct frequency_handle *new_handle =
+      calloc(1, sizeof(struct frequency_handle));
+  ESP_RETURN_ON_FALSE(new_handle, ESP_ERR_NO_MEM, RADIO_TAG,
+                      "Failed to allocate memory for frequency handle");
+
+  new_handle->frequency = config->frequency;
+  new_handle->enabled = config->enabled;
+  new_handle->entune = config->entune;
+  new_handle->detune = config->detune;
+  new_handle->ctx = config->ctx;
+
+  struct frequency_handle *i;
+  TAILQ_FOREACH(i, &pm_frequencies, next) {
+    if (i->frequency > new_handle->frequency) {
+      TAILQ_INSERT_BEFORE(i, new_handle, next);
+      break;
+    }
+  }
+  if (!i) {
+    TAILQ_INSERT_TAIL(&pm_frequencies, new_handle, next);
+  }
+
+  *handle = new_handle;
+  return ESP_OK;
+}
+
 esp_err_t tuner_init(radio_calibration_t *calibration) {
   tuner_calibration = calibration;
 
   // Populate FM frequencies
-  for (int i = 0; i < sizeof(fm_frequencies) / sizeof(fm_frequencies[0]); i++) {
-    fm_frequencies[i].frequency =
-        FREQUENCY_FM_CHAN_MIN + i * FREQUENCY_FM_SEPARATION;
-    fm_frequencies[i].enabled = true;
-    fm_frequencies[i].entune = entune_fm_channel;
+  for (float frequency = FREQUENCY_FM_CHAN_MIN; frequency < FREQUENCY_FM_MAX;
+       frequency += FREQUENCY_FM_SEPARATION) {
+    struct frequency_handle *handle =
+        calloc(1, sizeof(struct frequency_handle));
+    if (!handle) {
+      ESP_LOGE(RADIO_TAG, "Failed to allocate memory for FM frequency");
+      return ESP_ERR_NO_MEM;
+    }
+    handle->frequency = frequency;
+    handle->enabled = true;
+    handle->entune = entune_fm_channel;
     uint16_t channel;
     ESP_RETURN_ON_ERROR(
-        fm_frequency_to_channel(lroundf(fm_frequencies[i].frequency * 1000),
-                                &channel),
-        RADIO_TAG, "Error converting frequency to channel");
-    fm_frequencies[i].ctx = (void *)(uintptr_t)channel;
-  }
-  // Sort PM frequencies (FM frequencies are already sorted)
-  qsort(pm_frequencies, sizeof(pm_frequencies) / sizeof(pm_frequencies[0]),
-        sizeof(frequency_spec_t), frequency_spec_compare);
-
-  // Validate frequency ranges
-  for (int i = 0; i < sizeof(pm_frequencies) / sizeof(pm_frequencies[0]); i++) {
-    frequency_spec_t *spec = &pm_frequencies[i];
-    if (spec->frequency < FREQUENCY_PM_MIN ||
-        spec->frequency > FREQUENCY_PM_MAX) {
-      ESP_LOGE(RADIO_TAG, "Invalid frequency %f for PM band", spec->frequency);
-      return ESP_ERR_INVALID_ARG;
-    }
-  }
-  // This should be impossible, but just in case
-  for (int i = 0; i < sizeof(fm_frequencies) / sizeof(fm_frequencies[0]); i++) {
-    frequency_spec_t *spec = &fm_frequencies[i];
-    if (spec->frequency < FREQUENCY_FM_MIN ||
-        spec->frequency > FREQUENCY_FM_MAX) {
-      ESP_LOGE(RADIO_TAG, "Invalid frequency %f for FM band", spec->frequency);
-      return ESP_ERR_INVALID_ARG;
-    }
+        fm_frequency_to_channel(lroundf(frequency * 1000), &channel), RADIO_TAG,
+        "Error converting frequency to channel");
+    handle->ctx = (void *)(uintptr_t)channel;
+    TAILQ_INSERT_TAIL(&fm_frequencies, handle, next);
   }
 
   uint32_t adc_low = calibration->frequency_min,
            adc_high = calibration->frequency_max;
 
-  for (int i = 0; i < sizeof(pm_frequencies) / sizeof(pm_frequencies[0]); i++) {
-    frequency_spec_t *spec = &pm_frequencies[i];
-    float low_freq = spec->frequency - FREQUENCY_PM_WIDTH / 2;
-    float high_freq = spec->frequency + FREQUENCY_PM_WIDTH / 2;
+  struct frequency_handle *handle;
+  TAILQ_FOREACH(handle, &pm_frequencies, next) {
+    float low_freq = handle->frequency - FREQUENCY_PM_WIDTH / 2;
+    float high_freq = handle->frequency + FREQUENCY_PM_WIDTH / 2;
     low_freq = low_freq < FREQUENCY_PM_MIN ? FREQUENCY_PM_MIN : low_freq;
     high_freq = high_freq > FREQUENCY_PM_MAX ? FREQUENCY_PM_MAX : high_freq;
 
-    spec->frequency_low =
+    handle->frequency_low =
         (uint32_t)(adc_low + (adc_high - adc_low) *
                                  (low_freq - FREQUENCY_PM_MIN) /
                                  (FREQUENCY_PM_MAX - FREQUENCY_PM_MIN));
-    spec->frequency_center =
+    handle->frequency_center =
         (uint32_t)(adc_low + (adc_high - adc_low) *
-                                 (spec->frequency - FREQUENCY_PM_MIN) /
+                                 (handle->frequency - FREQUENCY_PM_MIN) /
                                  (FREQUENCY_PM_MAX - FREQUENCY_PM_MIN));
-    spec->frequency_high =
+    handle->frequency_high =
         (uint32_t)(adc_low + (adc_high - adc_low) *
                                  (high_freq - FREQUENCY_PM_MIN) /
                                  (FREQUENCY_PM_MAX - FREQUENCY_PM_MIN));
   }
 
-  for (int i = 0; i < sizeof(fm_frequencies) / sizeof(fm_frequencies[0]); i++) {
-    frequency_spec_t *spec = &fm_frequencies[i];
-    float low_freq = spec->frequency - FREQUENCY_FM_WIDTH / 2;
-    float high_freq = spec->frequency + FREQUENCY_FM_WIDTH / 2;
+  TAILQ_FOREACH(handle, &fm_frequencies, next) {
+    float low_freq = handle->frequency - FREQUENCY_FM_WIDTH / 2;
+    float high_freq = handle->frequency + FREQUENCY_FM_WIDTH / 2;
     low_freq = low_freq < FREQUENCY_FM_MIN ? FREQUENCY_FM_MIN : low_freq;
     high_freq = high_freq > FREQUENCY_FM_MAX ? FREQUENCY_FM_MAX : high_freq;
 
-    spec->frequency_low =
+    handle->frequency_low =
         (uint32_t)(adc_low + (adc_high - adc_low) *
                                  (low_freq - FREQUENCY_FM_MIN) /
                                  (FREQUENCY_FM_MAX - FREQUENCY_FM_MIN));
-    spec->frequency_center =
+    handle->frequency_center =
         (uint32_t)(adc_low + (adc_high - adc_low) *
-                                 (spec->frequency - FREQUENCY_FM_MIN) /
+                                 (handle->frequency - FREQUENCY_FM_MIN) /
                                  (FREQUENCY_FM_MAX - FREQUENCY_FM_MIN));
-    spec->frequency_high =
+    handle->frequency_high =
         (uint32_t)(adc_low + (adc_high - adc_low) *
                                  (high_freq - FREQUENCY_FM_MIN) /
                                  (FREQUENCY_FM_MAX - FREQUENCY_FM_MIN));
   }
 
   // Make sure frequencies don't overlap (too much)
-  for (int i = 0; i < sizeof(fm_frequencies) / sizeof(fm_frequencies[0]) - 1;
-       i++) {
-    frequency_spec_t *spec = &fm_frequencies[i];
-    frequency_spec_t *next_spec = &fm_frequencies[i + 1];
-    ESP_RETURN_ON_FALSE(spec->frequency_high < next_spec->frequency_center &&
-                            next_spec->frequency_low > spec->frequency_center,
+  TAILQ_FOREACH(handle, &fm_frequencies, next) {
+    struct frequency_handle *next = TAILQ_NEXT(handle, next);
+    if (!next) {
+      break;
+    }
+
+    ESP_RETURN_ON_FALSE(handle->frequency_high < next->frequency_center &&
+                            next->frequency_low > handle->frequency_center,
                         ESP_ERR_INVALID_ARG, RADIO_TAG,
-                        "FM frequency %f overlaps with %f", spec->frequency,
-                        next_spec->frequency);
+                        "FM frequency %f overlaps with %f", handle->frequency,
+                        next->frequency);
   }
-  for (int i = 0; i < sizeof(pm_frequencies) / sizeof(pm_frequencies[0]) - 1;
-       i++) {
-    frequency_spec_t *spec = &pm_frequencies[i];
-    frequency_spec_t *next_spec = &pm_frequencies[i + 1];
-    ESP_RETURN_ON_FALSE(spec->frequency_high < next_spec->frequency_center &&
-                            next_spec->frequency_low > spec->frequency_center,
+  TAILQ_FOREACH(handle, &pm_frequencies, next) {
+    struct frequency_handle *next = TAILQ_NEXT(handle, next);
+    if (!next) {
+      break;
+    }
+
+    ESP_RETURN_ON_FALSE(handle->frequency_high < next->frequency_center &&
+                            next->frequency_low > handle->frequency_center,
                         ESP_ERR_INVALID_ARG, RADIO_TAG,
-                        "PM frequency %f overlaps with %f", spec->frequency,
-                        next_spec->frequency);
+                        "FM frequency %f overlaps with %f", handle->frequency,
+                        next->frequency);
   }
 
   // Finally, expand the bounds on the low and high end to cover the pot's full
   // range, just in case
-  pm_frequencies[0].frequency_low = 0;
-  pm_frequencies[sizeof(pm_frequencies) / sizeof(pm_frequencies[0]) - 1]
-      .frequency_high = 0xfff;
-  fm_frequencies[0].frequency_low = 0;
-  fm_frequencies[sizeof(fm_frequencies) / sizeof(fm_frequencies[0]) - 1]
-      .frequency_high = 0xfff;
+  handle = TAILQ_FIRST(&pm_frequencies);
+  handle->frequency_low = 0;
+  handle = TAILQ_LAST(&pm_frequencies, frequency_list);
+  handle->frequency_high = 0xfff;
+  handle = TAILQ_FIRST(&fm_frequencies);
+  handle->frequency_low = 0;
+  handle = TAILQ_LAST(&fm_frequencies, frequency_list);
+  handle->frequency_high = 0xfff;
 
   gpio_config_t config = {
       .pin_bit_mask = 1ULL << TOGGLE_PIN,

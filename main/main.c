@@ -10,6 +10,8 @@
 #include "fm.h"
 #include "led.h"
 #include "mixer.h"
+#include "station_2pi.h"
+#include "station_pi.h"
 #include "storage.h"
 #include "tas2505.h"
 #include "things.h"
@@ -168,6 +170,9 @@ void app_main(void) {
   ESP_ERROR_CHECK_WITHOUT_ABORT(things_init());
   ESP_ERROR_CHECK_WITHOUT_ABORT(file_cache_init());
   ESP_ERROR_CHECK_WITHOUT_ABORT(webrtc_manager_init());
+
+  ESP_ERROR_CHECK_WITHOUT_ABORT(station_pi_init());
+  ESP_ERROR_CHECK_WITHOUT_ABORT(station_2pi_init());
   ESP_ERROR_CHECK_WITHOUT_ABORT(tuner_init(&calibration));
 
   if (!(xEventGroupGetBits(radio_event_group) &
