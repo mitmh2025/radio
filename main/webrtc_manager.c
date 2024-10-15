@@ -162,7 +162,7 @@ static void webrtc_loop() {
 
     bool entuned = atomic_load(&webrtc_entuned);
     if (channel && !entuned) {
-      ESP_LOGI(RADIO_TAG, "Detuning WebRTC");
+      ESP_LOGD(RADIO_TAG, "Detuning WebRTC");
       mixer_stop_audio(channel);
       channel = NULL;
     } else if (!channel && duration > target_buffer_duration && entuned) {
