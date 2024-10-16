@@ -25,6 +25,8 @@ esp_err_t tuner_register_pm_frequency(frequency_config_t *config,
 // We don't support disabling a frequency once it's been enabled
 esp_err_t tuner_enable_pm_frequency(frequency_handle_t handle);
 esp_err_t tuner_init(radio_calibration_t *calibration);
+esp_err_t tuner_suspend();
+esp_err_t tuner_resume();
 
 #ifdef __cplusplus
 }

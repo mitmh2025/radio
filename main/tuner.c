@@ -50,6 +50,7 @@ typedef enum {
   TUNER_MODE_FM,
 } tuner_mode_t;
 // TODO: some of these should potentially be atomics
+static atomic_bool tuner_suspended = false;
 static tuner_mode_t desired_radio_mode = TUNER_MODE_PM;
 static atomic_uint_least32_t current_raw_frequency = 0;
 static tuner_mode_t current_radio_mode = TUNER_MODE_PM;
@@ -69,6 +70,7 @@ static void telemetry_generator() {
   things_send_telemetry_int("tuner_max", tuner_calibration->frequency_max);
   things_send_telemetry_int("tuner_raw", atomic_load(&current_raw_frequency));
   things_send_telemetry_bool("tuner_entuned", current_frequency != NULL);
+  things_send_telemetry_bool("tuner_suspended", atomic_load(&tuner_suspended));
 }
 
 static void entune_pm() {
@@ -121,7 +123,34 @@ static void adc_callback(void *user_data, adc_digi_output_data_t *result) {
 }
 
 static void tuner_task(void *ctx) {
+  bool suspended = false;
   while (true) {
+    if (atomic_load(&tuner_suspended) != suspended) {
+      if (suspended) {
+        // unsuspend: re-enable the band, but let the standard tuning sequence
+        // re-tune the frequency
+        ESP_LOGI(RADIO_TAG, "Resuming tuner task");
+        if (mode_tuners[current_radio_mode].entune) {
+          mode_tuners[current_radio_mode].entune();
+        }
+      } else {
+        // suspend: detune the frequency and the band
+        ESP_LOGI(RADIO_TAG, "Suspending tuner task");
+        if (current_frequency && current_frequency->detune) {
+          current_frequency->detune(current_frequency->ctx);
+        }
+        current_frequency = NULL;
+        if (mode_tuners[current_radio_mode].detune) {
+          mode_tuners[current_radio_mode].detune();
+        }
+      }
+      suspended = !suspended;
+    }
+
+    if (suspended) {
+      goto next;
+    }
+
     uint32_t frequency_raw = atomic_load(&current_raw_frequency);
 
     if (desired_radio_mode == current_radio_mode && current_frequency &&
@@ -353,6 +382,22 @@ esp_err_t tuner_enable_pm_frequency(frequency_handle_t handle) {
                       "Invalid frequency handle");
   handle->enabled = true;
   // Wake up the tuner just in case
+  if (tuner_task_handle) {
+    xTaskNotifyGive(tuner_task_handle);
+  }
+  return ESP_OK;
+}
+
+esp_err_t tuner_suspend() {
+  atomic_store(&tuner_suspended, true);
+  if (tuner_task_handle) {
+    xTaskNotifyGive(tuner_task_handle);
+  }
+  return ESP_OK;
+}
+
+esp_err_t tuner_resume() {
+  atomic_store(&tuner_suspended, false);
   if (tuner_task_handle) {
     xTaskNotifyGive(tuner_task_handle);
   }
