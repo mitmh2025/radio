@@ -51,6 +51,8 @@ extern "C" {
 
 #define SI4702_RST_GPIO GPIO_NUM_42
 
+#define MMA8451Q_INT1_GPIO GPIO_NUM_35
+
 extern SemaphoreHandle_t i2c_mutex;
 esp_err_t board_i2c_init(void);
 // Note: ESP-IDF I2C APIs are not threadsafe, so any usage of this I2C bus

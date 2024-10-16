@@ -1,5 +1,6 @@
 idf_component_register(
   SRCS
+  accelerometer.c
   adc.c
   battery.c
   calibration.c

@@ -1,5 +1,6 @@
 #include "main.h"
 #include "../config.h"
+#include "accelerometer.h"
 #include "adc.h"
 #include "battery.h"
 #include "board.h"
@@ -140,6 +141,7 @@ void app_main(void) {
   ESP_ERROR_CHECK(tas2505_init());
   ESP_ERROR_CHECK(storage_init());
   ESP_ERROR_CHECK(fm_init());
+  ESP_ERROR_CHECK(accelerometer_init());
   ESP_ERROR_CHECK(mixer_init());
   ESP_ERROR_CHECK(console_init());
 
