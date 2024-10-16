@@ -303,7 +303,7 @@ esp_err_t accelerometer_init() {
   ESP_RETURN_ON_ERROR(write_register(MMA8451Q_REG_CTRL_REG5, ctrl_reg5.raw),
                       TAG, "Failed to write CTRL_REG5 register");
 
-  things_register_telemetry_generator(telemetry_generator, "accel");
+  things_register_telemetry_generator(telemetry_generator, "accel", NULL);
 
   return ESP_OK;
 }
