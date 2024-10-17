@@ -98,8 +98,10 @@ static struct {
 };
 
 TAILQ_HEAD(frequency_list, frequency_handle);
-struct frequency_list pm_frequencies = TAILQ_HEAD_INITIALIZER(pm_frequencies);
-struct frequency_list fm_frequencies = TAILQ_HEAD_INITIALIZER(fm_frequencies);
+static struct frequency_list pm_frequencies =
+    TAILQ_HEAD_INITIALIZER(pm_frequencies);
+static struct frequency_list fm_frequencies =
+    TAILQ_HEAD_INITIALIZER(fm_frequencies);
 
 static void entune_fm_channel(void *ctx) {
   ESP_ERROR_CHECK_WITHOUT_ABORT(fm_tune((uint16_t)(uintptr_t)ctx));

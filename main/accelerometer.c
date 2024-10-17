@@ -129,9 +129,9 @@ typedef union {
 
 static TaskHandle_t task_handle = NULL;
 static SemaphoreHandle_t mutex = NULL;
-bool active = false;
-accelerometer_odr_t odr;
-accelerometer_osm_t osm;
+static bool active = false;
+static accelerometer_odr_t odr;
+static accelerometer_osm_t osm;
 static void (*pulse_callback)(void *);
 static void *pulse_arg;
 
@@ -182,7 +182,7 @@ static void accelerometer_task(void *ctx) {
   }
 }
 
-void IRAM_ATTR accelerometer_isr(void *arg) {
+static void IRAM_ATTR accelerometer_isr(void *arg) {
   BaseType_t higher_priority_task_woken = pdFALSE;
   xTaskNotifyFromISR(task_handle, 0, eNoAction, &higher_priority_task_woken);
   if (higher_priority_task_woken) {
