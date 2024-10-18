@@ -19,6 +19,7 @@ idf_component_register(
   storage.c
   tas2505.c
   things.cpp
+  tone_generator.c
   tuner.c
   webrtc.c
   webrtc_manager.c
