@@ -141,43 +141,50 @@ static void telemetry_generator() {
 
 static void accelerometer_task(void *ctx) {
   while (true) {
-    BaseType_t woken = xTaskNotifyWait(0, ULONG_MAX, NULL, pdMS_TO_TICKS(1000));
-
-    mma8451q_int_src_t int_src;
-    BOARD_I2C_MUTEX_LOCK();
-    esp_err_t err = i2c_master_transmit_receive(
-        i2c_device, (uint8_t[]){MMA8451Q_REG_INT_SOURCE}, 1, &int_src.raw, 1,
-        -1);
-    BOARD_I2C_MUTEX_UNLOCK();
-    if (err != ESP_OK) {
-      ESP_LOGE(TAG, "Failed to read INT_SOURCE register: %d", err);
-      continue;
+    while (gpio_get_level(MMA8451Q_INT1_GPIO) == 1) {
+      xTaskNotifyWait(0, ULONG_MAX, NULL, pdMS_TO_TICKS(1000));
     }
 
-    if (int_src.refined.src_pulse) {
-      // Clear the interrupt
-      mma8451q_pulse_src_t pulse_src;
+    // Wait for the interrupt to clear
+    while (gpio_get_level(MMA8451Q_INT1_GPIO) == 0) {
+      mma8451q_int_src_t int_src;
       BOARD_I2C_MUTEX_LOCK();
-      err = i2c_master_transmit_receive(i2c_device,
-                                        (uint8_t[]){MMA8451Q_REG_PULSE_SRC}, 1,
-                                        &pulse_src.raw, 1, -1);
+      esp_err_t err = i2c_master_transmit_receive(
+          i2c_device, (uint8_t[]){MMA8451Q_REG_INT_SOURCE}, 1, &int_src.raw, 1,
+          -1);
       BOARD_I2C_MUTEX_UNLOCK();
       if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to read PULSE_SRC register: %d", err);
+        ESP_LOGE(TAG, "Failed to read INT_SOURCE register: %d", err);
         continue;
       }
 
-      xSemaphoreTake(mutex, portMAX_DELAY);
-      if (pulse_callback) {
-        pulse_callback(pulse_arg);
+      if (int_src.refined.src_pulse) {
+        // Clear the interrupt
+        mma8451q_pulse_src_t pulse_src;
+        BOARD_I2C_MUTEX_LOCK();
+        err = i2c_master_transmit_receive(i2c_device,
+                                          (uint8_t[]){MMA8451Q_REG_PULSE_SRC},
+                                          1, &pulse_src.raw, 1, -1);
+        BOARD_I2C_MUTEX_UNLOCK();
+        if (err != ESP_OK) {
+          ESP_LOGE(TAG, "Failed to read PULSE_SRC register: %d", err);
+          continue;
+        }
+
+        xSemaphoreTake(mutex, portMAX_DELAY);
+        if (pulse_callback) {
+          pulse_callback(pulse_arg);
+        }
+        xSemaphoreGive(mutex);
+
+        int_src.refined.src_pulse = 0;
       }
-      xSemaphoreGive(mutex);
 
-      int_src.refined.src_pulse = 0;
-    }
+      if (int_src.raw != 0) {
+        ESP_LOGW(TAG, "Unhandled interrupt source: 0x%02x", int_src.raw);
+      }
 
-    if (woken && int_src.raw != 0) {
-      ESP_LOGW(TAG, "Unhandled interrupt source: 0x%02x", int_src.raw);
+      xTaskNotifyWait(0, ULONG_MAX, NULL, pdMS_TO_TICKS(1000));
     }
   }
 }
@@ -250,7 +257,7 @@ esp_err_t accelerometer_init() {
       .mode = GPIO_MODE_INPUT,
       .pull_up_en = GPIO_PULLUP_DISABLE,
       .pull_down_en = GPIO_PULLDOWN_DISABLE,
-      .intr_type = GPIO_INTR_NEGEDGE,
+      .intr_type = GPIO_INTR_ANYEDGE,
   };
   ESP_RETURN_ON_ERROR(gpio_config(&cfg), TAG,
                       "Failed to configure interrupt pin");

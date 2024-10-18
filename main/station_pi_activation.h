@@ -6,8 +6,7 @@
 extern "C" {
 #endif
 
-esp_err_t station_pi_init();
-esp_err_t station_pi_enable();
+esp_err_t station_pi_activation_init();
 
 #ifdef __cplusplus
 }

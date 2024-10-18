@@ -14,6 +14,7 @@ idf_component_register(
   playback.c
   static.c
   station_pi.c
+  station_pi_activation.c
   station_2pi.c
   storage.c
   tas2505.c
