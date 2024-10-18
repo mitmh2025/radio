@@ -105,11 +105,17 @@ static void pulse_callback(void *arg) {
   int64_t earliest_time = last_pulse + rhythm_min_period;
   int64_t latest_time = last_pulse + rhythm_max_period;
   if (latest_time < now || now < earliest_time) {
-    // Reset
-    esp_timer_stop(rhythm_timer);
-    rhythm_max_period = PULSE_MAX_SEPARATION_US;
-    rhythm_min_period = PULSE_MIN_SEPARATION_US;
-    rhythm_count = 0;
+    // This is out of sync, but if it was supposed to be a 3rd pulse, it might
+    // actually be a 2nd pulse establishing a rhythm
+    if (rhythm_count == 2 && (now - last_pulse) < PULSE_MAX_SEPARATION_US) {
+      rhythm_count = 1;
+    } else {
+      // Reset
+      esp_timer_stop(rhythm_timer);
+      rhythm_max_period = PULSE_MAX_SEPARATION_US;
+      rhythm_min_period = PULSE_MIN_SEPARATION_US;
+      rhythm_count = 0;
+    }
   }
 
   rhythm_count++;
