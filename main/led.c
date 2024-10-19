@@ -72,6 +72,11 @@ esp_err_t led_set_pixel(uint32_t index, uint32_t red, uint32_t green,
 
   esp_err_t ret = ESP_OK;
 
+  if (led_colors[index].red == red && led_colors[index].green == green &&
+      led_colors[index].blue == blue) {
+    goto cleanup;
+  }
+
   // Our LEDs seem to be RGB, not GRB but the library expects GRB
   ESP_GOTO_ON_ERROR(led_strip_set_pixel(led, index, green, red, blue), cleanup,
                     RADIO_TAG, "led_set_pixel failed");
