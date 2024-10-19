@@ -6,6 +6,7 @@ idf_component_register(
   calibration.c
   console.c
   debounce.c
+  extreme.c
   file_cache.c
   fm.c
   led.c
