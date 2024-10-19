@@ -261,7 +261,7 @@ static int jsmn_value_len(jsmntok_t *tokens) {
  */
 static file_cache_manifest *parse_manifest(const char *manifest_contents,
                                            size_t manifest_len) {
-  bool success = true;
+  bool success = false;
   file_cache_manifest *manifest = NULL;
   jsmntok_t *tokens = NULL;
 
