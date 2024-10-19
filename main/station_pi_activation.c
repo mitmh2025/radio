@@ -33,6 +33,10 @@ static accelerometer_pulse_cfg_t pulse_cfg = {
 #define PULSE_MIN_SEPARATION_US (250 * 1000)
 #define PULSE_MAX_SEPARATION_US (1500 * 1000)
 
+static bool configured = false;
+static bool attr_enabled = false;
+static bool local_enabled = true;
+
 static int64_t last_pulse = 0;
 
 static int64_t rhythm_min_period = PULSE_MIN_SEPARATION_US;
@@ -144,7 +148,22 @@ cleanup:
   last_pulse = now;
 }
 
-static bool pulse_enabled = false;
+static esp_err_t check_enable() {
+  bool should_enable = attr_enabled && local_enabled;
+  if (should_enable && !configured) {
+    ESP_RETURN_ON_ERROR(
+        accelerometer_subscribe_pulse(&pulse_cfg, pulse_callback, NULL),
+        RADIO_TAG, "Failed to subscribe to pulse");
+    configured = true;
+  } else if (!should_enable && configured) {
+    ESP_RETURN_ON_ERROR(accelerometer_unsubscribe_pulse(), RADIO_TAG,
+                        "Failed to unsubscribe from pulse");
+    configured = false;
+  }
+
+  return ESP_OK;
+}
+
 static void enable_attr_callback(const char *key, things_attribute_t *value) {
   bool enabled = false;
   switch (value->type) {
@@ -161,14 +180,8 @@ static void enable_attr_callback(const char *key, things_attribute_t *value) {
     break;
   }
 
-  if (enabled && !pulse_enabled) {
-    ESP_ERROR_CHECK_WITHOUT_ABORT(
-        accelerometer_subscribe_pulse(&pulse_cfg, pulse_callback, NULL));
-    pulse_enabled = true;
-  } else if (!enabled && pulse_enabled) {
-    ESP_ERROR_CHECK_WITHOUT_ABORT(accelerometer_unsubscribe_pulse());
-    pulse_enabled = false;
-  }
+  attr_enabled = enabled;
+  ESP_ERROR_CHECK_WITHOUT_ABORT(check_enable());
 }
 
 esp_err_t station_pi_activation_init() {
@@ -186,4 +199,9 @@ esp_err_t station_pi_activation_init() {
       things_subscribe_attribute("en_knocks", enable_attr_callback), RADIO_TAG,
       "Failed to subscribe to en_knocks attribute");
   return ESP_OK;
+}
+
+esp_err_t station_pi_activation_enable(bool enable) {
+  local_enabled = enable;
+  return check_enable();
 }
