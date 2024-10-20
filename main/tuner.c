@@ -60,7 +60,7 @@ static radio_calibration_t *tuner_calibration = NULL;
 static size_t telemetry_index = 0;
 
 static inline bool gpio_to_tuner_mode(bool state) {
-  return state ? TUNER_MODE_FM : TUNER_MODE_PM;
+  return state ? TUNER_MODE_PM : TUNER_MODE_FM;
 }
 
 static void telemetry_generator() {
@@ -156,7 +156,7 @@ static void tuner_task(void *ctx) {
     uint32_t frequency_raw = atomic_load(&current_raw_frequency);
 
     if (desired_radio_mode == current_radio_mode && current_frequency &&
-        frequency_raw > current_frequency->frequency_low &&
+        frequency_raw >= current_frequency->frequency_low &&
         frequency_raw < current_frequency->frequency_high) {
       goto next;
     }
@@ -187,7 +187,7 @@ static void tuner_task(void *ctx) {
     struct frequency_handle *new_frequency = NULL;
     TAILQ_FOREACH(new_frequency, frequencies, next) {
       if (new_frequency->enabled &&
-          frequency_raw > new_frequency->frequency_low &&
+          frequency_raw >= new_frequency->frequency_low &&
           frequency_raw < new_frequency->frequency_high) {
         break;
       }
@@ -195,6 +195,8 @@ static void tuner_task(void *ctx) {
 
     current_frequency = new_frequency;
     if (current_frequency && current_frequency->entune) {
+      ESP_LOGD(RADIO_TAG, "Tuning to frequency %f",
+               current_frequency->frequency);
       current_frequency->entune(current_frequency->ctx);
     }
 
