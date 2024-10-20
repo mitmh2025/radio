@@ -3,10 +3,10 @@ idf_component_register(
   accelerometer.c
   adc.c
   battery.c
+  bounds.c
   calibration.c
   console.c
   debounce.c
-  extreme.c
   file_cache.c
   fm.c
   led.c
