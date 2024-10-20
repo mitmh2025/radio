@@ -124,6 +124,11 @@ static int gpio_func(int argc, char **argv) {
   return 0;
 }
 
+static int intr_func(int argc, char **argv) {
+  esp_intr_dump(NULL);
+  return 0;
+}
+
 static struct {
   struct arg_str *token;
   struct arg_end *end;
@@ -676,6 +681,15 @@ esp_err_t console_init() {
   };
   err = esp_console_cmd_register(&cmd_lwip);
   ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register lwip command: %s",
+                      esp_err_to_name(err));
+
+  esp_console_cmd_t cmd_intr = {
+      .command = "intr",
+      .help = "Print interrupt information",
+      .func = &intr_func,
+  };
+  err = esp_console_cmd_register(&cmd_intr);
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register intr command: %s",
                       esp_err_to_name(err));
 
   esp_console_cmd_t cmd_gpio = {
