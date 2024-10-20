@@ -10,7 +10,7 @@ extern "C" {
 
 typedef struct {
   bool entuned;
-  uint32_t frequency;
+  float frequency;
   int64_t attack_time;    // in microseconds
   int64_t decay_time;     // in microseconds
   uint16_t sustain_level; // 0-0xffff

@@ -48,7 +48,7 @@ int16_t sin_lookup[256] = {
 struct tone_generator {
   mixer_channel_t channel;
 
-  uint32_t frequency;
+  float frequency;
   int64_t start_time;
   int64_t release_start_time;
   esp_timer_handle_t release_timer;
