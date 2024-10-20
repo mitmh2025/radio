@@ -87,6 +87,8 @@ i2c_master_bus_handle_t board_i2c_get_handle(void);
 #define VOLUME_ADC_CHANNEL ADC_CHANNEL_0
 #define FREQUENCY_ADC_CHANNEL ADC_CHANNEL_1
 
+#define LIGHT_ADC_CHANNEL ADC_CHANNEL_4
+
 #define LED_COUNT (2)
 #define LED_PIN GPIO_NUM_48
 
