@@ -1,5 +1,6 @@
 #include "tone_generator.h"
 #include "main.h"
+#include "mixer.h"
 
 #include <math.h>
 #include <stdint.h>
@@ -45,46 +46,38 @@ int16_t sin_lookup[256] = {
 };
 
 struct tone_generator {
+  mixer_channel_t channel;
+
   uint32_t frequency;
-  int64_t start_time; // TODO: use this for computing attack/decay
+  int64_t start_time;
+  int64_t release_start_time;
+  esp_timer_handle_t release_timer;
+
   int64_t attack_time;
   int64_t decay_time;
   uint16_t sustain_level;
+  int64_t release_time;
 
   // These are both 8.24 fixed point numbers
   uint32_t increment;
   uint32_t phase;
 };
 
-esp_err_t tone_generator_init(tone_generator_config_t *config,
-                              tone_generator_t *generator) {
-  ESP_RETURN_ON_FALSE(config, ESP_ERR_INVALID_ARG, RADIO_TAG, "config is NULL");
-  ESP_RETURN_ON_FALSE(generator, ESP_ERR_INVALID_ARG, RADIO_TAG,
-                      "generator is NULL");
-  ESP_RETURN_ON_FALSE(config->frequency > 0, ESP_ERR_INVALID_ARG, RADIO_TAG,
-                      "frequency must be greater than 0");
-
-  *generator = calloc(1, sizeof(struct tone_generator));
-  if (*generator == NULL) {
-    return ESP_ERR_NO_MEM;
+static void tone_generator_free(tone_generator_t generator) {
+  if (generator->release_timer) {
+    esp_timer_delete(generator->release_timer);
   }
-
-  (*generator)->frequency = config->frequency;
-  (*generator)->attack_time = config->attack_time;
-  (*generator)->decay_time = config->decay_time;
-  (*generator)->sustain_level = config->sustain_level;
-
-  float samples_per_cycle = 48000.0f / config->frequency;
-  float float_increment = 256.0f / samples_per_cycle;
-  (*generator)->increment = lroundf((1 << 24) * float_increment);
-  (*generator)->start_time = esp_timer_get_time();
-  (*generator)->phase = 0;
-
-  return ESP_OK;
+  tone_generator_detune(generator);
+  free(generator);
 }
 
-int tone_generator_play(void *ctx, char *data, int len,
-                        TickType_t ticks_to_wait) {
+static void release_timer_callback(void *arg) {
+  tone_generator_t generator = (tone_generator_t)arg;
+  tone_generator_free(generator);
+}
+
+static int tone_generator_play(void *ctx, char *data, int len,
+                               TickType_t ticks_to_wait) {
   tone_generator_t generator = (tone_generator_t)ctx;
   int16_t *samples = (int16_t *)data;
   size_t sample_count = len / 2;
@@ -111,7 +104,22 @@ int tone_generator_play(void *ctx, char *data, int len,
     int32_t sample = (current_sample + next_sample) >> 8;
     int64_t time_since_start =
         now - generator->start_time + i * 1000000 / 48000;
-    if (time_since_start < generator->attack_time) {
+
+    if (generator->release_start_time > 0) {
+      int64_t time_since_release =
+          now - generator->release_start_time + i * 1000000 / 48000;
+      uint16_t release_factor;
+      if (time_since_release > generator->release_time) {
+        release_factor = 0;
+      } else {
+        // release_factor needs to go from sustain_level at time_since_release=0
+        // to 0 at time_since_release=release_time
+        release_factor = generator->sustain_level -
+                         (generator->sustain_level * time_since_release) /
+                             generator->release_time;
+      }
+      sample = (sample * release_factor) >> 16;
+    } else if (time_since_start < generator->attack_time) {
       uint16_t attack_factor =
           (time_since_start * 0xffff) / generator->attack_time;
       sample = (sample * attack_factor) >> 16;
@@ -137,4 +145,82 @@ int tone_generator_play(void *ctx, char *data, int len,
   return len;
 }
 
-void tone_generator_free(tone_generator_t generator) { free(generator); }
+esp_err_t tone_generator_init(tone_generator_config_t *config,
+                              tone_generator_t *generator) {
+  ESP_RETURN_ON_FALSE(config, ESP_ERR_INVALID_ARG, RADIO_TAG, "config is NULL");
+  ESP_RETURN_ON_FALSE(generator, ESP_ERR_INVALID_ARG, RADIO_TAG,
+                      "generator is NULL");
+  ESP_RETURN_ON_FALSE(config->frequency > 0, ESP_ERR_INVALID_ARG, RADIO_TAG,
+                      "frequency must be greater than 0");
+
+  *generator = calloc(1, sizeof(struct tone_generator));
+  if (*generator == NULL) {
+    return ESP_ERR_NO_MEM;
+  }
+
+  (*generator)->frequency = config->frequency;
+  (*generator)->attack_time = config->attack_time;
+  (*generator)->decay_time = config->decay_time;
+  (*generator)->sustain_level = config->sustain_level;
+  (*generator)->release_time = config->release_time;
+
+  ESP_RETURN_ON_ERROR(esp_timer_create(
+                          &(esp_timer_create_args_t){
+                              .callback = release_timer_callback,
+                              .arg = *generator,
+                              .dispatch_method = ESP_TIMER_TASK,
+                              .name = "tone_generator_release",
+                          },
+                          &(*generator)->release_timer),
+                      RADIO_TAG, "Failed to create release timer");
+
+  float samples_per_cycle = 48000.0f / config->frequency;
+  float float_increment = 256.0f / samples_per_cycle;
+  (*generator)->increment = lroundf((1 << 24) * float_increment);
+  (*generator)->start_time = esp_timer_get_time();
+  (*generator)->phase = 0;
+
+  if (config->entuned) {
+    tone_generator_entune(*generator);
+  }
+
+  return ESP_OK;
+}
+
+void tone_generator_release(tone_generator_t generator) {
+  if (generator->release_time == 0) {
+    tone_generator_free(generator);
+    return;
+  }
+
+  generator->release_start_time = esp_timer_get_time();
+  ESP_ERROR_CHECK(
+      esp_timer_start_once(generator->release_timer, generator->release_time));
+}
+
+void tone_generator_entune(tone_generator_t generator) {
+  if (generator->channel) {
+    return;
+  }
+
+  ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_play_audio(tone_generator_play, generator,
+                                                 48000, 16, 1, false,
+                                                 &generator->channel));
+}
+
+void tone_generator_detune(tone_generator_t generator) {
+  if (!generator->channel) {
+    return;
+  }
+
+  ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_stop_audio(generator->channel));
+  generator->channel = NULL;
+}
+
+void tone_generator_set_entuned(tone_generator_t generator, bool entuned) {
+  if (entuned) {
+    tone_generator_entune(generator);
+  } else {
+    tone_generator_detune(generator);
+  }
+}
