@@ -12,8 +12,6 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 
-// TODO: suspend activation when tuned to π
-
 static accelerometer_pulse_cfg_t pulse_cfg = {
     // 100Hz is fast enough to detect anything we care about and makes the math
     // easy
