@@ -1,3 +1,5 @@
+#include "nvs.h"
+
 #include "station_pi.h"
 #include "adc.h"
 #include "main.h"
@@ -12,6 +14,9 @@
 
 #include "esp_check.h"
 #include "esp_log.h"
+
+#define STATION_PI_NVS_NAMESPACE "radio:pi"
+static nvs_handle_t pi_nvs_handle;
 
 static frequency_handle_t freq_handle;
 static bool entuned = false;
@@ -81,6 +86,10 @@ static void detune(void *ctx) {
 }
 
 esp_err_t station_pi_init() {
+  ESP_RETURN_ON_ERROR(
+      nvs_open(STATION_PI_NVS_NAMESPACE, NVS_READWRITE, &pi_nvs_handle),
+      RADIO_TAG, "Failed to open NVS handle for station pi");
+
   ESP_RETURN_ON_ERROR(adc_subscribe(
                           &(adc_digi_pattern_config_t){
                               .atten = ADC_ATTEN_DB_12,
@@ -91,9 +100,15 @@ esp_err_t station_pi_init() {
                           light_adc_cb, NULL),
                       RADIO_TAG, "Failed to subscribe to light ADC");
 
+  uint8_t enabled = 0;
+  esp_err_t ret = nvs_get_u8(pi_nvs_handle, "enabled", &enabled);
+  if (ret != ESP_ERR_NVS_NOT_FOUND) {
+    ESP_RETURN_ON_ERROR(ret, RADIO_TAG, "Failed to get enabled from NVS");
+  }
+
   frequency_config_t config = {
       .frequency = M_PI,
-      .enabled = false,
+      .enabled = enabled != 0,
       .entune = entune,
       .detune = detune,
   };
@@ -105,7 +120,9 @@ esp_err_t station_pi_init() {
 }
 
 esp_err_t station_pi_enable() {
-  // TODO: this should persist to NVS
+  ESP_RETURN_ON_ERROR(nvs_set_u8(pi_nvs_handle, "enabled", 1), RADIO_TAG,
+                      "Failed to set enabled in NVS");
+
   ESP_RETURN_ON_ERROR(tuner_enable_pm_frequency(freq_handle), RADIO_TAG,
                       "Failed to enable pi frequency");
 
