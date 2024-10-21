@@ -1,9 +1,10 @@
 #include "nvs.h"
 
-#include "station_pi.h"
 #include "adc.h"
+#include "bounds.h"
 #include "main.h"
 #include "mixer.h"
+#include "station_pi.h"
 #include "station_pi_activation.h"
 #include "tone_generator.h"
 #include "tuner.h"
@@ -21,7 +22,8 @@ static nvs_handle_t pi_nvs_handle;
 static frequency_handle_t freq_handle;
 static bool entuned = false;
 
-static const uint16_t light_threshold = 1000;
+static bounds_handle_t light_bounds;
+static const uint16_t light_threshold = 500;
 static uint16_t light_smooth = 0xffff;
 static bool light_triggered = false;
 static tone_generator_t light_tone = NULL;
@@ -64,9 +66,12 @@ static void light_adc_cb(void *ctx, adc_digi_output_data_t *result) {
     light_smooth = value;
     return;
   }
-
   light_smooth = light_smooth - (light_smooth >> 3) + (value >> 3);
-  light_triggered = light_smooth < light_threshold;
+
+  bounds_update(light_bounds, light_smooth);
+
+  light_triggered =
+      bounds_get_max(light_bounds) - light_threshold > light_smooth;
 
   update_state();
 }
@@ -90,6 +95,13 @@ esp_err_t station_pi_init() {
       nvs_open(STATION_PI_NVS_NAMESPACE, NVS_READWRITE, &pi_nvs_handle),
       RADIO_TAG, "Failed to open NVS handle for station pi");
 
+  ESP_RETURN_ON_ERROR(bounds_init(
+                          &(bounds_config_t){
+                              .buckets = 30,
+                              .interval = 1000000,
+                          },
+                          &light_bounds),
+                      RADIO_TAG, "Failed to initialize light bounds");
   ESP_RETURN_ON_ERROR(adc_subscribe(
                           &(adc_digi_pattern_config_t){
                               .atten = ADC_ATTEN_DB_12,
