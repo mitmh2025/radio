@@ -17,9 +17,10 @@ static accelerometer_pulse_cfg_t pulse_cfg = {
     // easy
     .odr = ACCELEROMETER_DR_100HZ,
     .osm = ACCELEROMETER_OSM_NORMAL,
-    // TODO: This is a very generous threshold (1g, give or take). We need to
+    // This threshold (1.375g, give or take) was chosen based on testing on a
+    // development setup that is - notably - lacking the legs. We need to
     // re-test on a final device and decide how sensitive we want to be
-    .threshold = 16,
+    .threshold = 22,
     .timelimit = 6, // 30ms
     // The pulse latency setting doesn't apply if you're reading and clearing
     // the interrupt status. Once that's done, new pulses seem to come in, so we
@@ -28,7 +29,7 @@ static accelerometer_pulse_cfg_t pulse_cfg = {
 };
 
 #define PULSE_DEBOUNCE_US (50 * 1000)
-#define PULSE_MIN_SEPARATION_US (250 * 1000)
+#define PULSE_MIN_SEPARATION_US (150 * 1000)
 #define PULSE_MAX_SEPARATION_US (1500 * 1000)
 
 static bool configured = false;
