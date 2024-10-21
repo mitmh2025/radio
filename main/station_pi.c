@@ -28,7 +28,7 @@ static void light_start_tone() {
           .decay_time = 20000,
           .sustain_level = 0x8000,
           .release_time = 100000,
-          .frequency = 261.6256,
+          .frequency = FREQUENCY_C_4,
       },
       &light_tone));
 }
