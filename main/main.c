@@ -43,7 +43,7 @@ EventGroupHandle_t radio_event_group;
 
 static bool volume_increasing = true;
 // TAS2505 defaults to max volume, so start at max volume
-static uint32_t average_volume_raw = 0xfff;
+static uint16_t average_volume_raw = 0xfff;
 static uint8_t last_volume_setting = 0xff;
 static void volume_callback(void *user_data, adc_digi_output_data_t *result) {
   radio_calibration_t *calibration = (radio_calibration_t *)user_data;
@@ -58,7 +58,7 @@ static void volume_callback(void *user_data, adc_digi_output_data_t *result) {
   } else if (average_volume_raw > calibration->volume_max) {
     average_volume_raw = calibration->volume_max;
   }
-  uint32_t new_volume_setting =
+  uint16_t new_volume_setting =
       (uint64_t)((average_volume_raw - calibration->volume_min) * 512) /
       (calibration->volume_max - calibration->volume_min);
   if (new_volume_setting & 0x1) {

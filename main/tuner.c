@@ -40,9 +40,9 @@ struct frequency_handle {
 
   // These fields are computed based on the frequency band ranges and ADC
   // calibration range
-  uint32_t frequency_low;
-  uint32_t frequency_center;
-  uint32_t frequency_high;
+  uint16_t frequency_low;
+  uint16_t frequency_center;
+  uint16_t frequency_high;
 };
 
 typedef enum {
@@ -52,7 +52,7 @@ typedef enum {
 // TODO: some of these should potentially be atomics
 static atomic_bool tuner_suspended = false;
 static tuner_mode_t desired_radio_mode = TUNER_MODE_PM;
-static atomic_uint_least32_t current_raw_frequency = 0;
+static atomic_uint_least16_t current_raw_frequency = UINT16_MAX;
 static tuner_mode_t current_radio_mode = TUNER_MODE_PM;
 static struct frequency_handle *current_frequency = NULL;
 static TaskHandle_t tuner_task_handle = NULL;
@@ -64,12 +64,15 @@ static inline bool gpio_to_tuner_mode(bool state) {
 }
 
 static void telemetry_generator() {
+  struct frequency_handle *frequency = current_frequency;
   things_send_telemetry_string(
       "tuner_mode", current_radio_mode == TUNER_MODE_PM ? "PM" : "FM");
+  things_send_telemetry_float("tuner_frequency",
+                              frequency ? frequency->frequency : 0.0f);
   things_send_telemetry_int("tuner_min", tuner_calibration->frequency_min);
   things_send_telemetry_int("tuner_max", tuner_calibration->frequency_max);
   things_send_telemetry_int("tuner_raw", atomic_load(&current_raw_frequency));
-  things_send_telemetry_bool("tuner_entuned", current_frequency != NULL);
+  things_send_telemetry_bool("tuner_entuned", frequency != NULL);
   things_send_telemetry_bool("tuner_suspended", atomic_load(&tuner_suspended));
 }
 
@@ -115,9 +118,14 @@ static void IRAM_ATTR modulation_callback(void *user_data, bool state) {
 }
 
 static void adc_callback(void *user_data, adc_digi_output_data_t *result) {
-  uint32_t raw_frequency = atomic_load(&current_raw_frequency);
-  raw_frequency =
-      raw_frequency - (raw_frequency >> 3) + (result->type2.data >> 3);
+  uint16_t raw_frequency = atomic_load(&current_raw_frequency);
+  if (raw_frequency == UINT16_MAX) {
+    raw_frequency = result->type2.data;
+  } else {
+    raw_frequency =
+        raw_frequency - (raw_frequency >> 3) + (result->type2.data >> 3);
+  }
+
   atomic_store(&current_raw_frequency, raw_frequency);
   if (tuner_task_handle) {
     xTaskNotifyGive(tuner_task_handle);
@@ -153,7 +161,7 @@ static void tuner_task(void *ctx) {
       goto next;
     }
 
-    uint32_t frequency_raw = atomic_load(&current_raw_frequency);
+    uint16_t frequency_raw = atomic_load(&current_raw_frequency);
 
     if (desired_radio_mode == current_radio_mode && current_frequency &&
         frequency_raw >= current_frequency->frequency_low &&
@@ -195,7 +203,7 @@ static void tuner_task(void *ctx) {
 
     current_frequency = new_frequency;
     if (current_frequency && current_frequency->entune) {
-      ESP_LOGD(RADIO_TAG, "Tuning to frequency %f",
+      ESP_LOGD(RADIO_TAG, "Tuning to frequency %0.3f",
                current_frequency->frequency);
       current_frequency->entune(current_frequency->ctx);
     }
@@ -263,7 +271,7 @@ esp_err_t tuner_init(radio_calibration_t *calibration) {
     TAILQ_INSERT_TAIL(&fm_frequencies, handle, next);
   }
 
-  uint32_t adc_low = calibration->frequency_min,
+  uint16_t adc_low = calibration->frequency_min,
            adc_high = calibration->frequency_max;
 
   struct frequency_handle *handle;
@@ -274,15 +282,15 @@ esp_err_t tuner_init(radio_calibration_t *calibration) {
     high_freq = high_freq > FREQUENCY_PM_MAX ? FREQUENCY_PM_MAX : high_freq;
 
     handle->frequency_low =
-        (uint32_t)(adc_low + (adc_high - adc_low) *
+        (uint16_t)(adc_low + (adc_high - adc_low) *
                                  (low_freq - FREQUENCY_PM_MIN) /
                                  (FREQUENCY_PM_MAX - FREQUENCY_PM_MIN));
     handle->frequency_center =
-        (uint32_t)(adc_low + (adc_high - adc_low) *
+        (uint16_t)(adc_low + (adc_high - adc_low) *
                                  (handle->frequency - FREQUENCY_PM_MIN) /
                                  (FREQUENCY_PM_MAX - FREQUENCY_PM_MIN));
     handle->frequency_high =
-        (uint32_t)(adc_low + (adc_high - adc_low) *
+        (uint16_t)(adc_low + (adc_high - adc_low) *
                                  (high_freq - FREQUENCY_PM_MIN) /
                                  (FREQUENCY_PM_MAX - FREQUENCY_PM_MIN));
   }
@@ -294,15 +302,15 @@ esp_err_t tuner_init(radio_calibration_t *calibration) {
     high_freq = high_freq > FREQUENCY_FM_MAX ? FREQUENCY_FM_MAX : high_freq;
 
     handle->frequency_low =
-        (uint32_t)(adc_low + (adc_high - adc_low) *
+        (uint16_t)(adc_low + (adc_high - adc_low) *
                                  (low_freq - FREQUENCY_FM_MIN) /
                                  (FREQUENCY_FM_MAX - FREQUENCY_FM_MIN));
     handle->frequency_center =
-        (uint32_t)(adc_low + (adc_high - adc_low) *
+        (uint16_t)(adc_low + (adc_high - adc_low) *
                                  (handle->frequency - FREQUENCY_FM_MIN) /
                                  (FREQUENCY_FM_MAX - FREQUENCY_FM_MIN));
     handle->frequency_high =
-        (uint32_t)(adc_low + (adc_high - adc_low) *
+        (uint16_t)(adc_low + (adc_high - adc_low) *
                                  (high_freq - FREQUENCY_FM_MIN) /
                                  (FREQUENCY_FM_MAX - FREQUENCY_FM_MIN));
   }
