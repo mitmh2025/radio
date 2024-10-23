@@ -128,6 +128,8 @@ esp_err_t playback_wait_for_completion(playback_handle_t handle) {
         handle->tuned = false;
       } else if (msg.cmd == AEL_MSG_CMD_RESUME) {
         handle->tuned = true;
+      } else if (msg.cmd == AEL_MSG_CMD_STOP) {
+        break;
       }
     }
 
@@ -200,6 +202,21 @@ esp_err_t playback_entune(playback_handle_t handle) {
                                     .cmd = AEL_MSG_CMD_RESUME,
                                 }),
       RADIO_TAG, "Failed to entune playback");
+  return ESP_OK;
+}
+
+esp_err_t playback_stop(playback_handle_t handle) {
+  ESP_RETURN_ON_FALSE(handle, ESP_ERR_INVALID_ARG, RADIO_TAG,
+                      "Invalid playback handle");
+
+  ESP_RETURN_ON_ERROR(
+      audio_event_iface_sendout(handle->evt,
+                                &(audio_event_iface_msg_t){
+                                    .source = handle,
+                                    .source_type = AUDIO_ELEMENT_TYPE_PLAYER,
+                                    .cmd = AEL_MSG_CMD_STOP,
+                                }),
+      RADIO_TAG, "Failed to stop playback");
   return ESP_OK;
 }
 
