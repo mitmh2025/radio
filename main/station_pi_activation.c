@@ -12,7 +12,8 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 
-static accelerometer_pulse_cfg_t pulse_cfg = {
+// Configuration also used in station_pi; should probably be kept in sync
+static const accelerometer_pulse_cfg_t pulse_cfg = {
     // 100Hz is fast enough to detect anything we care about and makes the math
     // easy
     .odr = ACCELEROMETER_DR_100HZ,

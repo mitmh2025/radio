@@ -1,5 +1,6 @@
 #include "nvs.h"
 
+#include "accelerometer.h"
 #include "adc.h"
 #include "bounds.h"
 #include "main.h"
@@ -15,6 +16,7 @@
 
 #include "esp_check.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 
 #define STATION_PI_NVS_NAMESPACE "radio:pi"
 static nvs_handle_t pi_nvs_handle;
@@ -28,6 +30,17 @@ static uint16_t light_smooth = 0xffff;
 static bool light_triggered = false;
 static tone_generator_t light_tone = NULL;
 
+// Copied from station_pi_activation
+static const accelerometer_pulse_cfg_t knock_cfg = {
+    .odr = ACCELEROMETER_DR_100HZ,
+    .osm = ACCELEROMETER_OSM_NORMAL,
+    .threshold = 22,
+    .timelimit = 6,
+    .latency = 1,
+};
+static esp_timer_handle_t knock_timer = NULL;
+static tone_generator_t knock_tone = NULL;
+
 static void light_start_tone() {
   ESP_ERROR_CHECK_WITHOUT_ABORT(tone_generator_init(
       &(tone_generator_config_t){
@@ -35,7 +48,7 @@ static void light_start_tone() {
           .decay_time = 20000,
           .sustain_level = 0x8000,
           .release_time = 100000,
-          .frequency = FREQUENCY_C_4,
+          .frequency = FREQUENCY_C_5,
       },
       &light_tone));
 }
@@ -45,17 +58,47 @@ static void light_stop_tone() {
   light_tone = NULL;
 }
 
+static void knock_start_tone(void *arg) {
+  if (esp_timer_is_active(knock_timer)) {
+    return;
+  }
+
+  ESP_ERROR_CHECK_WITHOUT_ABORT(esp_timer_start_once(knock_timer, 600000));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(tone_generator_init(
+      &(tone_generator_config_t){
+          .entuned = true,
+          .attack_time = 20000,
+          .decay_time = 20000,
+          .sustain_level = 0x8000,
+          .release_time = 100000,
+          .frequency = FREQUENCY_D_5,
+      },
+      &knock_tone));
+}
+
+static void knock_stop_tone(void *arg) {
+  esp_timer_stop(knock_timer);
+  if (knock_tone) {
+    tone_generator_release(knock_tone);
+    knock_tone = NULL;
+  }
+}
+
 static void update_state() {
   bool should_play_light = light_triggered;
 
   if (should_play_light && !light_tone) {
     light_start_tone();
+    knock_stop_tone(NULL);
   } else if (!should_play_light && light_tone) {
     light_stop_tone();
   }
 
   if (light_tone) {
     tone_generator_set_entuned(light_tone, entuned);
+  }
+  if (knock_tone) {
+    tone_generator_set_entuned(knock_tone, entuned);
   }
 }
 
@@ -79,6 +122,9 @@ static void light_adc_cb(void *ctx, adc_digi_output_data_t *result) {
 static void entune(void *ctx) {
   station_pi_activation_enable(false);
   ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_default_static(false));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(
+      accelerometer_subscribe_pulse(&knock_cfg, knock_start_tone, NULL));
+
   entuned = true;
   update_state();
 }
@@ -86,6 +132,7 @@ static void entune(void *ctx) {
 static void detune(void *ctx) {
   entuned = false;
   update_state();
+  ESP_ERROR_CHECK_WITHOUT_ABORT(accelerometer_unsubscribe_pulse());
   ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_default_static(true));
   station_pi_activation_enable(true);
 }
@@ -111,6 +158,15 @@ esp_err_t station_pi_init() {
                           },
                           light_adc_cb, NULL),
                       RADIO_TAG, "Failed to subscribe to light ADC");
+
+  ESP_RETURN_ON_ERROR(esp_timer_create(
+                          &(esp_timer_create_args_t){
+                              .dispatch_method = ESP_TIMER_TASK,
+                              .name = "knock_tone",
+                              .callback = knock_stop_tone,
+                          },
+                          &knock_timer),
+                      RADIO_TAG, "Failed to initialize knock timer");
 
   uint8_t enabled = 0;
   esp_err_t ret = nvs_get_u8(pi_nvs_handle, "enabled", &enabled);

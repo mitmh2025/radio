@@ -315,7 +315,7 @@ esp_err_t accelerometer_init() {
   return ESP_OK;
 }
 
-esp_err_t accelerometer_subscribe_pulse(accelerometer_pulse_cfg_t *cfg,
+esp_err_t accelerometer_subscribe_pulse(const accelerometer_pulse_cfg_t *cfg,
                                         void (*callback)(void *), void *arg) {
   ESP_RETURN_ON_FALSE(cfg, ESP_ERR_INVALID_ARG, TAG, "cfg is NULL");
   ESP_RETURN_ON_FALSE(callback, ESP_ERR_INVALID_ARG, TAG, "callback is NULL");

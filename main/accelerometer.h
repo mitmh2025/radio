@@ -34,7 +34,7 @@ typedef struct {
 } accelerometer_pulse_cfg_t;
 
 esp_err_t accelerometer_init(void);
-esp_err_t accelerometer_subscribe_pulse(accelerometer_pulse_cfg_t *cfg,
+esp_err_t accelerometer_subscribe_pulse(const accelerometer_pulse_cfg_t *cfg,
                                         void (*callback)(void *), void *arg);
 esp_err_t accelerometer_unsubscribe_pulse(void);
 
