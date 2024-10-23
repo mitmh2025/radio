@@ -38,6 +38,8 @@ static const accelerometer_pulse_cfg_t knock_cfg = {
     .timelimit = 6,
     .latency = 1,
 };
+#define PULSE_DEBOUNCE_US (50 * 1000)
+static int64_t knock_last_time = 0;
 static esp_timer_handle_t knock_timer = NULL;
 static tone_generator_t knock_tone = NULL;
 
@@ -67,6 +69,13 @@ static void knock_stop_tone(void *arg) {
 }
 
 static void knock_start_tone(void *arg) {
+  int64_t now = esp_timer_get_time();
+
+  // Debounce the pulse
+  if (now - knock_last_time < PULSE_DEBOUNCE_US) {
+    goto cleanup;
+  }
+
   if (esp_timer_is_active(knock_timer) || knock_tone) {
     knock_stop_tone(NULL);
   }
@@ -82,6 +91,9 @@ static void knock_start_tone(void *arg) {
           .frequency = FREQUENCY_D_5,
       },
       &knock_tone));
+
+cleanup:
+  knock_last_time = now;
 }
 
 static void update_state() {
