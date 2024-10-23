@@ -4,6 +4,7 @@
 #include "driver/i2c_master.h"
 #include "esp_log.h"
 #include "freertos/semphr.h"
+#include "soc/adc_channel.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -81,13 +82,13 @@ i2c_master_bus_handle_t board_i2c_get_handle(void);
     xSemaphoreGive(i2c_mutex);                                                 \
   } while (0)
 
-#define BATTERY_ADC_CHANNEL ADC_CHANNEL_8
+#define BATTERY_ADC_CHANNEL ADC1_GPIO9_CHANNEL
 #define BATTERY_SCALE_FACTOR (3.0f / (2.0f * 1000.0f))
 
-#define VOLUME_ADC_CHANNEL ADC_CHANNEL_0
-#define FREQUENCY_ADC_CHANNEL ADC_CHANNEL_1
+#define VOLUME_ADC_CHANNEL ADC1_GPIO1_CHANNEL
+#define FREQUENCY_ADC_CHANNEL ADC1_GPIO2_CHANNEL
 
-#define LIGHT_ADC_CHANNEL ADC_CHANNEL_4
+#define LIGHT_ADC_CHANNEL ADC1_GPIO5_CHANNEL
 
 #define LED_COUNT (2)
 #define LED_PIN GPIO_NUM_48
