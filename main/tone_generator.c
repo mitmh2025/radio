@@ -102,40 +102,36 @@ static int tone_generator_play(void *ctx, char *data, int len,
     next_sample *= offset;
 
     int32_t sample = (current_sample + next_sample) >> 8;
+
     int64_t time_since_start =
         now - generator->start_time + i * 1000000 / 48000;
+    int64_t time_since_decay = time_since_start - generator->attack_time;
+    int64_t time_since_sustain = time_since_decay - generator->decay_time;
+    int64_t time_since_release =
+        now - generator->release_start_time + i * 1000000 / 48000;
 
-    if (generator->release_start_time > 0) {
-      int64_t time_since_release =
-          now - generator->release_start_time + i * 1000000 / 48000;
-      uint16_t release_factor;
-      if (time_since_release > generator->release_time) {
-        release_factor = 0;
-      } else {
-        // release_factor needs to go from sustain_level at time_since_release=0
-        // to 0 at time_since_release=release_time
-        release_factor = generator->sustain_level -
-                         (generator->sustain_level * time_since_release) /
-                             generator->release_time;
-      }
-      sample = (sample * release_factor) >> 16;
-    } else if (time_since_start < generator->attack_time) {
-      uint16_t attack_factor =
-          (time_since_start * 0xffff) / generator->attack_time;
-      sample = (sample * attack_factor) >> 16;
-    } else if (time_since_start <
-               generator->attack_time + generator->decay_time) {
-      int64_t time_since_decay = time_since_start - generator->attack_time;
-      // decay_factor needs to go from 0xffff at time_since_decay=0 to
+    uint16_t adsr_factor = 0;
+    if (time_since_release > generator->release_time) {
+      adsr_factor = 0;
+    } else if (time_since_release > 0) {
+      // For release, adsr_factor needs to go from sustain_level at
+      // time_since_release=0 to 0 at time_since_release=release_time
+      adsr_factor = generator->sustain_level -
+                    (generator->sustain_level * time_since_release) /
+                        generator->release_time;
+    } else if (time_since_sustain > 0) {
+      adsr_factor = generator->sustain_level;
+    } else if (time_since_decay > 0) {
+      // For decay, adsr_factor needs to go from 0xffff at time_since_decay=0 to
       // sustain_level at time_since_decay=decay_time
-      uint16_t decay_factor = 0xffff - (0xffff - generator->sustain_level) *
-                                           time_since_decay /
-                                           generator->decay_time;
-      sample = (sample * decay_factor) >> 16;
-    } else if (time_since_start >
-               generator->attack_time + generator->decay_time) {
-      sample = (sample * generator->sustain_level) >> 16;
+      adsr_factor = 0xffff - (0xffff - generator->sustain_level) *
+                                 time_since_decay / generator->decay_time;
+    } else {
+      // For attack, adsr_factor goes from 0 at time_since_start=0 to 0xffff at
+      // time_since_start=attack_time
+      adsr_factor = (time_since_start * 0xffff) / generator->attack_time;
     }
+    sample = (sample * adsr_factor) >> 16;
 
     samples[i] = sample;
 
@@ -163,6 +159,7 @@ esp_err_t tone_generator_init(tone_generator_config_t *config,
   (*generator)->decay_time = config->decay_time;
   (*generator)->sustain_level = config->sustain_level;
   (*generator)->release_time = config->release_time;
+  (*generator)->release_start_time = INT64_MAX;
 
   ESP_RETURN_ON_ERROR(esp_timer_create(
                           &(esp_timer_create_args_t){
@@ -194,8 +191,17 @@ void tone_generator_release(tone_generator_t generator) {
   }
 
   generator->release_start_time = esp_timer_get_time();
-  ESP_ERROR_CHECK(
-      esp_timer_start_once(generator->release_timer, generator->release_time));
+  // If release would start before attack and decay have completed, then defer
+  // it until after
+  int64_t release_delay = 0;
+  if (generator->release_start_time <
+      generator->start_time + generator->attack_time + generator->decay_time) {
+    release_delay = generator->start_time + generator->attack_time +
+                    generator->decay_time - generator->release_start_time;
+  }
+  generator->release_start_time += release_delay;
+  ESP_ERROR_CHECK(esp_timer_start_once(
+      generator->release_timer, generator->release_time + release_delay));
 }
 
 void tone_generator_entune(tone_generator_t generator) {

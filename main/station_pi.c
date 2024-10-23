@@ -46,7 +46,7 @@ static void light_start_tone() {
       &(tone_generator_config_t){
           .attack_time = 20000,
           .decay_time = 20000,
-          .sustain_level = 0x8000,
+          .sustain_level = 0xc000,
           .release_time = 100000,
           .frequency = FREQUENCY_C_5,
       },
@@ -58,9 +58,17 @@ static void light_stop_tone() {
   light_tone = NULL;
 }
 
+static void knock_stop_tone(void *arg) {
+  esp_timer_stop(knock_timer);
+  if (knock_tone) {
+    tone_generator_release(knock_tone);
+    knock_tone = NULL;
+  }
+}
+
 static void knock_start_tone(void *arg) {
-  if (esp_timer_is_active(knock_timer)) {
-    return;
+  if (esp_timer_is_active(knock_timer) || knock_tone) {
+    knock_stop_tone(NULL);
   }
 
   ESP_ERROR_CHECK_WITHOUT_ABORT(esp_timer_start_once(knock_timer, 600000));
@@ -69,19 +77,11 @@ static void knock_start_tone(void *arg) {
           .entuned = true,
           .attack_time = 20000,
           .decay_time = 20000,
-          .sustain_level = 0x8000,
+          .sustain_level = 0xc000,
           .release_time = 100000,
           .frequency = FREQUENCY_D_5,
       },
       &knock_tone));
-}
-
-static void knock_stop_tone(void *arg) {
-  esp_timer_stop(knock_timer);
-  if (knock_tone) {
-    tone_generator_release(knock_tone);
-    knock_tone = NULL;
-  }
 }
 
 static void update_state() {
