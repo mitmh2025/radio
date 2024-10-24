@@ -53,7 +53,7 @@ static void light_start_tone() {
           .entuned = entuned,
           .attack_time = 20000,
           .decay_time = 20000,
-          .sustain_level = 0xc000,
+          .sustain_level = 0x8000,
           .release_time = 100000,
           .frequency = FREQUENCY_G_4,
       },
@@ -91,9 +91,9 @@ static void knock_start_tone(void *arg) {
           .entuned = entuned,
           .attack_time = 20000,
           .decay_time = 20000,
-          .sustain_level = 0xc000,
+          .sustain_level = 0x8000,
           .release_time = 100000,
-          .frequency = FREQUENCY_A_4,
+          .frequency = FREQUENCY_C_5,
       },
       &knock_tone));
 
@@ -107,9 +107,9 @@ static void touch_start_tone() {
           .entuned = entuned,
           .attack_time = 20000,
           .decay_time = 20000,
-          .sustain_level = 0xc000,
+          .sustain_level = 0x8000,
           .release_time = 100000,
-          .frequency = FREQUENCY_B_4,
+          .frequency = FREQUENCY_A_4,
       },
       &touch_tone));
 }
