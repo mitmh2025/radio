@@ -245,26 +245,6 @@ esp_err_t accelerometer_init() {
     return ESP_FAIL;
   }
 
-  if (pdPASS != xTaskCreatePinnedToCore(accelerometer_task,
-                                        "accelerometer_task", 3072, NULL, 12,
-                                        &task_handle, 0)) {
-    ESP_LOGE(TAG, "Failed to create task");
-    return ESP_FAIL;
-  }
-
-  gpio_config_t cfg = {
-      .pin_bit_mask = 1ULL << MMA8451Q_INT1_GPIO,
-      .mode = GPIO_MODE_INPUT,
-      .pull_up_en = GPIO_PULLUP_DISABLE,
-      .pull_down_en = GPIO_PULLDOWN_DISABLE,
-      .intr_type = GPIO_INTR_ANYEDGE,
-  };
-  ESP_RETURN_ON_ERROR(gpio_config(&cfg), TAG,
-                      "Failed to configure interrupt pin");
-  ESP_RETURN_ON_ERROR(
-      gpio_isr_handler_add(MMA8451Q_INT1_GPIO, accelerometer_isr, NULL), TAG,
-      "Failed to add interrupt handler");
-
   i2c_master_bus_handle_t i2c_bus = board_i2c_get_handle();
   if (i2c_bus == NULL) {
     ESP_LOGE(TAG, "I2C bus is not initialized");
@@ -309,6 +289,26 @@ esp_err_t accelerometer_init() {
   mma8451q_ctrl_reg5_t ctrl_reg5 = {.raw = 0xff};
   ESP_RETURN_ON_ERROR(write_register(MMA8451Q_REG_CTRL_REG5, ctrl_reg5.raw),
                       TAG, "Failed to write CTRL_REG5 register");
+
+  if (pdPASS != xTaskCreatePinnedToCore(accelerometer_task,
+                                        "accelerometer_task", 3072, NULL, 12,
+                                        &task_handle, 0)) {
+    ESP_LOGE(TAG, "Failed to create task");
+    return ESP_FAIL;
+  }
+
+  gpio_config_t cfg = {
+      .pin_bit_mask = 1ULL << MMA8451Q_INT1_GPIO,
+      .mode = GPIO_MODE_INPUT,
+      .pull_up_en = GPIO_PULLUP_DISABLE,
+      .pull_down_en = GPIO_PULLDOWN_DISABLE,
+      .intr_type = GPIO_INTR_ANYEDGE,
+  };
+  ESP_RETURN_ON_ERROR(gpio_config(&cfg), TAG,
+                      "Failed to configure interrupt pin");
+  ESP_RETURN_ON_ERROR(
+      gpio_isr_handler_add(MMA8451Q_INT1_GPIO, accelerometer_isr, NULL), TAG,
+      "Failed to add interrupt handler");
 
   things_register_telemetry_generator(telemetry_generator, "accel", NULL);
 
