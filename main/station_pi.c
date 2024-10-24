@@ -14,6 +14,7 @@
 
 #include <math.h>
 
+#include "driver/touch_sensor.h"
 #include "esp_check.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -27,7 +28,6 @@ static bool entuned = false;
 static bounds_handle_t light_bounds;
 static const uint16_t light_threshold = 500;
 static uint16_t light_smooth = 0xffff;
-static bool light_triggered = false;
 static tone_generator_t light_tone = NULL;
 
 // Copied from station_pi_activation
@@ -43,14 +43,19 @@ static int64_t knock_last_time = 0;
 static esp_timer_handle_t knock_timer = NULL;
 static tone_generator_t knock_tone = NULL;
 
+static TaskHandle_t touch_task_handle = NULL;
+static uint32_t touch_threshold = 0x8000;
+static tone_generator_t touch_tone = NULL;
+
 static void light_start_tone() {
   ESP_ERROR_CHECK_WITHOUT_ABORT(tone_generator_init(
       &(tone_generator_config_t){
+          .entuned = entuned,
           .attack_time = 20000,
           .decay_time = 20000,
           .sustain_level = 0xc000,
           .release_time = 100000,
-          .frequency = FREQUENCY_C_5,
+          .frequency = FREQUENCY_G_4,
       },
       &light_tone));
 }
@@ -80,15 +85,15 @@ static void knock_start_tone(void *arg) {
     knock_stop_tone(NULL);
   }
 
-  ESP_ERROR_CHECK_WITHOUT_ABORT(esp_timer_start_once(knock_timer, 600000));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(esp_timer_start_once(knock_timer, 400000));
   ESP_ERROR_CHECK_WITHOUT_ABORT(tone_generator_init(
       &(tone_generator_config_t){
-          .entuned = true,
+          .entuned = entuned,
           .attack_time = 20000,
           .decay_time = 20000,
           .sustain_level = 0xc000,
           .release_time = 100000,
-          .frequency = FREQUENCY_D_5,
+          .frequency = FREQUENCY_A_4,
       },
       &knock_tone));
 
@@ -96,21 +101,33 @@ cleanup:
   knock_last_time = now;
 }
 
+static void touch_start_tone() {
+  ESP_ERROR_CHECK_WITHOUT_ABORT(tone_generator_init(
+      &(tone_generator_config_t){
+          .entuned = entuned,
+          .attack_time = 20000,
+          .decay_time = 20000,
+          .sustain_level = 0xc000,
+          .release_time = 100000,
+          .frequency = FREQUENCY_B_4,
+      },
+      &touch_tone));
+}
+
+static void touch_stop_tone() {
+  tone_generator_release(touch_tone);
+  touch_tone = NULL;
+}
+
 static void update_state() {
-  bool should_play_light = light_triggered;
-
-  if (should_play_light && !light_tone) {
-    light_start_tone();
-    knock_stop_tone(NULL);
-  } else if (!should_play_light && light_tone) {
-    light_stop_tone();
-  }
-
   if (light_tone) {
     tone_generator_set_entuned(light_tone, entuned);
   }
   if (knock_tone) {
     tone_generator_set_entuned(knock_tone, entuned);
+  }
+  if (touch_tone) {
+    tone_generator_set_entuned(touch_tone, entuned);
   }
 }
 
@@ -125,10 +142,36 @@ static void light_adc_cb(void *ctx, adc_digi_output_data_t *result) {
 
   bounds_update(light_bounds, light_smooth);
 
-  light_triggered =
+  bool triggered =
       bounds_get_max(light_bounds) - light_threshold > light_smooth;
+  if (triggered && !light_tone) {
+    light_start_tone();
+  } else if (!triggered && light_tone) {
+    light_stop_tone();
+  }
+}
 
-  update_state();
+static void touch_task(void *ctx) {
+  while (true) {
+    uint32_t notification = 0;
+    xTaskNotifyWait(0, ULONG_MAX, &notification, pdMS_TO_TICKS(100));
+
+    if (notification & TOUCH_PAD_INTR_MASK_ACTIVE && !touch_tone) {
+      touch_start_tone();
+    }
+    if (notification & TOUCH_PAD_INTR_MASK_INACTIVE && touch_tone) {
+      touch_stop_tone();
+    }
+  }
+}
+
+static void IRAM_ATTR touch_intr(void *ctx) {
+  TaskHandle_t task_handle = (TaskHandle_t)ctx;
+  uint32_t notification = touch_pad_read_intr_status_mask();
+  BaseType_t higher_priority_task_woken = pdFALSE;
+  xTaskNotifyFromISR(task_handle, notification, eSetBits,
+                     &higher_priority_task_woken);
+  portYIELD_FROM_ISR(higher_priority_task_woken);
 }
 
 static void entune(void *ctx) {
@@ -179,6 +222,42 @@ esp_err_t station_pi_init() {
                           },
                           &knock_timer),
                       RADIO_TAG, "Failed to initialize knock timer");
+
+  ESP_RETURN_ON_FALSE(
+      pdPASS == xTaskCreatePinnedToCore(touch_task, "touch_task", 4096, NULL,
+                                        11, &touch_task_handle, 0),
+      ESP_FAIL, RADIO_TAG, "Failed to create touch task");
+  ESP_RETURN_ON_ERROR(touch_pad_init(), RADIO_TAG,
+                      "Failed to initialize touch");
+  ESP_RETURN_ON_ERROR(touch_pad_config(TOUCH_PAD_CHANNEL), RADIO_TAG,
+                      "Failed to initialize touch");
+  ESP_RETURN_ON_ERROR(touch_pad_filter_set_config(&(touch_filter_config_t){
+                          .smh_lvl = TOUCH_PAD_SMOOTH_IIR_2,
+                          .mode = TOUCH_PAD_FILTER_IIR_256,
+                      }),
+                      RADIO_TAG, "Failed to initialize touch");
+  ESP_RETURN_ON_ERROR(touch_pad_filter_enable(), RADIO_TAG,
+                      "Failed to initialize touch");
+  ESP_RETURN_ON_ERROR(touch_pad_denoise_set_config(&(touch_pad_denoise_t){
+                          .cap_level = TOUCH_PAD_DENOISE_CAP_L4,
+                          .grade = TOUCH_PAD_DENOISE_BIT4,
+                      }),
+                      RADIO_TAG, "Failed to initialize touch");
+  ESP_RETURN_ON_ERROR(touch_pad_denoise_enable(), RADIO_TAG,
+                      "Failed to initialize touch");
+  ESP_RETURN_ON_ERROR(touch_pad_set_thresh(TOUCH_PAD_CHANNEL, touch_threshold),
+                      RADIO_TAG, "Failed to initialize touch");
+  ESP_RETURN_ON_ERROR(touch_pad_isr_register(touch_intr, touch_task_handle,
+                                             TOUCH_PAD_INTR_MASK_ACTIVE |
+                                                 TOUCH_PAD_INTR_MASK_INACTIVE),
+                      RADIO_TAG, "Failed to initialize touch");
+  ESP_RETURN_ON_ERROR(touch_pad_intr_enable(TOUCH_PAD_INTR_MASK_ACTIVE |
+                                            TOUCH_PAD_INTR_MASK_INACTIVE),
+                      RADIO_TAG, "Failed to initialize touch");
+  ESP_RETURN_ON_ERROR(touch_pad_set_fsm_mode(TOUCH_FSM_MODE_TIMER), RADIO_TAG,
+                      "Failed to initialize touch");
+  ESP_RETURN_ON_ERROR(touch_pad_fsm_start(), RADIO_TAG,
+                      "Failed to initialize touch");
 
   uint8_t enabled = 0;
   esp_err_t ret = nvs_get_u8(pi_nvs_handle, "enabled", &enabled);

@@ -5,6 +5,7 @@
 #include "esp_log.h"
 #include "freertos/semphr.h"
 #include "soc/adc_channel.h"
+#include "soc/touch_sensor_channel.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -89,6 +90,8 @@ i2c_master_bus_handle_t board_i2c_get_handle(void);
 #define FREQUENCY_ADC_CHANNEL ADC1_GPIO2_CHANNEL
 
 #define LIGHT_ADC_CHANNEL ADC1_GPIO5_CHANNEL
+
+#define TOUCH_PAD_CHANNEL TOUCH_PAD_GPIO6_CHANNEL
 
 #define LED_COUNT (2)
 #define LED_PIN GPIO_NUM_48
