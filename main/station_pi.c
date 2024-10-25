@@ -52,6 +52,8 @@ static tone_generator_t touch_tone = NULL;
 
 static tone_generator_t button_tone = NULL;
 
+// TODO: telemetry
+
 static void light_start_tone() {
   ESP_ERROR_CHECK_WITHOUT_ABORT(tone_generator_init(
       &(tone_generator_config_t){
