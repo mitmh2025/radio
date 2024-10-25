@@ -47,4 +47,4 @@ idf_component_register(
   opus
   sdmmc)
 
-  target_compile_options(${COMPONENT_LIB} PRIVATE -Werror)
+target_compile_options(${COMPONENT_LIB} PRIVATE -Werror)

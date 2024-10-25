@@ -130,7 +130,7 @@ typedef struct {
 
 typedef struct tone_generator *tone_generator_t;
 
-esp_err_t tone_generator_init(tone_generator_config_t *config,
+esp_err_t tone_generator_init(const tone_generator_config_t *config,
                               tone_generator_t *generator);
 void tone_generator_release(tone_generator_t generator);
 void tone_generator_entune(tone_generator_t generator);

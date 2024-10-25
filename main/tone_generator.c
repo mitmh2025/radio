@@ -141,7 +141,7 @@ static int tone_generator_play(void *ctx, char *data, int len,
   return len;
 }
 
-esp_err_t tone_generator_init(tone_generator_config_t *config,
+esp_err_t tone_generator_init(const tone_generator_config_t *config,
                               tone_generator_t *generator) {
   ESP_RETURN_ON_FALSE(config, ESP_ERR_INVALID_ARG, RADIO_TAG, "config is NULL");
   ESP_RETURN_ON_FALSE(generator, ESP_ERR_INVALID_ARG, RADIO_TAG,

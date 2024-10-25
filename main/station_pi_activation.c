@@ -166,7 +166,8 @@ static esp_err_t check_enable() {
   return ESP_OK;
 }
 
-static void enable_attr_callback(const char *key, things_attribute_t *value) {
+static void enable_attr_callback(const char *key,
+                                 const things_attribute_t *value) {
   bool enabled = false;
   switch (value->type) {
   case THINGS_ATTRIBUTE_TYPE_BOOL:

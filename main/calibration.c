@@ -183,6 +183,9 @@ esp_err_t calibration_calibrate(radio_calibration_t *calibration) {
       led_set_pixel(1, 255, 0, 0);
     }
   }
+  // Take one last reading
+  xTaskNotifyWaitIndexed(ADC_NOTIFY_INDEX, ULONG_MAX, ULONG_MAX, &frequency,
+                         portMAX_DELAY);
   calibration->frequency_max = frequency;
   ESP_LOGW(RADIO_TAG,
            "Frequency max: %" PRIu32 " (0x%" PRIx32 "), target: %" PRIu32

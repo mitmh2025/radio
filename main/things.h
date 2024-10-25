@@ -28,9 +28,9 @@ typedef struct {
 } things_attribute_t;
 
 typedef void (*things_attribute_callback_t)(const char *key,
-                                            things_attribute_t *attr);
+                                            const things_attribute_t *attr);
 typedef void (*things_telemetry_generator_t)(void);
-typedef esp_err_t (*things_rpc_handler_t)(things_attribute_t *param);
+typedef esp_err_t (*things_rpc_handler_t)(const things_attribute_t *param);
 
 esp_err_t things_init();
 esp_err_t things_provision(const char *token);

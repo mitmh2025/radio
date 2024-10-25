@@ -33,7 +33,7 @@ static atomic_uint_least32_t webrtc_buffer_duration = 0;
 #define NOTIFY_BUFFER_DURATION_CHANGED BIT(3)
 #define NOTIFY_ENTUNE_CHANGED BIT(4)
 
-static void whep_url_callback(const char *key, things_attribute_t *attr) {
+static void whep_url_callback(const char *key, const things_attribute_t *attr) {
   const char *url = NULL;
   switch (attr->type) {
   case THINGS_ATTRIBUTE_TYPE_UNSET:

@@ -14,7 +14,7 @@
 #include "esp_log.h"
 #include "esp_random.h"
 
-#include "com/amazonaws/kinesis/video/common/Include.h"
+#include <com/amazonaws/kinesis/video/common/Include.h>
 
 #define FILE_CACHE_PREFIX STORAGE_MOUNTPOINT "/cache"
 
@@ -81,7 +81,7 @@ static void free_file_cache_manifest(file_cache_manifest *manifest) {
   free(manifest);
 }
 
-static void url_callback(const char *key, things_attribute_t *attr) {
+static void url_callback(const char *key, const things_attribute_t *attr) {
   xSemaphoreTake(manifest_url_mutex, portMAX_DELAY);
   if (manifest_url != NULL) {
     free(manifest_url);
@@ -141,7 +141,7 @@ static esp_err_t event_handler(esp_http_client_event_t *evt) {
         data->failed = true;
         return ESP_FAIL;
       }
-      http_data += ret;
+      http_data = (const char *)http_data + ret;
       http_len -= ret;
     }
   }
@@ -520,14 +520,14 @@ static esp_err_t refresh() {
                     strerror(errno));
 
   qsort(hashes, manifest_length, sizeof(char *), compare_hash);
-  struct dirent *entry;
+  const struct dirent *entry;
   while ((entry = readdir(cache_dir)) != NULL) {
     if (entry->d_type != DT_REG ||
         strcmp(entry->d_name, "manifest.json") == 0) {
       continue;
     }
 
-    char *key = &entry->d_name[0];
+    const char *key = &entry->d_name[0];
     char **found =
         bsearch(&key, hashes, manifest_length, sizeof(char *), compare_hash);
     if (found == NULL) {
@@ -681,7 +681,7 @@ int file_cache_open_file(const char *name) {
   file_cache_manifest_entry key = {
       .name = name,
   };
-  file_cache_manifest_entry *entry =
+  const file_cache_manifest_entry *entry =
       bsearch(&key, manifest_cache->entries, manifest_cache->entry_count,
               sizeof(file_cache_manifest_entry), manifest_entry_compare_name);
   if (entry == NULL) {

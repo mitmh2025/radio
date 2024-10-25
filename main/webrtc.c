@@ -8,8 +8,8 @@
 
 #include "opus.h"
 
-#include "com/amazonaws/kinesis/video/common/Include.h"
-#include "com/amazonaws/kinesis/video/webrtcclient/Include.h"
+#include <com/amazonaws/kinesis/video/common/Include.h>
+#include <com/amazonaws/kinesis/video/webrtcclient/Include.h>
 
 struct webrtc_connection {
   webrtc_connection_state_change_callback_t state_change_callback;
@@ -307,8 +307,8 @@ static void webrtc_on_ice_candidate(UINT64 arg, PCHAR candidate) {
     return;
   }
 
-  char *candidate_start = NULL;
-  char *candidate_end = NULL;
+  const char *candidate_start = NULL;
+  const char *candidate_end = NULL;
   for (int i = 1; i < ret - 1; i++) {
     if (tokens[i].type == JSMN_STRING &&
         strncmp(candidate + tokens[i].start, "candidate",

@@ -483,7 +483,7 @@ static int block_read(void *context, uint32_t block, uint32_t offset,
         return -EIO;
       }
 
-      buffer += read_size;
+      buffer = (char *)buffer + read_size;
     }
   }
 
@@ -536,7 +536,7 @@ static int block_write(void *context, uint32_t block, uint32_t offset,
         return -EIO;
       }
 
-      buffer += write_size;
+      buffer = (const char *)buffer + write_size;
     }
   }
 
@@ -565,6 +565,7 @@ static int block_erase(void *context, uint32_t block) {
   return 0;
 }
 
+// cppcheck-suppress constParameterCallback
 static int block_sync(void *context) { return 0; }
 
 esp_err_t storage_init(void) {

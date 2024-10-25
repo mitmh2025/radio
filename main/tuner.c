@@ -64,7 +64,7 @@ static inline bool gpio_to_tuner_mode(bool state) {
 }
 
 static void telemetry_generator() {
-  struct frequency_handle *frequency = current_frequency;
+  const struct frequency_handle *frequency = current_frequency;
   things_send_telemetry_string(
       "tuner_mode", current_radio_mode == TUNER_MODE_PM ? "PM" : "FM");
   things_send_telemetry_float("tuner_frequency",
@@ -190,11 +190,11 @@ static void tuner_task(void *ctx) {
     }
 
     // Find the frequency we're currently tuned to
-    struct frequency_list *frequencies =
+    const struct frequency_list *frequencies =
         current_radio_mode == TUNER_MODE_PM ? &pm_frequencies : &fm_frequencies;
     struct frequency_handle *new_frequency = NULL;
     TAILQ_FOREACH(new_frequency, frequencies, next) {
-      if (new_frequency->enabled &&
+      if (new_frequency && new_frequency->enabled &&
           frequency_raw >= new_frequency->frequency_low &&
           frequency_raw < new_frequency->frequency_high) {
         break;

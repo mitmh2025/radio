@@ -27,7 +27,8 @@ struct playback_handle {
   mixer_channel_t channel;
 };
 
-esp_err_t playback_file(playback_cfg_t *cfg, playback_handle_t *return_handle) {
+esp_err_t playback_file(const playback_cfg_t *cfg,
+                        playback_handle_t *return_handle) {
   ESP_RETURN_ON_FALSE(return_handle, ESP_ERR_INVALID_ARG, RADIO_TAG,
                       "Invalid handle");
 
