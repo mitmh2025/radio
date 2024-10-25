@@ -20,6 +20,7 @@
 #include "driver/touch_sensor.h"
 #include "esp_check.h"
 #include "esp_log.h"
+#include "esp_random.h"
 #include "esp_timer.h"
 
 #define STATION_PI_NVS_NAMESPACE "radio:pi"
@@ -187,7 +188,8 @@ static void light_adc_cb(void *ctx, adc_digi_output_data_t *result) {
 static void station_pi_task(void *ctx) {
   while (true) {
     uint32_t notification = 0;
-    xTaskNotifyWait(0, ULONG_MAX, &notification, pdMS_TO_TICKS(100));
+    xTaskNotifyWait(0, ULONG_MAX, &notification,
+                    pdMS_TO_TICKS(100 + esp_random() % 10));
 
     if (notification & NOTIFY_TOUCH_ACTIVE && !touch_tone) {
       touch_start_tone();
