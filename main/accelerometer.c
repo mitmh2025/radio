@@ -317,8 +317,12 @@ esp_err_t accelerometer_subscribe_pulse(const accelerometer_pulse_cfg_t *cfg,
                                         void (*callback)(void *), void *arg) {
   ESP_RETURN_ON_FALSE(cfg, ESP_ERR_INVALID_ARG, TAG, "cfg is NULL");
   ESP_RETURN_ON_FALSE(callback, ESP_ERR_INVALID_ARG, TAG, "callback is NULL");
-  ESP_RETURN_ON_FALSE(cfg->threshold < 0x80, ESP_ERR_INVALID_ARG, TAG,
-                      "threshold must be less than 0x80");
+  ESP_RETURN_ON_FALSE(cfg->threshold_x < 0x80, ESP_ERR_INVALID_ARG, TAG,
+                      "threshold_x must be less than 0x80");
+  ESP_RETURN_ON_FALSE(cfg->threshold_y < 0x80, ESP_ERR_INVALID_ARG, TAG,
+                      "threshold_y must be less than 0x80");
+  ESP_RETURN_ON_FALSE(cfg->threshold_z < 0x80, ESP_ERR_INVALID_ARG, TAG,
+                      "threshold_z must be less than 0x80");
 
   xSemaphoreTake(mutex, portMAX_DELAY);
   esp_err_t ret = ESP_OK;
@@ -353,11 +357,11 @@ esp_err_t accelerometer_subscribe_pulse(const accelerometer_pulse_cfg_t *cfg,
   ESP_GOTO_ON_ERROR(write_register(MMA8451Q_REG_PULSE_CFG, pulse_cfg.raw),
                     cleanup, TAG, "Failed to write PULSE_CFG register");
 
-  ESP_GOTO_ON_ERROR(write_register(MMA8451Q_REG_PULSE_THSX, cfg->threshold),
+  ESP_GOTO_ON_ERROR(write_register(MMA8451Q_REG_PULSE_THSX, cfg->threshold_x),
                     cleanup, TAG, "Failed to write PULSE_THSX register");
-  ESP_GOTO_ON_ERROR(write_register(MMA8451Q_REG_PULSE_THSY, cfg->threshold),
+  ESP_GOTO_ON_ERROR(write_register(MMA8451Q_REG_PULSE_THSY, cfg->threshold_y),
                     cleanup, TAG, "Failed to write PULSE_THSY register");
-  ESP_GOTO_ON_ERROR(write_register(MMA8451Q_REG_PULSE_THSZ, cfg->threshold),
+  ESP_GOTO_ON_ERROR(write_register(MMA8451Q_REG_PULSE_THSZ, cfg->threshold_z),
                     cleanup, TAG, "Failed to write PULSE_THSZ register");
   ESP_GOTO_ON_ERROR(write_register(MMA8451Q_REG_PULSE_TMLT, cfg->timelimit),
                     cleanup, TAG, "Failed to write PULSE_TMLT register");

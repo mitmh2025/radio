@@ -21,7 +21,9 @@ static const accelerometer_pulse_cfg_t pulse_cfg = {
     // This threshold (1.375g, give or take) was chosen based on testing on a
     // development setup that is - notably - lacking the legs. We need to
     // re-test on a final device and decide how sensitive we want to be
-    .threshold = 22,
+    .threshold_x = 127, // avoid detecting X pulses
+    .threshold_y = 22,
+    .threshold_z = 22,
     .timelimit = 6, // 30ms
     // The pulse latency setting doesn't apply if you're reading and clearing
     // the interrupt status. Once that's done, new pulses seem to come in, so we

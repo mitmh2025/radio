@@ -67,12 +67,13 @@ static const float button_frequencies[] = {
 bool button_triggered = false;
 static tone_generator_t button_tone = NULL;
 
-// TODO: Copied from station_pi_activation. Decide if we want to require harder
-// knocks here
+// Requires harder knocks than we require for activation
 static const accelerometer_pulse_cfg_t knock_cfg = {
     .odr = ACCELEROMETER_DR_100HZ,
     .osm = ACCELEROMETER_OSM_NORMAL,
-    .threshold = 22,
+    .threshold_x = 127, // avoid detecting X pulses
+    .threshold_y = 34,
+    .threshold_z = 34,
     .timelimit = 6,
     .latency = 1,
 };

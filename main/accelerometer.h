@@ -28,7 +28,9 @@ typedef enum {
 typedef struct {
   accelerometer_odr_t odr;
   accelerometer_osm_t osm;
-  uint8_t threshold;
+  uint8_t threshold_x;
+  uint8_t threshold_y;
+  uint8_t threshold_z;
   uint8_t timelimit;
   uint8_t latency;
 } accelerometer_pulse_cfg_t;
