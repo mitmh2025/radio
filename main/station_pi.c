@@ -30,12 +30,45 @@ static TaskHandle_t pi_task = NULL;
 static frequency_handle_t freq_handle;
 static bool entuned = false;
 
+#define SHIFT_MAGNET BIT(0)
+#define SHIFT_HEADPHONE BIT(1)
+
+uint8_t previous_shift_state = 0;
+uint8_t shift_state = 0;
+
 static bounds_handle_t light_bounds;
 static const uint16_t light_threshold = 500;
 static uint16_t light_smooth = 0xffff;
+static const float light_frequencies[] = {
+    [0] = FREQUENCY_G_4,
+    [SHIFT_MAGNET] = FREQUENCY_D_4,
+    [SHIFT_HEADPHONE] = FREQUENCY_G_5,
+    [SHIFT_MAGNET + SHIFT_HEADPHONE] = FREQUENCY_D_5,
+};
+static bool light_triggered = false;
 static tone_generator_t light_tone = NULL;
 
-// Copied from station_pi_activation
+static uint32_t touch_threshold = 0x8000;
+static const float touch_frequencies[] = {
+    [0] = FREQUENCY_A_4,
+    [SHIFT_MAGNET] = FREQUENCY_E_4,
+    [SHIFT_HEADPHONE] = FREQUENCY_A_5,
+    [SHIFT_MAGNET + SHIFT_HEADPHONE] = FREQUENCY_E_5,
+};
+static bool touch_triggered = false;
+static tone_generator_t touch_tone = NULL;
+
+static const float button_frequencies[] = {
+    [0] = FREQUENCY_B_4,
+    [SHIFT_MAGNET] = FREQUENCY_F_SHARP_4,
+    [SHIFT_HEADPHONE] = FREQUENCY_B_5,
+    [SHIFT_MAGNET + SHIFT_HEADPHONE] = FREQUENCY_F_SHARP_5,
+};
+bool button_triggered = false;
+static tone_generator_t button_tone = NULL;
+
+// TODO: Copied from station_pi_activation. Decide if we want to require harder
+// knocks here
 static const accelerometer_pulse_cfg_t knock_cfg = {
     .odr = ACCELEROMETER_DR_100HZ,
     .osm = ACCELEROMETER_OSM_NORMAL,
@@ -46,14 +79,20 @@ static const accelerometer_pulse_cfg_t knock_cfg = {
 #define PULSE_DEBOUNCE_US (50 * 1000)
 static int64_t knock_last_time = 0;
 static esp_timer_handle_t knock_timer = NULL;
+static const float knock_frequencies[] = {
+    [0] = FREQUENCY_C_5,
+    [SHIFT_MAGNET] = FREQUENCY_G_4,
+    [SHIFT_HEADPHONE] = FREQUENCY_C_6,
+    [SHIFT_MAGNET + SHIFT_HEADPHONE] = FREQUENCY_G_5,
+};
 static tone_generator_t knock_tone = NULL;
 
-static uint32_t touch_threshold = 0x8000;
-static tone_generator_t touch_tone = NULL;
-
-static tone_generator_t button_tone = NULL;
-
 // TODO: telemetry
+
+static void light_stop_tone() {
+  tone_generator_release(light_tone);
+  light_tone = NULL;
+}
 
 static void light_start_tone() {
   ESP_ERROR_CHECK_WITHOUT_ABORT(tone_generator_init(
@@ -63,14 +102,45 @@ static void light_start_tone() {
           .decay_time = 20000,
           .sustain_level = 0x8000,
           .release_time = 100000,
-          .frequency = FREQUENCY_G_4,
+          .frequency = light_frequencies[shift_state],
       },
       &light_tone));
 }
 
-static void light_stop_tone() {
-  tone_generator_release(light_tone);
-  light_tone = NULL;
+static void touch_stop_tone() {
+  tone_generator_release(touch_tone);
+  touch_tone = NULL;
+}
+
+static void touch_start_tone() {
+  ESP_ERROR_CHECK_WITHOUT_ABORT(tone_generator_init(
+      &(tone_generator_config_t){
+          .entuned = entuned,
+          .attack_time = 20000,
+          .decay_time = 20000,
+          .sustain_level = 0x8000,
+          .release_time = 100000,
+          .frequency = touch_frequencies[shift_state],
+      },
+      &touch_tone));
+}
+
+static void button_stop_tone() {
+  tone_generator_release(button_tone);
+  button_tone = NULL;
+}
+
+static void button_start_tone() {
+  ESP_ERROR_CHECK_WITHOUT_ABORT(tone_generator_init(
+      &(tone_generator_config_t){
+          .entuned = entuned,
+          .attack_time = 20000,
+          .decay_time = 20000,
+          .sustain_level = 0x8000,
+          .release_time = 100000,
+          .frequency = button_frequencies[shift_state],
+      },
+      &button_tone));
 }
 
 static void knock_stop_tone(void *arg) {
@@ -101,7 +171,7 @@ static void knock_start_tone(void *arg) {
           .decay_time = 20000,
           .sustain_level = 0x8000,
           .release_time = 100000,
-          .frequency = FREQUENCY_C_5,
+          .frequency = knock_frequencies[shift_state],
       },
       &knock_tone));
 
@@ -109,43 +179,41 @@ cleanup:
   knock_last_time = now;
 }
 
-static void touch_start_tone() {
-  ESP_ERROR_CHECK_WITHOUT_ABORT(tone_generator_init(
-      &(tone_generator_config_t){
-          .entuned = entuned,
-          .attack_time = 20000,
-          .decay_time = 20000,
-          .sustain_level = 0x8000,
-          .release_time = 100000,
-          .frequency = FREQUENCY_A_4,
-      },
-      &touch_tone));
-}
-
-static void touch_stop_tone() {
-  tone_generator_release(touch_tone);
-  touch_tone = NULL;
-}
-
-static void button_start_tone() {
-  ESP_ERROR_CHECK_WITHOUT_ABORT(tone_generator_init(
-      &(tone_generator_config_t){
-          .entuned = entuned,
-          .attack_time = 20000,
-          .decay_time = 20000,
-          .sustain_level = 0x8000,
-          .release_time = 100000,
-          .frequency = FREQUENCY_B_4,
-      },
-      &button_tone));
-}
-
-static void button_stop_tone() {
-  tone_generator_release(button_tone);
-  button_tone = NULL;
-}
-
 static void update_state() {
+  if (shift_state != previous_shift_state) {
+    if (light_tone) {
+      light_stop_tone();
+      light_start_tone();
+    }
+    if (touch_tone) {
+      touch_stop_tone();
+      touch_start_tone();
+    }
+    if (button_tone) {
+      button_stop_tone();
+      button_start_tone();
+    }
+    previous_shift_state = shift_state;
+  }
+
+  if (light_triggered && !light_tone) {
+    light_start_tone();
+  } else if (!light_triggered && light_tone) {
+    light_stop_tone();
+  }
+
+  if (touch_triggered && !touch_tone) {
+    touch_start_tone();
+  } else if (!touch_triggered && touch_tone) {
+    touch_stop_tone();
+  }
+
+  if (button_triggered && !button_tone) {
+    button_start_tone();
+  } else if (!button_triggered && button_tone) {
+    button_stop_tone();
+  }
+
   if (light_tone) {
     tone_generator_set_entuned(light_tone, entuned);
   }
@@ -171,12 +239,11 @@ static void light_adc_cb(void *ctx, adc_digi_output_data_t *result) {
 
   bounds_update(light_bounds, light_smooth);
 
-  bool triggered =
+  bool was_triggered = light_triggered;
+  light_triggered =
       bounds_get_max(light_bounds) - light_threshold > light_smooth;
-  if (triggered && !light_tone) {
-    light_start_tone();
-  } else if (!triggered && light_tone) {
-    light_stop_tone();
+  if (light_triggered != was_triggered) {
+    xTaskNotify(pi_task, 0, eNoAction);
   }
 }
 
@@ -188,21 +255,42 @@ static void light_adc_cb(void *ctx, adc_digi_output_data_t *result) {
 static void station_pi_task(void *ctx) {
   while (true) {
     uint32_t notification = 0;
-    xTaskNotifyWait(0, ULONG_MAX, &notification,
-                    pdMS_TO_TICKS(100 + esp_random() % 10));
+    TickType_t wait_time = pdMS_TO_TICKS(entuned ? (50 + esp_random() % 5)
+                                                 : 1000 + esp_random() % 100);
+    xTaskNotifyWait(0, ULONG_MAX, &notification, wait_time);
+    if (!entuned) {
+      continue;
+    }
 
     if (notification & NOTIFY_TOUCH_ACTIVE && !touch_tone) {
-      touch_start_tone();
+      touch_triggered = true;
     }
     if (notification & NOTIFY_TOUCH_INACTIVE && touch_tone) {
-      touch_stop_tone();
+      touch_triggered = false;
     }
     if (notification & NOTIFY_BUTTON_ACTIVE && !button_tone) {
-      button_start_tone();
+      button_triggered = true;
     }
     if (notification & NOTIFY_BUTTON_INACTIVE && button_tone) {
-      button_stop_tone();
+      button_triggered = false;
     }
+
+    bool gpio;
+    esp_err_t err = tas2505_read_gpio(&gpio);
+    if (err != ESP_OK) {
+      ESP_LOGE(RADIO_TAG, "Failed to read GPIO: %d (%s)", err,
+               esp_err_to_name(err));
+      // default to not connected, i.e. high
+      gpio = true;
+    }
+
+    if (gpio) {
+      shift_state &= ~SHIFT_HEADPHONE;
+    } else {
+      shift_state |= SHIFT_HEADPHONE;
+    }
+
+    update_state();
   }
 }
 
@@ -249,12 +337,12 @@ static void entune(void *ctx) {
       BUTTON_TRIANGLE_PIN, GPIO_INTR_ANYEDGE, button_intr, pi_task, 50000));
 
   entuned = true;
-  update_state();
+  xTaskNotify(pi_task, 0, eNoAction);
 }
 
 static void detune(void *ctx) {
   entuned = false;
-  update_state();
+  xTaskNotify(pi_task, 0, eNoAction);
   ESP_ERROR_CHECK_WITHOUT_ABORT(debounce_handler_remove(BUTTON_TRIANGLE_PIN));
   ESP_ERROR_CHECK_WITHOUT_ABORT(accelerometer_unsubscribe_pulse());
   ESP_ERROR_CHECK_WITHOUT_ABORT(audio_output_resume());
