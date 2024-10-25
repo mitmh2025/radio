@@ -313,7 +313,7 @@ static void IRAM_ATTR touch_intr(void *ctx) {
 
 static void IRAM_ATTR button_intr(void *ctx, bool state) {
   TaskHandle_t task_handle = (TaskHandle_t)ctx;
-  uint32_t notification = state ? NOTIFY_BUTTON_ACTIVE : NOTIFY_BUTTON_INACTIVE;
+  uint32_t notification = state ? NOTIFY_BUTTON_INACTIVE : NOTIFY_BUTTON_ACTIVE;
   BaseType_t higher_priority_task_woken = pdFALSE;
   xTaskNotifyFromISR(task_handle, notification, eSetBits,
                      &higher_priority_task_woken);
