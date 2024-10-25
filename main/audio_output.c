@@ -56,13 +56,13 @@ esp_err_t audio_output_init(void) {
 esp_err_t audio_output_suspend() {
   ESP_RETURN_ON_FALSE(output_task_handle, ESP_ERR_INVALID_STATE, RADIO_TAG,
                       "Audio output task not initialized");
-  xTaskNotify(output_task_handle, NOTIFY_SUSPENDED, eSetBits);
+  xTaskNotify(output_task_handle, NOTIFY_SUSPENDED, eSetValueWithOverwrite);
   return ESP_OK;
 }
 
 esp_err_t audio_output_resume() {
   ESP_RETURN_ON_FALSE(output_task_handle, ESP_ERR_INVALID_STATE, RADIO_TAG,
                       "Audio output task not initialized");
-  xTaskNotify(output_task_handle, ~NOTIFY_SUSPENDED, eSetBits);
+  xTaskNotify(output_task_handle, 0, eSetValueWithOverwrite);
   return ESP_OK;
 }
