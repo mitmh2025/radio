@@ -3,6 +3,7 @@
 #include "accelerometer.h"
 #include "adc.h"
 #include "bounds.h"
+#include "debounce.h"
 #include "main.h"
 #include "mixer.h"
 #include "station_pi.h"
@@ -46,6 +47,8 @@ static tone_generator_t knock_tone = NULL;
 static TaskHandle_t touch_task_handle = NULL;
 static uint32_t touch_threshold = 0x8000;
 static tone_generator_t touch_tone = NULL;
+
+static tone_generator_t button_tone = NULL;
 
 static void light_start_tone() {
   ESP_ERROR_CHECK_WITHOUT_ABORT(tone_generator_init(
@@ -119,6 +122,24 @@ static void touch_stop_tone() {
   touch_tone = NULL;
 }
 
+static void button_start_tone() {
+  ESP_ERROR_CHECK_WITHOUT_ABORT(tone_generator_init(
+      &(tone_generator_config_t){
+          .entuned = entuned,
+          .attack_time = 20000,
+          .decay_time = 20000,
+          .sustain_level = 0x8000,
+          .release_time = 100000,
+          .frequency = FREQUENCY_B_4,
+      },
+      &button_tone));
+}
+
+static void button_stop_tone() {
+  tone_generator_release(button_tone);
+  button_tone = NULL;
+}
+
 static void update_state() {
   if (light_tone) {
     tone_generator_set_entuned(light_tone, entuned);
@@ -128,6 +149,9 @@ static void update_state() {
   }
   if (touch_tone) {
     tone_generator_set_entuned(touch_tone, entuned);
+  }
+  if (button_tone) {
+    tone_generator_set_entuned(button_tone, entuned);
   }
 }
 
@@ -151,23 +175,50 @@ static void light_adc_cb(void *ctx, adc_digi_output_data_t *result) {
   }
 }
 
+#define NOTIFY_TOUCH_ACTIVE BIT(0)
+#define NOTIFY_TOUCH_INACTIVE BIT(1)
+#define NOTIFY_BUTTON_ACTIVE BIT(2)
+#define NOTIFY_BUTTON_INACTIVE BIT(3)
+
 static void touch_task(void *ctx) {
   while (true) {
     uint32_t notification = 0;
     xTaskNotifyWait(0, ULONG_MAX, &notification, pdMS_TO_TICKS(100));
 
-    if (notification & TOUCH_PAD_INTR_MASK_ACTIVE && !touch_tone) {
+    if (notification & NOTIFY_TOUCH_ACTIVE && !touch_tone) {
       touch_start_tone();
     }
-    if (notification & TOUCH_PAD_INTR_MASK_INACTIVE && touch_tone) {
+    if (notification & NOTIFY_TOUCH_INACTIVE && touch_tone) {
       touch_stop_tone();
+    }
+    if (notification & NOTIFY_BUTTON_ACTIVE && !button_tone) {
+      button_start_tone();
+    }
+    if (notification & NOTIFY_BUTTON_INACTIVE && button_tone) {
+      button_stop_tone();
     }
   }
 }
 
 static void IRAM_ATTR touch_intr(void *ctx) {
   TaskHandle_t task_handle = (TaskHandle_t)ctx;
-  uint32_t notification = touch_pad_read_intr_status_mask();
+  uint32_t touch_status = touch_pad_read_intr_status_mask();
+  uint32_t notification = 0;
+  if (touch_status & TOUCH_PAD_INTR_MASK_ACTIVE) {
+    notification |= NOTIFY_TOUCH_ACTIVE;
+  }
+  if (touch_status & TOUCH_PAD_INTR_MASK_INACTIVE) {
+    notification |= NOTIFY_TOUCH_INACTIVE;
+  }
+  BaseType_t higher_priority_task_woken = pdFALSE;
+  xTaskNotifyFromISR(task_handle, notification, eSetBits,
+                     &higher_priority_task_woken);
+  portYIELD_FROM_ISR(higher_priority_task_woken);
+}
+
+static void IRAM_ATTR button_intr(void *ctx, bool state) {
+  TaskHandle_t task_handle = (TaskHandle_t)ctx;
+  uint32_t notification = state ? NOTIFY_BUTTON_ACTIVE : NOTIFY_BUTTON_INACTIVE;
   BaseType_t higher_priority_task_woken = pdFALSE;
   xTaskNotifyFromISR(task_handle, notification, eSetBits,
                      &higher_priority_task_woken);
@@ -179,6 +230,16 @@ static void entune(void *ctx) {
   ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_default_static(false));
   ESP_ERROR_CHECK_WITHOUT_ABORT(
       accelerometer_subscribe_pulse(&knock_cfg, knock_start_tone, NULL));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(gpio_config(&(gpio_config_t){
+      .pin_bit_mask = 1ULL << BUTTON_TRIANGLE_PIN,
+      .mode = GPIO_MODE_INPUT,
+      .pull_up_en = GPIO_PULLUP_ENABLE,
+      .pull_down_en = GPIO_PULLDOWN_DISABLE,
+      .intr_type = GPIO_INTR_ANYEDGE,
+  }));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(
+      debounce_handler_add(BUTTON_TRIANGLE_PIN, GPIO_INTR_ANYEDGE, button_intr,
+                           touch_task_handle, 50000));
 
   entuned = true;
   update_state();
@@ -187,6 +248,7 @@ static void entune(void *ctx) {
 static void detune(void *ctx) {
   entuned = false;
   update_state();
+  ESP_ERROR_CHECK_WITHOUT_ABORT(debounce_handler_remove(BUTTON_TRIANGLE_PIN));
   ESP_ERROR_CHECK_WITHOUT_ABORT(accelerometer_unsubscribe_pulse());
   ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_default_static(true));
   station_pi_activation_enable(true);
