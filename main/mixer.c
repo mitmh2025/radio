@@ -180,8 +180,12 @@ esp_err_t mixer_init() {
 
   ESP_RETURN_ON_ERROR(mixer_reopen(), RADIO_TAG, "Failed to reopen mixer");
   mixer_rb = rb_create(MIXER_BUFFER_SIZE, 1);
-  xTaskCreatePinnedToCore(mixer_task, "mixer_task", 10 * 1024, NULL, 15, NULL,
-                          1);
+  ESP_RETURN_ON_FALSE(mixer_rb, ESP_FAIL, RADIO_TAG,
+                      "Failed to create mixer ringbuf");
+  ESP_RETURN_ON_FALSE(pdPASS == xTaskCreatePinnedToCore(mixer_task,
+                                                        "mixer_task", 10 * 1024,
+                                                        NULL, 15, NULL, 1),
+                      ESP_FAIL, RADIO_TAG, "Failed to create mixer task");
 
   // Create pipeline
   audio_pipeline_cfg_t pipeline_cfg = DEFAULT_AUDIO_PIPELINE_CONFIG();

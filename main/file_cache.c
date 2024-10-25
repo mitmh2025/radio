@@ -658,13 +658,10 @@ esp_err_t file_cache_init(void) {
 
   // Push all work to a task because we need to wait until storage has been
   // mounted
-  BaseType_t result = xTaskCreatePinnedToCore(
-      file_cache_task, "file_cache_task", 6144, NULL, 4, &task_handle, 0);
-
-  if (result != pdPASS) {
-    ESP_LOGE(RADIO_TAG, "Failed to create file cache task");
-    return ESP_FAIL;
-  }
+  ESP_RETURN_ON_FALSE(
+      pdPASS == xTaskCreatePinnedToCore(file_cache_task, "file_cache_task",
+                                        6144, NULL, 4, &task_handle, 0),
+      ESP_FAIL, RADIO_TAG, "Failed to create file cache task");
 
   things_register_telemetry_generator(telemetry_generator, "file_cache",
                                       &telemetry_index);

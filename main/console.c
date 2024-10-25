@@ -822,7 +822,9 @@ esp_err_t console_init() {
   ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register nvs-rm command: %s",
                       esp_err_to_name(err));
 
-  xTaskCreate(console_task, "console", 4096, NULL, 21, NULL);
+  ESP_RETURN_ON_FALSE(
+      pdPASS == xTaskCreate(console_task, "console", 4096, NULL, 21, NULL),
+      ESP_FAIL, RADIO_TAG, "Failed to create console task");
 
   return ESP_OK;
 }

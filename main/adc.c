@@ -83,8 +83,10 @@ esp_err_t adc_init() {
                       "adc_init failed");
 
   TaskHandle_t adc_task_handle = NULL;
-  xTaskCreatePinnedToCore(adc_task, "adc_task", 4096, NULL, 18,
-                          &adc_task_handle, 0);
+  ESP_RETURN_ON_FALSE(pdPASS == xTaskCreatePinnedToCore(adc_task, "adc_task",
+                                                        4096, NULL, 18,
+                                                        &adc_task_handle, 0),
+                      ESP_FAIL, RADIO_TAG, "Failed to create adc task");
 
   adc_continuous_evt_cbs_t cbs = {
       .on_conv_done = adc_conv_done_cb,

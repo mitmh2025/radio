@@ -367,8 +367,10 @@ esp_err_t tuner_init(radio_calibration_t *calibration) {
     mode_tuners[current_radio_mode].entune();
   }
 
-  xTaskCreatePinnedToCore(tuner_task, "tuner", 4096, NULL, 12,
-                          &tuner_task_handle, 1);
+  ESP_RETURN_ON_FALSE(pdPASS == xTaskCreatePinnedToCore(tuner_task, "tuner",
+                                                        4096, NULL, 12,
+                                                        &tuner_task_handle, 1),
+                      ESP_ERR_NO_MEM, RADIO_TAG, "Failed to create tuner task");
   ESP_RETURN_ON_ERROR(debounce_handler_add(TOGGLE_PIN, GPIO_INTR_ANYEDGE,
                                            modulation_callback, NULL, 50000),
                       RADIO_TAG, "Failed to add modulation callback");

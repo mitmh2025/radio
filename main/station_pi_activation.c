@@ -93,8 +93,10 @@ static void timer_callback(void *arg) {
            (rhythm_min_period + rhythm_max_period) / 2);
 
   if (!activate_task_handle) {
-    xTaskCreate(activate_task, "pi_activate", 4096, NULL, 17,
-                &activate_task_handle);
+    if (pdPASS != xTaskCreate(activate_task, "pi_activate", 4096, NULL, 17,
+                              &activate_task_handle)) {
+      ESP_LOGE(RADIO_TAG, "Failed to create activation task");
+    };
   }
 }
 

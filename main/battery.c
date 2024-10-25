@@ -239,8 +239,11 @@ esp_err_t battery_init() {
   BOARD_I2C_MUTEX_UNLOCK();
   ESP_RETURN_ON_ERROR(err, RADIO_TAG, "i2c_master_bus_add_device failed");
 
-  xTaskCreatePinnedToCore(battery_monitor, "battery_monitor", 4096, NULL, 5,
-                          &battery_monitor_task_handle, 0);
+  ESP_RETURN_ON_FALSE(pdPASS == xTaskCreatePinnedToCore(
+                                    battery_monitor, "battery_monitor", 4096,
+                                    NULL, 5, &battery_monitor_task_handle, 0),
+                      ESP_FAIL, RADIO_TAG,
+                      "Failed to create battery monitor task");
   things_register_telemetry_generator(battery_telemetry_generator, "battery",
                                       &battery_telemetry_index);
 

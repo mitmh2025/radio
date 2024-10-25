@@ -45,8 +45,10 @@ static void output_task(void *arg) {
 }
 
 esp_err_t audio_output_init(void) {
-  xTaskCreatePinnedToCore(output_task, "audio_output", 4096, NULL, 17,
-                          &output_task_handle, 0);
+  ESP_RETURN_ON_FALSE(
+      pdPASS == xTaskCreatePinnedToCore(output_task, "audio_output", 4096, NULL,
+                                        17, &output_task_handle, 0),
+      ESP_FAIL, RADIO_TAG, "Failed to create audio output task");
 
   return ESP_OK;
 }
