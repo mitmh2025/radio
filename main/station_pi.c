@@ -24,6 +24,7 @@
 
 #define STATION_PI_NVS_NAMESPACE "radio:pi"
 static nvs_handle_t pi_nvs_handle;
+static TaskHandle_t pi_task = NULL;
 
 static frequency_handle_t freq_handle;
 static bool entuned = false;
@@ -46,7 +47,6 @@ static int64_t knock_last_time = 0;
 static esp_timer_handle_t knock_timer = NULL;
 static tone_generator_t knock_tone = NULL;
 
-static TaskHandle_t touch_task_handle = NULL;
 static uint32_t touch_threshold = 0x8000;
 static tone_generator_t touch_tone = NULL;
 
@@ -184,7 +184,7 @@ static void light_adc_cb(void *ctx, adc_digi_output_data_t *result) {
 #define NOTIFY_BUTTON_ACTIVE BIT(2)
 #define NOTIFY_BUTTON_INACTIVE BIT(3)
 
-static void touch_task(void *ctx) {
+static void station_pi_task(void *ctx) {
   while (true) {
     uint32_t notification = 0;
     xTaskNotifyWait(0, ULONG_MAX, &notification, pdMS_TO_TICKS(100));
@@ -243,9 +243,8 @@ static void entune(void *ctx) {
       .pull_down_en = GPIO_PULLDOWN_DISABLE,
       .intr_type = GPIO_INTR_ANYEDGE,
   }));
-  ESP_ERROR_CHECK_WITHOUT_ABORT(
-      debounce_handler_add(BUTTON_TRIANGLE_PIN, GPIO_INTR_ANYEDGE, button_intr,
-                           touch_task_handle, 50000));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(debounce_handler_add(
+      BUTTON_TRIANGLE_PIN, GPIO_INTR_ANYEDGE, button_intr, pi_task, 50000));
 
   entuned = true;
   update_state();
@@ -292,10 +291,10 @@ esp_err_t station_pi_init() {
                           &knock_timer),
                       RADIO_TAG, "Failed to initialize knock timer");
 
-  ESP_RETURN_ON_FALSE(
-      pdPASS == xTaskCreatePinnedToCore(touch_task, "touch_task", 4096, NULL,
-                                        11, &touch_task_handle, 0),
-      ESP_FAIL, RADIO_TAG, "Failed to create touch task");
+  ESP_RETURN_ON_FALSE(pdPASS == xTaskCreatePinnedToCore(station_pi_task,
+                                                        "pi_task", 4096, NULL,
+                                                        11, &pi_task, 0),
+                      ESP_FAIL, RADIO_TAG, "Failed to create touch task");
   ESP_RETURN_ON_ERROR(touch_pad_init(), RADIO_TAG,
                       "Failed to initialize touch");
   ESP_RETURN_ON_ERROR(touch_pad_config(TOUCH_PAD_CHANNEL), RADIO_TAG,
@@ -316,7 +315,7 @@ esp_err_t station_pi_init() {
                       "Failed to initialize touch");
   ESP_RETURN_ON_ERROR(touch_pad_set_thresh(TOUCH_PAD_CHANNEL, touch_threshold),
                       RADIO_TAG, "Failed to initialize touch");
-  ESP_RETURN_ON_ERROR(touch_pad_isr_register(touch_intr, touch_task_handle,
+  ESP_RETURN_ON_ERROR(touch_pad_isr_register(touch_intr, pi_task,
                                              TOUCH_PAD_INTR_MASK_ACTIVE |
                                                  TOUCH_PAD_INTR_MASK_INACTIVE),
                       RADIO_TAG, "Failed to initialize touch");
