@@ -2,12 +2,14 @@
 
 #include "accelerometer.h"
 #include "adc.h"
+#include "audio_output.h"
 #include "bounds.h"
 #include "debounce.h"
 #include "main.h"
 #include "mixer.h"
 #include "station_pi.h"
 #include "station_pi_activation.h"
+#include "tas2505.h"
 #include "tone_generator.h"
 #include "tuner.h"
 
@@ -228,6 +230,8 @@ static void IRAM_ATTR button_intr(void *ctx, bool state) {
 static void entune(void *ctx) {
   station_pi_activation_enable(false);
   ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_default_static(false));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(audio_output_suspend());
+  ESP_ERROR_CHECK_WITHOUT_ABORT(tas2505_set_output(TAS2505_OUTPUT_SPEAKER));
   ESP_ERROR_CHECK_WITHOUT_ABORT(
       accelerometer_subscribe_pulse(&knock_cfg, knock_start_tone, NULL));
   ESP_ERROR_CHECK_WITHOUT_ABORT(gpio_config(&(gpio_config_t){
@@ -250,6 +254,7 @@ static void detune(void *ctx) {
   update_state();
   ESP_ERROR_CHECK_WITHOUT_ABORT(debounce_handler_remove(BUTTON_TRIANGLE_PIN));
   ESP_ERROR_CHECK_WITHOUT_ABORT(accelerometer_unsubscribe_pulse());
+  ESP_ERROR_CHECK_WITHOUT_ABORT(audio_output_resume());
   ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_default_static(true));
   station_pi_activation_enable(true);
 }

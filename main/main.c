@@ -2,6 +2,7 @@
 #include "../config.h"
 #include "accelerometer.h"
 #include "adc.h"
+#include "audio_output.h"
 #include "battery.h"
 #include "board.h"
 #include "calibration.h"
@@ -33,7 +34,6 @@
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_ota_ops.h"
-#include "esp_random.h"
 #include "esp_vfs_dev.h"
 #include "nvs_flash.h"
 
@@ -84,27 +84,6 @@ static void volume_callback(void *user_data, adc_digi_output_data_t *result) {
   if (new_volume_setting != last_volume_setting) {
     tas2505_set_volume(new_volume_setting);
     last_volume_setting = new_volume_setting;
-  }
-}
-
-static void output_task(void *arg) {
-  while (1) {
-  loop:
-    vTaskDelay(pdMS_TO_TICKS(100 + esp_random() % 100));
-
-    bool gpio;
-    esp_err_t err = tas2505_read_gpio(&gpio);
-    if (err != ESP_OK) {
-      ESP_LOGE(RADIO_TAG, "Failed to read GPIO: %d (%s)", err,
-               esp_err_to_name(err));
-      goto loop;
-    }
-
-    if (gpio) {
-      tas2505_set_output(TAS2505_OUTPUT_SPEAKER);
-    } else {
-      tas2505_set_output(TAS2505_OUTPUT_HEADPHONE);
-    }
   }
 }
 
@@ -167,8 +146,8 @@ void app_main(void) {
           .bit_width = 12,
       },
       volume_callback, &calibration));
-  xTaskCreatePinnedToCore(output_task, "dac_output", 4096, NULL, 17, NULL, 0);
 
+  ESP_ERROR_CHECK_WITHOUT_ABORT(audio_output_init());
   ESP_ERROR_CHECK_WITHOUT_ABORT(webrtc_init());
   ESP_ERROR_CHECK_WITHOUT_ABORT(things_init());
   ESP_ERROR_CHECK_WITHOUT_ABORT(file_cache_init());

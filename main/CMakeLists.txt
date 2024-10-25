@@ -2,6 +2,7 @@ idf_component_register(
   SRCS
   accelerometer.c
   adc.c
+  audio_output.c
   battery.c
   bounds.c
   calibration.c
