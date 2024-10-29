@@ -49,7 +49,7 @@ static const float light_frequencies[] = {
 static bool light_triggered = false;
 static tone_generator_t light_tone = NULL;
 
-static uint32_t touch_threshold = 0x8000;
+static uint32_t touch_threshold = 0x4000;
 static const float touch_frequencies[] = {
     [0] = FREQUENCY_A_4,
     [SHIFT_MAGNET] = FREQUENCY_E_4,
