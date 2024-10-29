@@ -38,6 +38,7 @@ uint8_t shift_state = 0;
 
 static bounds_handle_t light_bounds;
 static const uint16_t light_threshold = 500;
+static const uint16_t light_hysteresis = 25;
 static uint16_t light_smooth = 0xffff;
 static const float light_frequencies[] = {
     [0] = FREQUENCY_G_4,
@@ -241,8 +242,17 @@ static void light_adc_cb(void *ctx, adc_digi_output_data_t *result) {
   bounds_update(light_bounds, light_smooth);
 
   bool was_triggered = light_triggered;
-  light_triggered =
-      bounds_get_max(light_bounds) - light_threshold > light_smooth;
+  uint16_t threshold = bounds_get_max(light_bounds) - light_threshold;
+  if (was_triggered) {
+    if (threshold + light_hysteresis < light_smooth) {
+      light_triggered = false;
+    }
+  } else {
+    if (threshold - light_hysteresis > light_smooth) {
+      light_triggered = true;
+    }
+  }
+
   if (light_triggered != was_triggered) {
     xTaskNotify(pi_task, 0, eNoAction);
   }
