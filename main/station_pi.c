@@ -35,6 +35,7 @@ static bool entuned = false;
 
 uint8_t previous_shift_state = 0;
 uint8_t shift_state = 0;
+int64_t last_headphone_change = 0;
 
 static bounds_handle_t light_bounds;
 static const uint16_t light_threshold = 500;
@@ -49,7 +50,7 @@ static const float light_frequencies[] = {
 static bool light_triggered = false;
 static tone_generator_t light_tone = NULL;
 
-static uint32_t touch_threshold = 0x4000;
+static uint32_t touch_threshold = 0x3000;
 static const float touch_frequencies[] = {
     [0] = FREQUENCY_A_4,
     [SHIFT_MAGNET] = FREQUENCY_E_4,
@@ -72,7 +73,7 @@ static tone_generator_t button_tone = NULL;
 static const accelerometer_pulse_cfg_t knock_cfg = {
     .odr = ACCELEROMETER_DR_100HZ,
     .osm = ACCELEROMETER_OSM_NORMAL,
-    .threshold_x = 127, // avoid detecting X pulses
+    .threshold_x = 34,
     .threshold_y = 34,
     .threshold_z = 34,
     .timelimit = 6,
@@ -80,7 +81,8 @@ static const accelerometer_pulse_cfg_t knock_cfg = {
 };
 #define PULSE_DEBOUNCE_US (50 * 1000)
 static int64_t knock_last_time = 0;
-static esp_timer_handle_t knock_timer = NULL;
+static esp_timer_handle_t knock_start_timer = NULL;
+static esp_timer_handle_t knock_stop_timer = NULL;
 static const float knock_frequencies[] = {
     [0] = FREQUENCY_C_5,
     [SHIFT_MAGNET] = FREQUENCY_G_4,
@@ -146,7 +148,7 @@ static void button_start_tone() {
 }
 
 static void knock_stop_tone(void *arg) {
-  esp_timer_stop(knock_timer);
+  esp_timer_stop(knock_stop_timer);
   if (knock_tone) {
     tone_generator_release(knock_tone);
     knock_tone = NULL;
@@ -154,18 +156,15 @@ static void knock_stop_tone(void *arg) {
 }
 
 static void knock_start_tone(void *arg) {
-  int64_t now = esp_timer_get_time();
-
-  // Debounce the pulse
-  if (now - knock_last_time < PULSE_DEBOUNCE_US) {
-    goto cleanup;
+  if (esp_timer_get_time() - last_headphone_change < 400000) {
+    return;
   }
 
-  if (esp_timer_is_active(knock_timer) || knock_tone) {
+  if (esp_timer_is_active(knock_stop_timer) || knock_tone) {
     knock_stop_tone(NULL);
   }
 
-  ESP_ERROR_CHECK_WITHOUT_ABORT(esp_timer_start_once(knock_timer, 400000));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(esp_timer_start_once(knock_stop_timer, 400000));
   ESP_ERROR_CHECK_WITHOUT_ABORT(tone_generator_init(
       &(tone_generator_config_t){
           .entuned = entuned,
@@ -176,9 +175,6 @@ static void knock_start_tone(void *arg) {
           .frequency = knock_frequencies[shift_state],
       },
       &knock_tone));
-
-cleanup:
-  knock_last_time = now;
 }
 
 static void update_state() {
@@ -262,6 +258,7 @@ static void light_adc_cb(void *ctx, adc_digi_output_data_t *result) {
 #define NOTIFY_TOUCH_INACTIVE BIT(1)
 #define NOTIFY_BUTTON_ACTIVE BIT(2)
 #define NOTIFY_BUTTON_INACTIVE BIT(3)
+#define NOTIFY_KNOCK_START BIT(4)
 
 static void station_pi_task(void *ctx) {
   while (true) {
@@ -285,7 +282,14 @@ static void station_pi_task(void *ctx) {
     if (notification & NOTIFY_BUTTON_INACTIVE && button_tone) {
       button_triggered = false;
     }
+    if (notification & NOTIFY_KNOCK_START) {
+      if (esp_timer_restart(knock_start_timer, 50000) ==
+          ESP_ERR_INVALID_STATE) {
+        esp_timer_start_once(knock_start_timer, 50000);
+      }
+    }
 
+    bool old_gpio = !(shift_state & SHIFT_HEADPHONE);
     bool gpio;
     esp_err_t err = tas2505_read_gpio(&gpio);
     if (err != ESP_OK) {
@@ -295,6 +299,9 @@ static void station_pi_task(void *ctx) {
       gpio = true;
     }
 
+    if (old_gpio != gpio) {
+      last_headphone_change = esp_timer_get_time();
+    }
     if (gpio) {
       shift_state &= ~SHIFT_HEADPHONE;
     } else {
@@ -330,13 +337,31 @@ static void IRAM_ATTR button_intr(void *ctx, bool state) {
   portYIELD_FROM_ISR(higher_priority_task_woken);
 }
 
+static void knock_cb(void *arg) {
+  int64_t now = esp_timer_get_time();
+
+  // Debounce the pulse
+  if (now - knock_last_time < PULSE_DEBOUNCE_US) {
+    goto cleanup;
+  }
+
+  TaskHandle_t task_handle = (TaskHandle_t)arg;
+  BaseType_t higher_priority_task_woken = pdFALSE;
+  xTaskNotifyFromISR(task_handle, NOTIFY_KNOCK_START, eSetBits,
+                     &higher_priority_task_woken);
+  portYIELD_FROM_ISR(higher_priority_task_woken);
+
+cleanup:
+  knock_last_time = now;
+}
+
 static void entune(void *ctx) {
   station_pi_activation_enable(false);
   ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_default_static(false));
   ESP_ERROR_CHECK_WITHOUT_ABORT(audio_output_suspend());
   ESP_ERROR_CHECK_WITHOUT_ABORT(tas2505_set_output(TAS2505_OUTPUT_SPEAKER));
   ESP_ERROR_CHECK_WITHOUT_ABORT(
-      accelerometer_subscribe_pulse(&knock_cfg, knock_start_tone, NULL));
+      accelerometer_subscribe_pulse(&knock_cfg, knock_cb, pi_task));
   ESP_ERROR_CHECK_WITHOUT_ABORT(gpio_config(&(gpio_config_t){
       .pin_bit_mask = 1ULL << BUTTON_TRIANGLE_PIN,
       .mode = GPIO_MODE_INPUT,
@@ -368,7 +393,7 @@ esp_err_t station_pi_init() {
 
   ESP_RETURN_ON_ERROR(bounds_init(
                           &(bounds_config_t){
-                              .buckets = 30,
+                              .buckets = 5,
                               .interval = 1000000,
                           },
                           &light_bounds),
@@ -389,7 +414,15 @@ esp_err_t station_pi_init() {
                               .name = "knock_tone",
                               .callback = knock_stop_tone,
                           },
-                          &knock_timer),
+                          &knock_stop_timer),
+                      RADIO_TAG, "Failed to initialize knock timer");
+  ESP_RETURN_ON_ERROR(esp_timer_create(
+                          &(esp_timer_create_args_t){
+                              .dispatch_method = ESP_TIMER_TASK,
+                              .name = "knock_tone",
+                              .callback = knock_start_tone,
+                          },
+                          &knock_start_timer),
                       RADIO_TAG, "Failed to initialize knock timer");
 
   ESP_RETURN_ON_FALSE(pdPASS == xTaskCreatePinnedToCore(station_pi_task,
