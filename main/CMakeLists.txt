@@ -11,6 +11,7 @@ idf_component_register(
   file_cache.c
   fm.c
   led.c
+  magnet.c
   main.c
   mixer.c
   playback.c

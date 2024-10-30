@@ -5,6 +5,7 @@
 #include "audio_output.h"
 #include "bounds.h"
 #include "debounce.h"
+#include "magnet.h"
 #include "main.h"
 #include "mixer.h"
 #include "station_pi.h"
@@ -36,6 +37,10 @@ static bool entuned = false;
 uint8_t previous_shift_state = 0;
 uint8_t shift_state = 0;
 int64_t last_headphone_change = 0;
+
+static uint64_t magnet_threshold =
+    1200 * 1200; // roughly 1.5mT, but we test with magnitude^2
+static uint64_t magnet_hysteresis = 100 * 100;
 
 static bounds_handle_t light_bounds;
 static const uint16_t light_threshold = 500;
@@ -306,6 +311,24 @@ static void station_pi_task(void *ctx) {
       shift_state &= ~SHIFT_HEADPHONE;
     } else {
       shift_state |= SHIFT_HEADPHONE;
+    }
+
+    int16_t magnet_x, magnet_y, magnet_z;
+    err = magnet_read(&magnet_x, &magnet_y, &magnet_z);
+    if (err != ESP_OK) {
+      ESP_LOGE(RADIO_TAG, "Failed to read magnetometer: %d (%s)", err,
+               esp_err_to_name(err));
+      // default to not connected
+      magnet_x = magnet_y = magnet_z = 0;
+    }
+
+    uint64_t magnet_magnitude = (uint64_t)magnet_x * magnet_x +
+                                (uint64_t)magnet_y * magnet_y +
+                                (uint64_t)magnet_z * magnet_z;
+    if (magnet_magnitude > magnet_threshold + magnet_hysteresis) {
+      shift_state |= SHIFT_MAGNET;
+    } else if (magnet_magnitude < magnet_threshold - magnet_hysteresis) {
+      shift_state &= ~SHIFT_MAGNET;
     }
 
     update_state();

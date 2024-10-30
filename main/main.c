@@ -11,6 +11,7 @@
 #include "file_cache.h"
 #include "fm.h"
 #include "led.h"
+#include "magnet.h"
 #include "mixer.h"
 #include "station_2pi.h"
 #include "station_pi.h"
@@ -122,6 +123,7 @@ void app_main(void) {
   ESP_ERROR_CHECK(storage_init());
   ESP_ERROR_CHECK(fm_init());
   ESP_ERROR_CHECK(accelerometer_init());
+  ESP_ERROR_CHECK(magnet_init());
   ESP_ERROR_CHECK(mixer_init());
   ESP_ERROR_CHECK(console_init());
 
