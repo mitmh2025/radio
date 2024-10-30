@@ -1,9 +1,11 @@
 #include "adc.h"
 #include "main.h"
+#include "things.h"
 
 #include <string.h>
 
 #include "esp_check.h"
+#include "esp_timer.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -18,9 +20,20 @@ static EXT_RAM_BSS_ATTR struct adc_config {
 static adc_continuous_handle_t adc_handle = NULL;
 static bool adc_running = false;
 
+static int64_t last_adc_conv_done = 0;
+static int64_t last_adc_read = 0;
+
+static void telemetry_generator() {
+  things_send_telemetry_int("adc_conv_done", last_adc_conv_done);
+  things_send_telemetry_int("adc_read", last_adc_read);
+  things_send_telemetry_bool("adc_running", adc_running);
+}
+
 static bool IRAM_ATTR adc_conv_done_cb(adc_continuous_handle_t handle,
                                        const adc_continuous_evt_data_t *edata,
                                        void *user_data) {
+  last_adc_conv_done = esp_timer_get_time();
+
   TaskHandle_t adc_task_handle = (TaskHandle_t)user_data;
   BaseType_t must_yield = pdFALSE;
   vTaskNotifyGiveFromISR(adc_task_handle, &must_yield);
@@ -49,6 +62,8 @@ static void adc_task(void *context) {
                  esp_err_to_name(ret));
         break;
       }
+
+      last_adc_read = esp_timer_get_time();
 
       xSemaphoreTake(adc_mutex, portMAX_DELAY);
       for (int i = 0; i < out_length; i += SOC_ADC_DIGI_RESULT_BYTES) {
@@ -94,6 +109,8 @@ esp_err_t adc_init() {
   ESP_RETURN_ON_ERROR(adc_continuous_register_event_callbacks(adc_handle, &cbs,
                                                               adc_task_handle),
                       RADIO_TAG, "adc_init failed");
+
+  things_register_telemetry_generator(telemetry_generator, "adc", NULL);
 
   return ESP_OK;
 }
