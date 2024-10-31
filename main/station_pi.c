@@ -414,6 +414,11 @@ esp_err_t station_pi_init() {
       nvs_open(STATION_PI_NVS_NAMESPACE, NVS_READWRITE, &pi_nvs_handle),
       RADIO_TAG, "Failed to open NVS handle for station pi");
 
+  ESP_RETURN_ON_FALSE(pdPASS == xTaskCreatePinnedToCore(station_pi_task, "pi",
+                                                        4096, NULL, 11,
+                                                        &pi_task, 0),
+                      ESP_FAIL, RADIO_TAG, "Failed to create station pi task");
+
   ESP_RETURN_ON_ERROR(bounds_init(
                           &(bounds_config_t){
                               .buckets = 5,
@@ -448,10 +453,6 @@ esp_err_t station_pi_init() {
                           &knock_start_timer),
                       RADIO_TAG, "Failed to initialize knock timer");
 
-  ESP_RETURN_ON_FALSE(pdPASS == xTaskCreatePinnedToCore(station_pi_task,
-                                                        "pi_task", 4096, NULL,
-                                                        11, &pi_task, 0),
-                      ESP_FAIL, RADIO_TAG, "Failed to create touch task");
   ESP_RETURN_ON_ERROR(touch_pad_init(), RADIO_TAG,
                       "Failed to initialize touch");
   ESP_RETURN_ON_ERROR(touch_pad_config(TOUCH_PAD_CHANNEL), RADIO_TAG,

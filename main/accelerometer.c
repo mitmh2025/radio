@@ -290,10 +290,10 @@ esp_err_t accelerometer_init() {
   ESP_RETURN_ON_ERROR(write_register(MMA8451Q_REG_CTRL_REG5, ctrl_reg5.raw),
                       TAG, "Failed to write CTRL_REG5 register");
 
-  ESP_RETURN_ON_FALSE(pdPASS == xTaskCreatePinnedToCore(
-                                    accelerometer_task, "accelerometer_task",
-                                    3072, NULL, 12, &task_handle, 0),
-                      ESP_FAIL, TAG, "Failed to create task");
+  ESP_RETURN_ON_FALSE(
+      pdPASS == xTaskCreatePinnedToCore(accelerometer_task, "accelerometer",
+                                        3072, NULL, 12, &task_handle, 0),
+      ESP_FAIL, TAG, "Failed to create task");
 
   gpio_config_t cfg = {
       .pin_bit_mask = 1ULL << MMA8451Q_INT1_GPIO,

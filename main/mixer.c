@@ -182,9 +182,9 @@ esp_err_t mixer_init() {
   mixer_rb = rb_create(MIXER_BUFFER_SIZE, 1);
   ESP_RETURN_ON_FALSE(mixer_rb, ESP_FAIL, RADIO_TAG,
                       "Failed to create mixer ringbuf");
-  ESP_RETURN_ON_FALSE(pdPASS == xTaskCreatePinnedToCore(mixer_task,
-                                                        "mixer_task", 10 * 1024,
-                                                        NULL, 15, NULL, 1),
+  ESP_RETURN_ON_FALSE(pdPASS == xTaskCreatePinnedToCore(mixer_task, "mixer",
+                                                        10 * 1024, NULL, 15,
+                                                        NULL, 1),
                       ESP_FAIL, RADIO_TAG, "Failed to create mixer task");
 
   // Create pipeline
