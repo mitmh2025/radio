@@ -39,7 +39,8 @@ static bool configured = false;
 static bool attr_enabled = false;
 static bool local_enabled = true;
 
-static int64_t last_pulse = 0;
+static int64_t last_pulses[8] = {};
+static int last_pulse_index = 0;
 
 static int64_t rhythm_min_period = PULSE_MIN_SEPARATION_US;
 static int64_t rhythm_max_period = PULSE_MAX_SEPARATION_US;
@@ -48,7 +49,33 @@ static int rhythm_count = 0;
 static esp_timer_handle_t rhythm_timer = NULL;
 static TaskHandle_t activate_task_handle = NULL;
 
+static int64_t activate_last_trigger = 0;
+
+static size_t telemetry_index;
+
+static void telemetry_generator() {
+  char pulse_buffer[170];
+  // Report the most recent pulse first
+  snprintf(pulse_buffer, sizeof(pulse_buffer),
+           "[%" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64
+           ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 "]",
+           last_pulses[(last_pulse_index + 8) % 8],
+           last_pulses[(last_pulse_index + 7) % 8],
+           last_pulses[(last_pulse_index + 6) % 8],
+           last_pulses[(last_pulse_index + 5) % 8],
+           last_pulses[(last_pulse_index + 4) % 8],
+           last_pulses[(last_pulse_index + 3) % 8],
+           last_pulses[(last_pulse_index + 2) % 8],
+           last_pulses[(last_pulse_index + 1) % 8]);
+  things_send_telemetry_string("pi_activation_pulses", pulse_buffer);
+
+  things_send_telemetry_int("pi_activation_last_trigger",
+                            activate_last_trigger);
+}
+
 static void activate_task(void *arg) {
+  activate_last_trigger = esp_timer_get_time();
+
   esp_err_t err = tuner_suspend();
   if (err != ESP_OK) {
     ESP_LOGE(RADIO_TAG, "Failed to suspend tuner: %d", err);
@@ -85,6 +112,8 @@ static void activate_task(void *arg) {
     ESP_LOGE(RADIO_TAG, "Failed to resume tuner: %d", err);
   }
 
+  things_force_telemetry(telemetry_index);
+
 cleanup:
   activate_task_handle = NULL;
   vTaskDelete(NULL);
@@ -104,10 +133,13 @@ static void timer_callback(void *arg) {
 
 static void pulse_callback(void *arg) {
   int64_t now = esp_timer_get_time();
+  int64_t last_pulse = last_pulses[last_pulse_index];
 
   // Debounce the pulse
   if (now - last_pulse < PULSE_DEBOUNCE_US) {
-    goto cleanup;
+    // Don't advance the index, but pull the most recent pulse forward
+    last_pulses[last_pulse_index] = now;
+    return;
   }
 
   int64_t earliest_time = last_pulse + rhythm_min_period;
@@ -115,11 +147,11 @@ static void pulse_callback(void *arg) {
   if (latest_time < now || now < earliest_time) {
     // This is out of sync, but if it was supposed to be a 3rd pulse, it might
     // actually be a 2nd pulse establishing a rhythm
+    esp_timer_stop(rhythm_timer);
     if (rhythm_count == 2 && (now - last_pulse) < PULSE_MAX_SEPARATION_US) {
       rhythm_count = 1;
     } else {
       // Reset
-      esp_timer_stop(rhythm_timer);
       rhythm_max_period = PULSE_MAX_SEPARATION_US;
       rhythm_min_period = PULSE_MIN_SEPARATION_US;
       rhythm_count = 0;
@@ -148,8 +180,8 @@ static void pulse_callback(void *arg) {
     break;
   }
 
-cleanup:
-  last_pulse = now;
+  last_pulse_index = (last_pulse_index + 1) % 8;
+  last_pulses[last_pulse_index] = now;
 }
 
 static esp_err_t check_enable() {
@@ -203,6 +235,12 @@ esp_err_t station_pi_activation_init() {
   ESP_RETURN_ON_ERROR(
       things_subscribe_attribute("en_knocks", enable_attr_callback), RADIO_TAG,
       "Failed to subscribe to en_knocks attribute");
+
+  ESP_RETURN_ON_ERROR(
+      things_register_telemetry_generator(
+          telemetry_generator, "station_pi_activation", &telemetry_index),
+      RADIO_TAG, "Failed to register telemetry generator");
+
   return ESP_OK;
 }
 
