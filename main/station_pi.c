@@ -43,7 +43,7 @@ static uint64_t magnet_threshold =
 static uint64_t magnet_hysteresis = 100 * 100;
 
 static bounds_handle_t light_bounds;
-static const uint16_t light_threshold = 500;
+static const uint16_t light_threshold = 1500;
 static const uint16_t light_hysteresis = 25;
 static uint16_t light_smooth = 0xffff;
 static const float light_frequencies[] = {
