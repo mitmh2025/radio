@@ -114,9 +114,8 @@ static void webrtc_loop() {
       .user_data = xTaskGetCurrentTaskHandle(),
   };
   esp_err_t ret = webrtc_connect(&cfg, &connection);
-  ESP_GOTO_ON_ERROR(ret, cleanup, RADIO_TAG,
-                    "Failed to connect to WebRTC: %d (%s)", ret,
-                    esp_err_to_name(ret));
+  ESP_GOTO_ON_ERROR(ret, cleanup, RADIO_TAG, "Failed to connect to WebRTC: %d",
+                    ret);
 
   uint32_t target_buffer_duration = 48000;
 
@@ -174,9 +173,8 @@ static void webrtc_loop() {
 
       ret = mixer_play_audio(webrtc_read_audio_sample, connection, 48000, 16, 1,
                              false, &channel);
-      ESP_GOTO_ON_ERROR(ret, cleanup, RADIO_TAG,
-                        "Failed to play audio: %d (%s)", ret,
-                        esp_err_to_name(ret));
+      ESP_GOTO_ON_ERROR(ret, cleanup, RADIO_TAG, "Failed to play audio: %d",
+                        ret);
     }
 
     if (!channel) {

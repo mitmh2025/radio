@@ -59,8 +59,7 @@ static void adc_task(void *context) {
         // Wait until the interrupt wakes us up
         break;
       } else if (ret != ESP_OK) {
-        ESP_LOGE(RADIO_TAG, "adc_continuous_read failed: %s",
-                 esp_err_to_name(ret));
+        ESP_LOGE(RADIO_TAG, "adc_continuous_read failed: %d", ret);
         break;
       }
 

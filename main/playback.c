@@ -118,8 +118,7 @@ esp_err_t playback_wait_for_completion(playback_handle_t handle) {
     audio_event_iface_msg_t msg;
     esp_err_t ret = audio_event_iface_listen(handle->evt, &msg, portMAX_DELAY);
     if (ret != ESP_OK) {
-      ESP_LOGW(RADIO_TAG, "Error listening to event during playback: %d (%s)",
-               ret, esp_err_to_name(ret));
+      ESP_LOGW(RADIO_TAG, "Error listening to event during playback: %d", ret);
       continue;
     }
 

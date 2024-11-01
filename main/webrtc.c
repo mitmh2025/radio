@@ -196,8 +196,8 @@ static void webrtc_send_pending_candidates(webrtc_connection_t connection) {
                                  strlen(sdp_fragment));
   esp_err_t err = esp_http_client_perform(connection->whep_client);
   if (err != ESP_OK) {
-    ESP_LOGE(RADIO_TAG, "Failed to send ICE candidates with error code %d (%s)",
-             err, esp_err_to_name(err));
+    ESP_LOGE(RADIO_TAG, "Failed to send ICE candidates with error code %d",
+             err);
     goto cleanup;
   }
   ESP_LOGV(RADIO_TAG, "Received HTTP status from trickle ICE request: %d",
@@ -495,8 +495,7 @@ esp_err_t webrtc_connect(webrtc_config_t *config, webrtc_connection_t *handle) {
   esp_http_client_set_header(http_client, "Content-Type", "application/sdp");
   esp_http_client_set_post_field(http_client, offer->sdp, strlen(offer->sdp));
   ESP_GOTO_ON_ERROR(esp_http_client_perform(http_client), cleanup, RADIO_TAG,
-                    "Failed to send SDP offer with error code %d (%s)", err_rc_,
-                    esp_err_to_name(err_rc_));
+                    "Failed to send SDP offer with error code %d", err_rc_);
   ESP_LOGV(RADIO_TAG, "Received HTTP status from SDP offer request: %d",
            esp_http_client_get_status_code(http_client));
   ESP_GOTO_ON_FALSE(esp_http_client_get_status_code(http_client) < 400,

@@ -112,8 +112,7 @@ static void battery_telemetry_generator() {
   esp_err_t err =
       adc_cali_raw_to_voltage(battery_adc_cali, battery_average, &millivolts);
   if (err != ESP_OK) {
-    ESP_LOGE(RADIO_TAG, "Failed to convert ADC reading to voltage: %d (%s)",
-             err, esp_err_to_name(err));
+    ESP_LOGE(RADIO_TAG, "Failed to convert ADC reading to voltage: %d", err);
   } else {
     things_send_telemetry_float("battery_voltage",
                                 (float)millivolts * BATTERY_SCALE_FACTOR);

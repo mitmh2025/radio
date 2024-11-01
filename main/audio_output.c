@@ -31,8 +31,7 @@ static void output_task(void *arg) {
     bool gpio;
     esp_err_t err = tas2505_read_gpio(&gpio);
     if (err != ESP_OK) {
-      ESP_LOGE(RADIO_TAG, "Failed to read GPIO: %d (%s)", err,
-               esp_err_to_name(err));
+      ESP_LOGE(RADIO_TAG, "Failed to read GPIO: %d", err);
       continue;
     }
 

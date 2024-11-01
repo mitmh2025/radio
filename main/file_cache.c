@@ -50,8 +50,8 @@ static void telemetry_generator(void) {
                                                    : 0);
   things_send_telemetry_int("file_cache_last_update",
                             manifest_cache_last_update);
-  things_send_telemetry_string("file_cache_last_error",
-                               esp_err_to_name(manifest_cache_last_update_err));
+  things_send_telemetry_int("file_cache_last_error",
+                            manifest_cache_last_update_err);
 
   xSemaphoreGive(manifest_cache_mutex);
 }
@@ -187,13 +187,11 @@ static esp_err_t fetch_file(const char *url, const char *path, char **contents,
 
   if (base_url != NULL) {
     ESP_GOTO_ON_ERROR(esp_http_client_set_url(http_client, url), cleanup,
-                      RADIO_TAG, "Failed to set URL (%s): %d (%s)", url,
-                      err_rc_, esp_err_to_name(err_rc_));
+                      RADIO_TAG, "Failed to set URL (%s): %d", url, err_rc_);
   }
 
   ESP_GOTO_ON_ERROR(esp_http_client_perform(http_client), cleanup, RADIO_TAG,
-                    "Failed to fetch file (%s): %d (%s)", url, err_rc_,
-                    esp_err_to_name(err_rc_));
+                    "Failed to fetch file (%s): %d", url, err_rc_);
   if (data.failed) {
     ret = ESP_FAIL;
     goto cleanup;
@@ -447,11 +445,10 @@ static esp_err_t refresh() {
 
   ESP_LOGD(RADIO_TAG, "Fetching manifest from %s", current_manifest_url);
   size_t manifest_len;
-  ESP_GOTO_ON_ERROR(fetch_file(current_manifest_url,
-                               FILE_CACHE_PREFIX "/manifest.json.new",
-                               &manifest_contents, &manifest_len, NULL),
-                    cleanup, RADIO_TAG, "Failed to fetch manifest: %d (%s)",
-                    err_rc_, esp_err_to_name(err_rc_));
+  ESP_GOTO_ON_ERROR(
+      fetch_file(current_manifest_url, FILE_CACHE_PREFIX "/manifest.json.new",
+                 &manifest_contents, &manifest_len, NULL),
+      cleanup, RADIO_TAG, "Failed to fetch manifest: %d", err_rc_);
   ESP_GOTO_ON_FALSE(manifest_contents != NULL, ESP_FAIL, cleanup, RADIO_TAG,
                     "Unable to fetch manfiest file contents");
 
@@ -481,8 +478,8 @@ static esp_err_t refresh() {
              tmppath);
     ESP_GOTO_ON_ERROR(
         fetch_file(entry->url, tmppath, NULL, NULL, current_manifest_url),
-        cleanup, RADIO_TAG, "Failed to fetch file %s: %d (%s)", entry->name,
-        err_rc_, esp_err_to_name(err_rc_));
+        cleanup, RADIO_TAG, "Failed to fetch file %s: %d", entry->name,
+        err_rc_);
 
     error = rename(tmppath, path);
     ESP_GOTO_ON_FALSE(error == 0, ESP_FAIL, cleanup, RADIO_TAG,
@@ -637,9 +634,9 @@ static void file_cache_task(void *context) {
     if (err != ESP_OK) {
       uint32_t wait = 10000 + esp_random() % 5000;
       ESP_LOGE(RADIO_TAG,
-               "Failed to refresh file cache: %d (%s); retrying in %" PRIu32
+               "Failed to refresh file cache: %d; retrying in %" PRIu32
                " seconds",
-               err, esp_err_to_name(err), wait / 1000);
+               err, wait / 1000);
       xTaskNotifyWait(0, ULONG_MAX, NULL, pdMS_TO_TICKS(wait));
       continue;
     }

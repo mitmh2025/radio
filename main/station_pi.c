@@ -298,8 +298,7 @@ static void station_pi_task(void *ctx) {
     bool gpio;
     esp_err_t err = tas2505_read_gpio(&gpio);
     if (err != ESP_OK) {
-      ESP_LOGE(RADIO_TAG, "Failed to read GPIO: %d (%s)", err,
-               esp_err_to_name(err));
+      ESP_LOGE(RADIO_TAG, "Failed to read GPIO: %d", err);
       // default to not connected, i.e. high
       gpio = true;
     }
@@ -316,8 +315,7 @@ static void station_pi_task(void *ctx) {
     int16_t magnet_x, magnet_y, magnet_z;
     err = magnet_read(&magnet_x, &magnet_y, &magnet_z);
     if (err != ESP_OK) {
-      ESP_LOGE(RADIO_TAG, "Failed to read magnetometer: %d (%s)", err,
-               esp_err_to_name(err));
+      ESP_LOGE(RADIO_TAG, "Failed to read magnetometer: %d", err);
       // default to not connected
       magnet_x = magnet_y = magnet_z = 0;
     }

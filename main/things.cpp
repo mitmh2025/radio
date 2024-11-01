@@ -138,15 +138,14 @@ static void update_attr_nvs(std::string key,
       },
       value);
   if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) {
-    ESP_LOGE(RADIO_TAG, "Failed to update attribute %s in NVS: %d (%s)",
-             key.c_str(), err, esp_err_to_name(err));
+    ESP_LOGE(RADIO_TAG, "Failed to update attribute %s in NVS: %d", key.c_str(),
+             err);
   }
 
   err = nvs_commit(things_attr_nvs_handle);
   if (err != ESP_OK) {
-    ESP_LOGE(RADIO_TAG,
-             "Failed to commit NVS after updating attribute %s: %d (%s)",
-             key.c_str(), err, esp_err_to_name(err));
+    ESP_LOGE(RADIO_TAG, "Failed to commit NVS after updating attribute %s: %d",
+             key.c_str(), err);
   }
 }
 
@@ -193,8 +192,7 @@ static esp_err_t things_attribute_cache_init() {
   esp_err_t err = nvs_open(THINGS_ATTR_NVS_NAMESPACE, NVS_READWRITE,
                            &things_attr_nvs_handle);
   ESP_RETURN_ON_ERROR(err, RADIO_TAG,
-                      "Failed to open NVS handle for attributes: %s",
-                      esp_err_to_name(err));
+                      "Failed to open NVS handle for attributes: %d", err);
 
   nvs_iterator_t iter = NULL;
   err = nvs_entry_find_in_handle(things_attr_nvs_handle, NVS_TYPE_ANY, &iter);
@@ -357,8 +355,7 @@ static void things_upload_coredump(RadioThingsBoard *conn, size_t core_size) {
   err = esp_partition_mmap(partition, 0, core_size, ESP_PARTITION_MMAP_DATA,
                            &core_dump_addr, &handle);
   if (err != ESP_OK) {
-    ESP_LOGE(RADIO_TAG, "Failed to map coredump partition: %d (%s)", err,
-             esp_err_to_name(err));
+    ESP_LOGE(RADIO_TAG, "Failed to map coredump partition: %d", err);
     goto cleanup;
   }
 
@@ -489,11 +486,11 @@ static void things_rpc_callback(std::string method,
 
   esp_err_t err = it->second(&param);
   if (err != ESP_OK) {
-    ESP_LOGE(RADIO_TAG, "Failed to handle RPC method %s: %d (%s)",
-             method.c_str(), err, esp_err_to_name(err));
+    ESP_LOGE(RADIO_TAG, "Failed to handle RPC method %s: %d", method.c_str(),
+             err);
   }
 
-  response["status"] = esp_err_to_name(err);
+  response["status"] = err;
 }
 
 static bool things_healthcheck(std::shared_ptr<RadioThingsBoard> conn) {
@@ -542,8 +539,7 @@ static void things_task(void *arg) {
   // provisioning
   esp_err_t err = things_attribute_cache_init();
   if (err != ESP_OK) {
-    ESP_LOGE(RADIO_TAG, "Failed to preload attributes: %d (%s)", err,
-             esp_err_to_name(err));
+    ESP_LOGE(RADIO_TAG, "Failed to preload attributes: %d", err);
   }
 
   // Otherwise block until we're provisioned
@@ -603,12 +599,10 @@ static void things_task(void *arg) {
       things_upload_coredump(conn.get(), core_size);
       err = esp_core_dump_image_erase();
       if (err != ESP_OK) {
-        ESP_LOGE(RADIO_TAG, "Failed to erase core dump: %d (%s)", err,
-                 esp_err_to_name(err));
+        ESP_LOGE(RADIO_TAG, "Failed to erase core dump: %d", err);
       }
     } else if (err != ESP_ERR_NOT_FOUND && err != ESP_ERR_INVALID_SIZE) {
-      ESP_LOGE(RADIO_TAG, "Failed to get core dump: %d (%s)", err,
-               esp_err_to_name(err));
+      ESP_LOGE(RADIO_TAG, "Failed to get core dump: %d", err);
     }
 
     // Note that the project name is generated from the top-level CMakeLists.txt
@@ -777,8 +771,7 @@ esp_err_t things_init() {
 
   esp_err_t err =
       nvs_open(THINGS_NVS_NAMESPACE, NVS_READWRITE, &things_nvs_handle);
-  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to open NVS handle: %s",
-                      esp_err_to_name(err));
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to open NVS handle: %d", err);
 
   // TODO: Can we get log streaming to perform well enough?
 
@@ -792,12 +785,10 @@ esp_err_t things_init() {
     things_token.resize(length);
     err = nvs_get_str(things_nvs_handle, THINGS_NVS_TOKEN_KEY,
                       things_token.data(), &length);
-    ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to get device token: %s",
-                        esp_err_to_name(err));
+    ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to get device token: %d", err);
     xEventGroupSetBits(radio_event_group, RADIO_EVENT_GROUP_THINGS_PROVISIONED);
   } else if (err != ESP_ERR_NVS_NOT_FOUND) {
-    ESP_LOGE(RADIO_TAG, "Failed to check device token: %d (%s)", err,
-             esp_err_to_name(err));
+    ESP_LOGE(RADIO_TAG, "Failed to check device token: %d", err);
     return err;
   }
 
@@ -813,8 +804,7 @@ esp_err_t things_provision(const char *token) {
   }
 
   esp_err_t err = nvs_set_str(things_nvs_handle, THINGS_NVS_TOKEN_KEY, token);
-  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to set device token: %s",
-                      esp_err_to_name(err));
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to set device token: %d", err);
   things_token = token;
   xEventGroupSetBits(radio_event_group, RADIO_EVENT_GROUP_THINGS_PROVISIONED);
 

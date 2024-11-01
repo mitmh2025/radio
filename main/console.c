@@ -46,10 +46,9 @@ static void console_task(void *arg) {
     } else if (err == ESP_ERR_INVALID_ARG) {
       // command was empty
     } else if (err == ESP_OK && ret != ESP_OK) {
-      printf("Command returned non-zero error code: 0x%x (%s)\n", ret,
-             esp_err_to_name(ret));
+      printf("Command returned non-zero error code: 0x%x\n", ret);
     } else if (err != ESP_OK) {
-      printf("Internal error: %s\n", esp_err_to_name(err));
+      printf("Internal error: %d\n", err);
     }
     linenoiseFree(line);
   }
@@ -149,7 +148,7 @@ static int provision_func(int argc, char **argv) {
 
   esp_err_t err = things_provision(provision_args.token->sval[0]);
   if (err != ESP_OK) {
-    printf("Failed to provision device: %s\n", esp_err_to_name(err));
+    printf("Failed to provision device: %d\n", err);
     return 1;
   }
 
@@ -159,7 +158,7 @@ static int provision_func(int argc, char **argv) {
 static int recalibrate_func(int argc, char **argv) {
   esp_err_t err = calibration_erase();
   if (err != ESP_OK) {
-    printf("Failed to erase calibration: %s\n", esp_err_to_name(err));
+    printf("Failed to erase calibration: %d\n", err);
     return 1;
   }
 
@@ -279,7 +278,7 @@ static int df_func(int argc, char **argv) {
   size_t total, used;
   int ret = esp_littlefs_mountpoint_info(STORAGE_MOUNTPOINT, &total, &used);
   if (ret != ESP_OK) {
-    printf("Failed to get storage info: %s\n", esp_err_to_name(ret));
+    printf("Failed to get storage info: %d\n", ret);
     return 1;
   }
 
@@ -295,7 +294,7 @@ static int nvs_stats_func(int argc, char **argv) {
   nvs_stats_t stats;
   esp_err_t err = nvs_get_stats(NULL, &stats);
   if (err != ESP_OK) {
-    printf("Failed to get NVS stats: %s\n", esp_err_to_name(err));
+    printf("Failed to get NVS stats: %d\n", err);
     return 1;
   }
 
@@ -313,7 +312,7 @@ static int nvs_ls_func(int argc, char **argv) {
   esp_err_t err =
       nvs_entry_find(NVS_DEFAULT_PART_NAME, NULL, NVS_TYPE_ANY, &iter);
   if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) {
-    printf("Failed to find attributes in NVS: %s\n", esp_err_to_name(err));
+    printf("Failed to find attributes in NVS: %d\n", err);
     return 1;
   }
 
@@ -323,7 +322,7 @@ static int nvs_ls_func(int argc, char **argv) {
     nvs_entry_info_t info;
     err = nvs_entry_info(iter, &info);
     if (err != ESP_OK) {
-      printf("Failed to get attribute info: %s\n", esp_err_to_name(err));
+      printf("Failed to get attribute info: %d\n", err);
       break;
     }
 
@@ -368,7 +367,7 @@ static int nvs_ls_func(int argc, char **argv) {
 
     err = nvs_entry_next(&iter);
     if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) {
-      printf("Failed to find attributes in NVS: %s\n", esp_err_to_name(err));
+      printf("Failed to find attributes in NVS: %d\n", err);
       break;
     }
   }
@@ -401,14 +400,14 @@ static int nvs_get(int argc, char **argv) {
   esp_err_t err =
       nvs_open(nvs_get_args.namespace->sval[0], NVS_READONLY, &handle);
   if (err != ESP_OK) {
-    printf("Failed to open NVS handle: %s\n", esp_err_to_name(err));
+    printf("Failed to open NVS handle: %d\n", err);
     return 1;
   }
 
   nvs_type_t type;
   err = nvs_find_key(handle, nvs_get_args.key->sval[0], &type);
   if (err != ESP_OK) {
-    printf("Failed to find key in NVS: %s\n", esp_err_to_name(err));
+    printf("Failed to find key in NVS: %d\n", err);
     ret = 1;
     goto cleanup;
   }
@@ -418,7 +417,7 @@ static int nvs_get(int argc, char **argv) {
     int8_t value;
     err = nvs_get_i8(handle, nvs_get_args.key->sval[0], &value);
     if (err != ESP_OK) {
-      printf("Failed to get value from NVS: %s\n", esp_err_to_name(err));
+      printf("Failed to get value from NVS: %d\n", err);
       ret = 1;
       goto cleanup;
     }
@@ -429,7 +428,7 @@ static int nvs_get(int argc, char **argv) {
     uint8_t value;
     err = nvs_get_u8(handle, nvs_get_args.key->sval[0], &value);
     if (err != ESP_OK) {
-      printf("Failed to get value from NVS: %s\n", esp_err_to_name(err));
+      printf("Failed to get value from NVS: %d\n", err);
       ret = 1;
       goto cleanup;
     }
@@ -440,7 +439,7 @@ static int nvs_get(int argc, char **argv) {
     int16_t value;
     err = nvs_get_i16(handle, nvs_get_args.key->sval[0], &value);
     if (err != ESP_OK) {
-      printf("Failed to get value from NVS: %s\n", esp_err_to_name(err));
+      printf("Failed to get value from NVS: %d\n", err);
       ret = 1;
       goto cleanup;
     }
@@ -451,7 +450,7 @@ static int nvs_get(int argc, char **argv) {
     uint16_t value;
     err = nvs_get_u16(handle, nvs_get_args.key->sval[0], &value);
     if (err != ESP_OK) {
-      printf("Failed to get value from NVS: %s\n", esp_err_to_name(err));
+      printf("Failed to get value from NVS: %d\n", err);
       ret = 1;
       goto cleanup;
     }
@@ -462,7 +461,7 @@ static int nvs_get(int argc, char **argv) {
     int32_t value;
     err = nvs_get_i32(handle, nvs_get_args.key->sval[0], &value);
     if (err != ESP_OK) {
-      printf("Failed to get value from NVS: %s\n", esp_err_to_name(err));
+      printf("Failed to get value from NVS: %d\n", err);
       ret = 1;
       goto cleanup;
     }
@@ -473,7 +472,7 @@ static int nvs_get(int argc, char **argv) {
     uint32_t value;
     err = nvs_get_u32(handle, nvs_get_args.key->sval[0], &value);
     if (err != ESP_OK) {
-      printf("Failed to get value from NVS: %s\n", esp_err_to_name(err));
+      printf("Failed to get value from NVS: %d\n", err);
       ret = 1;
       goto cleanup;
     }
@@ -484,7 +483,7 @@ static int nvs_get(int argc, char **argv) {
     int64_t value;
     err = nvs_get_i64(handle, nvs_get_args.key->sval[0], &value);
     if (err != ESP_OK) {
-      printf("Failed to get value from NVS: %s\n", esp_err_to_name(err));
+      printf("Failed to get value from NVS: %d\n", err);
       ret = 1;
       goto cleanup;
     }
@@ -495,7 +494,7 @@ static int nvs_get(int argc, char **argv) {
     uint64_t value;
     err = nvs_get_u64(handle, nvs_get_args.key->sval[0], &value);
     if (err != ESP_OK) {
-      printf("Failed to get value from NVS: %s\n", esp_err_to_name(err));
+      printf("Failed to get value from NVS: %d\n", err);
       ret = 1;
       goto cleanup;
     }
@@ -506,7 +505,7 @@ static int nvs_get(int argc, char **argv) {
     size_t length;
     err = nvs_get_str(handle, nvs_get_args.key->sval[0], NULL, &length);
     if (err != ESP_OK) {
-      printf("Failed to get value from NVS: %s\n", esp_err_to_name(err));
+      printf("Failed to get value from NVS: %d\n", err);
       ret = 1;
       goto cleanup;
     }
@@ -520,7 +519,7 @@ static int nvs_get(int argc, char **argv) {
 
     err = nvs_get_str(handle, nvs_get_args.key->sval[0], str_value, &length);
     if (err != ESP_OK) {
-      printf("Failed to get value from NVS: %s\n", esp_err_to_name(err));
+      printf("Failed to get value from NVS: %d\n", err);
       ret = 1;
       goto cleanup;
     }
@@ -532,7 +531,7 @@ static int nvs_get(int argc, char **argv) {
     size_t length;
     err = nvs_get_blob(handle, nvs_get_args.key->sval[0], NULL, &length);
     if (err != ESP_OK) {
-      printf("Failed to get value from NVS: %s\n", esp_err_to_name(err));
+      printf("Failed to get value from NVS: %d\n", err);
       ret = 1;
       goto cleanup;
     }
@@ -546,7 +545,7 @@ static int nvs_get(int argc, char **argv) {
 
     err = nvs_get_blob(handle, nvs_get_args.key->sval[0], str_value, &length);
     if (err != ESP_OK) {
-      printf("Failed to get value from NVS: %s\n", esp_err_to_name(err));
+      printf("Failed to get value from NVS: %d\n", err);
       ret = 1;
       goto cleanup;
     }
@@ -590,13 +589,13 @@ static int nvs_rm(int argc, char **argv) {
   esp_err_t err =
       nvs_open(nvs_rm_args.namespace->sval[0], NVS_READWRITE, &handle);
   if (err != ESP_OK) {
-    printf("Failed to open NVS handle: %s\n", esp_err_to_name(err));
+    printf("Failed to open NVS handle: %d\n", err);
     return 1;
   }
 
   err = nvs_erase_key(handle, nvs_rm_args.key->sval[0]);
   if (err != ESP_OK) {
-    printf("Failed to erase key from NVS: %s\n", esp_err_to_name(err));
+    printf("Failed to erase key from NVS: %d\n", err);
     nvs_close(handle);
     return 1;
   }
@@ -614,23 +613,21 @@ esp_err_t console_init() {
       USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
   esp_err_t err = usb_serial_jtag_driver_install(&usb_serial_jtag_config);
   ESP_RETURN_ON_ERROR(err, RADIO_TAG,
-                      "Failed to install USB serial JTAG driver: %s",
-                      esp_err_to_name(err));
+                      "Failed to install USB serial JTAG driver: %d", err);
 
   esp_vfs_usb_serial_jtag_use_driver();
 
   esp_console_config_t cfg = ESP_CONSOLE_CONFIG_DEFAULT();
   cfg.hint_color = atoi(LOG_COLOR_CYAN);
   err = esp_console_init(&cfg);
-  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to initialize console: %s",
-                      esp_err_to_name(err));
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to initialize console: %d", err);
 
   linenoiseSetCompletionCallback(&esp_console_get_completion);
   linenoiseSetHintsCallback((linenoiseHintsCallback *)&esp_console_get_hint);
 
   err = esp_console_register_help_command();
-  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register help command: %s",
-                      esp_err_to_name(err));
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register help command: %d",
+                      err);
 
   esp_console_cmd_t cmd_restart = {
       .command = "restart",
@@ -638,8 +635,8 @@ esp_err_t console_init() {
       .func = &restart_func,
   };
   err = esp_console_cmd_register(&cmd_restart);
-  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register restart command: %s",
-                      esp_err_to_name(err));
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register restart command: %d",
+                      err);
 
   esp_console_cmd_t cmd_panic = {
       .command = "panic",
@@ -647,8 +644,8 @@ esp_err_t console_init() {
       .func = &panic_func,
   };
   err = esp_console_cmd_register(&cmd_panic);
-  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register panic command: %s",
-                      esp_err_to_name(err));
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register panic command: %d",
+                      err);
 
   heap_args.caps =
       arg_str0(NULL, NULL, "internal|psram",
@@ -662,8 +659,8 @@ esp_err_t console_init() {
       .argtable = &heap_args,
   };
   err = esp_console_cmd_register(&cmd_heap);
-  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register heap command: %s",
-                      esp_err_to_name(err));
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register heap command: %d",
+                      err);
 
   esp_console_cmd_t cmd_tasks = {
       .command = "tasks",
@@ -671,8 +668,8 @@ esp_err_t console_init() {
       .func = &tasks_func,
   };
   err = esp_console_cmd_register(&cmd_tasks);
-  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register tasks command: %s",
-                      esp_err_to_name(err));
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register tasks command: %d",
+                      err);
 
   esp_console_cmd_t cmd_lwip = {
       .command = "lwip",
@@ -680,8 +677,8 @@ esp_err_t console_init() {
       .func = &lwip_func,
   };
   err = esp_console_cmd_register(&cmd_lwip);
-  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register lwip command: %s",
-                      esp_err_to_name(err));
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register lwip command: %d",
+                      err);
 
   esp_console_cmd_t cmd_intr = {
       .command = "intr",
@@ -689,8 +686,8 @@ esp_err_t console_init() {
       .func = &intr_func,
   };
   err = esp_console_cmd_register(&cmd_intr);
-  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register intr command: %s",
-                      esp_err_to_name(err));
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register intr command: %d",
+                      err);
 
   esp_console_cmd_t cmd_gpio = {
       .command = "gpio",
@@ -698,8 +695,8 @@ esp_err_t console_init() {
       .func = &gpio_func,
   };
   err = esp_console_cmd_register(&cmd_gpio);
-  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register gpio command: %s",
-                      esp_err_to_name(err));
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register gpio command: %d",
+                      err);
 
   provision_args.token =
       arg_str1(NULL, NULL, "<token>", "ThingsBoard device token");
@@ -713,8 +710,7 @@ esp_err_t console_init() {
   };
   err = esp_console_cmd_register(&cmd_provision);
   ESP_RETURN_ON_ERROR(err, RADIO_TAG,
-                      "Failed to register provision command: %s",
-                      esp_err_to_name(err));
+                      "Failed to register provision command: %d", err);
 
   esp_console_cmd_t cmd_recalibrate = {
       .command = "recalibrate",
@@ -723,8 +719,7 @@ esp_err_t console_init() {
   };
   err = esp_console_cmd_register(&cmd_recalibrate);
   ESP_RETURN_ON_ERROR(err, RADIO_TAG,
-                      "Failed to register recalibrate command: %s",
-                      esp_err_to_name(err));
+                      "Failed to register recalibrate command: %d", err);
 
   list_args.dir = arg_str1(NULL, NULL, "<dir>", "Directory to list");
   list_args.long_format = arg_lit0("l", "long", "Use a long listing format");
@@ -737,8 +732,7 @@ esp_err_t console_init() {
       .argtable = &list_args,
   };
   err = esp_console_cmd_register(&cmd_list);
-  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register ls command: %s",
-                      esp_err_to_name(err));
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register ls command: %d", err);
 
   cat_args.path = arg_str1(NULL, NULL, "<path>", "File to display");
   cat_args.end = arg_end(1);
@@ -750,8 +744,8 @@ esp_err_t console_init() {
       .argtable = &cat_args,
   };
   err = esp_console_cmd_register(&cmd_cat);
-  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register cat command: %s",
-                      esp_err_to_name(err));
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register cat command: %d",
+                      err);
 
   rm_args.path = arg_str1(NULL, NULL, "<path>", "File to remove");
   rm_args.end = arg_end(1);
@@ -763,8 +757,7 @@ esp_err_t console_init() {
       .argtable = &rm_args,
   };
   err = esp_console_cmd_register(&cmd_rm);
-  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register rm command: %s",
-                      esp_err_to_name(err));
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register rm command: %d", err);
 
   esp_console_cmd_t cmd_df = {
       .command = "df",
@@ -772,8 +765,7 @@ esp_err_t console_init() {
       .func = &df_func,
   };
   err = esp_console_cmd_register(&cmd_df);
-  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register df command: %s",
-                      esp_err_to_name(err));
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register df command: %d", err);
 
   esp_console_cmd_t cmd_nvs_stats = {
       .command = "nvs-stats",
@@ -782,8 +774,7 @@ esp_err_t console_init() {
   };
   err = esp_console_cmd_register(&cmd_nvs_stats);
   ESP_RETURN_ON_ERROR(err, RADIO_TAG,
-                      "Failed to register nvs-stats command: %s",
-                      esp_err_to_name(err));
+                      "Failed to register nvs-stats command: %d", err);
 
   esp_console_cmd_t cmd_nvs_ls = {
       .command = "nvs-ls",
@@ -791,8 +782,8 @@ esp_err_t console_init() {
       .func = &nvs_ls_func,
   };
   err = esp_console_cmd_register(&cmd_nvs_ls);
-  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register nvs-ls command: %s",
-                      esp_err_to_name(err));
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register nvs-ls command: %d",
+                      err);
 
   nvs_get_args.namespace = arg_str1(NULL, NULL, "<namespace>", "NVS namespace");
   nvs_get_args.key = arg_str1(NULL, NULL, "<key>", "NVS key");
@@ -805,8 +796,8 @@ esp_err_t console_init() {
       .argtable = &nvs_get_args,
   };
   err = esp_console_cmd_register(&cmd_nvs_get);
-  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register nvs-get command: %s",
-                      esp_err_to_name(err));
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register nvs-get command: %d",
+                      err);
 
   nvs_rm_args.namespace = arg_str1(NULL, NULL, "<namespace>", "NVS namespace");
   nvs_rm_args.key = arg_str1(NULL, NULL, "<key>", "NVS key");
@@ -819,8 +810,8 @@ esp_err_t console_init() {
       .argtable = &nvs_rm_args,
   };
   err = esp_console_cmd_register(&cmd_nvs_rm);
-  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register nvs-rm command: %s",
-                      esp_err_to_name(err));
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register nvs-rm command: %d",
+                      err);
 
   ESP_RETURN_ON_FALSE(
       pdPASS == xTaskCreate(console_task, "console", 4096, NULL, 21, NULL),

@@ -478,8 +478,8 @@ static int block_read(void *context, uint32_t block, uint32_t offset,
       if (ret != ESP_OK) {
         ESP_LOGE(
             RADIO_TAG,
-            "Failed to read from SPI flash (idx=%d addr=%08zx size=%08zx): %s",
-            idx, read_start, read_size, esp_err_to_name(ret));
+            "Failed to read from SPI flash (idx=%d addr=%08zx size=%08zx): %d",
+            idx, read_start, read_size, ret);
         return -EIO;
       }
 
@@ -531,8 +531,8 @@ static int block_write(void *context, uint32_t block, uint32_t offset,
       if (ret != ESP_OK) {
         ESP_LOGE(
             RADIO_TAG,
-            "Failed to write to SPI flash (idx=%d addr=%08zx size=%08zx): %s",
-            idx, write_start, write_size, esp_err_to_name(ret));
+            "Failed to write to SPI flash (idx=%d addr=%08zx size=%08zx): %d",
+            idx, write_start, write_size, ret);
         return -EIO;
       }
 
@@ -557,8 +557,8 @@ static int block_erase(void *context, uint32_t block) {
   }
 
   if (err != ESP_OK) {
-    ESP_LOGE(RADIO_TAG, "Failed to erase SPI flash block %" PRIx32 ": %d (%s)",
-             block, err, esp_err_to_name(err));
+    ESP_LOGE(RADIO_TAG, "Failed to erase SPI flash block %" PRIx32 ": %d",
+             block, err);
     return -EIO;
   }
 
@@ -680,8 +680,7 @@ esp_err_t storage_init(void) {
   }
 
   err = esp_vfs_littlefs_register(&conf);
-  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to mount LittleFS: %d (%s)", err,
-                      esp_err_to_name(err));
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to mount LittleFS: %d", err);
 
   things_register_telemetry_generator(storage_telemetry_generator, "storage",
                                       NULL);

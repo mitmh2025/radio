@@ -281,8 +281,7 @@ static void fm_telemetry_generator() {
 
   esp_err_t ret = fm_read_registers(0xb);
   if (ret != ESP_OK) {
-    ESP_LOGE(TAG, "Unable to fetch status for telemetry: %d (%s)", ret,
-             esp_err_to_name(ret));
+    ESP_LOGE(TAG, "Unable to fetch status for telemetry: %d", ret);
     // Report what we have anyway
   }
 
@@ -290,8 +289,7 @@ static void fm_telemetry_generator() {
   ret = fm_channel_to_frequency(si4702_shadow_registers.reg0b.refined.READCHAN,
                                 &frequency);
   if (ret != ESP_OK) {
-    ESP_LOGE(TAG, "Unable to convert channel to frequency: %d (%s)", ret,
-             esp_err_to_name(ret));
+    ESP_LOGE(TAG, "Unable to convert channel to frequency: %d", ret);
     frequency = 0;
   }
 

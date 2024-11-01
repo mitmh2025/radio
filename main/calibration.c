@@ -24,21 +24,17 @@ esp_err_t calibration_load(radio_calibration_t *calibration) {
   esp_err_t ret = ESP_OK;
 
   ESP_GOTO_ON_ERROR(nvs_get_u32(handle, "vol_min", &calibration->volume_min),
-                    cleanup, RADIO_TAG,
-                    "Failed to get volume min from NVS: %d (%s)", err_rc_,
-                    esp_err_to_name(err_rc_));
+                    cleanup, RADIO_TAG, "Failed to get volume min from NVS: %d",
+                    err_rc_);
   ESP_GOTO_ON_ERROR(nvs_get_u32(handle, "vol_max", &calibration->volume_max),
-                    cleanup, RADIO_TAG,
-                    "Failed to get volume max from NVS: %d (%s)", err_rc_,
-                    esp_err_to_name(err_rc_));
+                    cleanup, RADIO_TAG, "Failed to get volume max from NVS: %d",
+                    err_rc_);
   ESP_GOTO_ON_ERROR(
       nvs_get_u32(handle, "freq_min", &calibration->frequency_min), cleanup,
-      RADIO_TAG, "Failed to get frequency min from NVS: %d (%s)", err_rc_,
-      esp_err_to_name(err_rc_));
+      RADIO_TAG, "Failed to get frequency min from NVS: %d", err_rc_);
   ESP_GOTO_ON_ERROR(
       nvs_get_u32(handle, "freq_max", &calibration->frequency_max), cleanup,
-      RADIO_TAG, "Failed to get frequency max from NVS: %d (%s)", err_rc_,
-      esp_err_to_name(err_rc_));
+      RADIO_TAG, "Failed to get frequency max from NVS: %d", err_rc_);
 
 cleanup:
   nvs_close(handle);
@@ -214,21 +210,17 @@ esp_err_t calibration_calibrate(radio_calibration_t *calibration) {
 
   // Finally write calibration to NVS
   ESP_GOTO_ON_ERROR(nvs_set_u32(handle, "vol_min", calibration->volume_min),
-                    cleanup, RADIO_TAG,
-                    "Failed to set volume min in NVS: %d (%s)", err_rc_,
-                    esp_err_to_name(err_rc_));
+                    cleanup, RADIO_TAG, "Failed to set volume min in NVS: %d",
+                    err_rc_);
   ESP_GOTO_ON_ERROR(nvs_set_u32(handle, "vol_max", calibration->volume_max),
-                    cleanup, RADIO_TAG,
-                    "Failed to set volume max in NVS: %d (%s)", err_rc_,
-                    esp_err_to_name(err_rc_));
+                    cleanup, RADIO_TAG, "Failed to set volume max in NVS: %d",
+                    err_rc_);
   ESP_GOTO_ON_ERROR(nvs_set_u32(handle, "freq_min", calibration->frequency_min),
                     cleanup, RADIO_TAG,
-                    "Failed to set frequency min in NVS: %d (%s)", err_rc_,
-                    esp_err_to_name(err_rc_));
+                    "Failed to set frequency min in NVS: %d", err_rc_);
   ESP_GOTO_ON_ERROR(nvs_set_u32(handle, "freq_max", calibration->frequency_max),
                     cleanup, RADIO_TAG,
-                    "Failed to set frequency max in NVS: %d (%s)", err_rc_,
-                    esp_err_to_name(err_rc_));
+                    "Failed to set frequency max in NVS: %d", err_rc_);
 
 cleanup:
   if (debounce_registered) {
