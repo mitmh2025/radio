@@ -11,6 +11,8 @@
 #include <com/amazonaws/kinesis/video/common/Include.h>
 #include <com/amazonaws/kinesis/video/webrtcclient/Include.h>
 
+SemaphoreHandle_t pending_candidates_lock = NULL;
+
 struct webrtc_connection {
   webrtc_connection_state_change_callback_t state_change_callback;
   webrtc_connection_buffer_duration_callback_t buffer_duration_callback;
@@ -26,8 +28,6 @@ struct webrtc_connection {
   char *local_ice_pwd;
   char *local_media_line;
 
-  // Lock to protect access to pending_candidates
-  SemaphoreHandle_t lock;
   // We should never have this many pending candidates, but it's a relatively
   // cheap allocation
   char *pending_candidates[16];
@@ -70,11 +70,6 @@ void webrtc_free_connection(webrtc_connection_t connection) {
   freeTransceiver(&connection->transceiver);
 
   freePeerConnection(&connection->peer_connection);
-
-  if (connection->lock) {
-    xSemaphoreTake(connection->lock, portMAX_DELAY);
-    vSemaphoreDelete(connection->lock);
-  }
 
   free(connection);
 }
@@ -136,6 +131,8 @@ esp_err_t webrtc_init() {
     return ESP_FAIL;
   }
 
+  pending_candidates_lock = xSemaphoreCreateMutex();
+
   return ESP_OK;
 }
 
@@ -149,7 +146,7 @@ static void webrtc_send_pending_candidates(webrtc_connection_t connection) {
 
   char *sdp_fragment = NULL;
 
-  xSemaphoreTake(connection->lock, portMAX_DELAY);
+  xSemaphoreTake(pending_candidates_lock, portMAX_DELAY);
 
   size_t fragment_len =
       strlen(connection->local_ice_ufrag) + strlen(connection->local_ice_pwd) +
@@ -220,7 +217,7 @@ static void webrtc_send_pending_candidates(webrtc_connection_t connection) {
 cleanup:
   free(sdp_fragment);
 
-  xSemaphoreGive(connection->lock);
+  xSemaphoreGive(pending_candidates_lock);
 }
 
 static void webrtc_on_connection_state_change(UINT64 arg,
@@ -326,7 +323,7 @@ static void webrtc_on_ice_candidate(UINT64 arg, PCHAR candidate) {
     }
   }
 
-  xSemaphoreTake(connection->lock, portMAX_DELAY);
+  xSemaphoreTake(pending_candidates_lock, portMAX_DELAY);
 
   for (int i = 0; i < sizeof(connection->pending_candidates) /
                           sizeof(connection->pending_candidates[0]);
@@ -338,7 +335,7 @@ static void webrtc_on_ice_candidate(UINT64 arg, PCHAR candidate) {
     }
   }
 
-  xSemaphoreGive(connection->lock);
+  xSemaphoreGive(pending_candidates_lock);
 
   webrtc_send_pending_candidates(connection);
 }
@@ -400,8 +397,6 @@ esp_err_t webrtc_connect(webrtc_config_t *config, webrtc_connection_t *handle) {
   ESP_GOTO_ON_FALSE(error == OPUS_OK, ESP_FAIL, cleanup, RADIO_TAG,
                     "Failed to create Opus decoder with error code %s",
                     opus_strerror(error));
-
-  connection->lock = xSemaphoreCreateMutex();
 
   rtc_cfg = calloc(1, sizeof(RtcConfiguration));
   ESP_GOTO_ON_FALSE(rtc_cfg, ESP_ERR_NO_MEM, cleanup, RADIO_TAG,
