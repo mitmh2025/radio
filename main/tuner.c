@@ -372,7 +372,8 @@ esp_err_t tuner_init(radio_calibration_t *calibration) {
                                                         &tuner_task_handle, 1),
                       ESP_ERR_NO_MEM, RADIO_TAG, "Failed to create tuner task");
   ESP_RETURN_ON_ERROR(debounce_handler_add(TOGGLE_PIN, GPIO_INTR_ANYEDGE,
-                                           modulation_callback, NULL, 50000),
+                                           modulation_callback, NULL,
+                                           pdMS_TO_TICKS(10)),
                       RADIO_TAG, "Failed to add modulation callback");
   ESP_RETURN_ON_ERROR(adc_subscribe(
                           &(adc_digi_pattern_config_t){

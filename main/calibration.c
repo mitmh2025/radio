@@ -87,9 +87,9 @@ esp_err_t calibration_calibrate(radio_calibration_t *calibration) {
   };
   ESP_GOTO_ON_ERROR(gpio_config(&button_config), cleanup, RADIO_TAG,
                     "Failed to configure button");
-  ESP_GOTO_ON_ERROR(debounce_handler_add(BUTTON_CIRCLE_PIN, GPIO_INTR_NEGEDGE,
-                                         button_callback,
-                                         xTaskGetCurrentTaskHandle(), 50000),
+  ESP_GOTO_ON_ERROR(debounce_handler_add(
+                        BUTTON_CIRCLE_PIN, GPIO_INTR_NEGEDGE, button_callback,
+                        xTaskGetCurrentTaskHandle(), pdMS_TO_TICKS(10)),
                     cleanup, RADIO_TAG, "Failed to add debounce handler");
   debounce_registered = true;
 

@@ -392,8 +392,9 @@ static void entune(void *ctx) {
       .pull_down_en = GPIO_PULLDOWN_DISABLE,
       .intr_type = GPIO_INTR_ANYEDGE,
   }));
-  ESP_ERROR_CHECK_WITHOUT_ABORT(debounce_handler_add(
-      BUTTON_TRIANGLE_PIN, GPIO_INTR_ANYEDGE, button_intr, pi_task, 50000));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(
+      debounce_handler_add(BUTTON_TRIANGLE_PIN, GPIO_INTR_ANYEDGE, button_intr,
+                           pi_task, pdMS_TO_TICKS(10)));
 
   entuned = true;
   xTaskNotify(pi_task, 0, eNoAction);
