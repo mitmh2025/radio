@@ -1,40 +1,64 @@
 dependencies:
   bblanchon/arduinojson:
     component_hash: 463812931f99cb7a554d64311288f537b43daaca3eed2427557b907af393447c
+    dependencies: []
     source:
-      service_url: https://api.components.espressif.com/
+      registry_url: https://components.espressif.com/
       type: service
     version: 6.21.5
   espressif/esp-dsp:
     component_hash: fa7fe74305df6da25867437ebcd4213e047cbfc0556cf92067ab657fce537c6e
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=4.2'
     source:
-      service_url: https://api.components.espressif.com/
+      registry_url: https://components.espressif.com/
       type: service
     version: 1.5.2
   espressif/led_strip:
     component_hash: 28c6509a727ef74925b372ed404772aeedf11cce10b78c3f69b3c66799095e2d
+    dependencies:
+    - name: idf
+      registry_url: https://components.espressif.com
+      require: private
+      version: '>=4.4'
     source:
-      service_url: https://api.components.espressif.com/
+      registry_url: https://components.espressif.com/
       type: service
     version: 2.5.5
   espressif/nghttp:
     component_hash: c52b83cc3d1083ae669751534ea4f7445974b86d91d49a5273bdb0fbf87f34d6
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=5.0'
     source:
-      service_url: https://api.components.espressif.com/
+      registry_url: https://components.espressif.com/
       type: service
     version: 1.62.1
   idf:
-    component_hash: null
     source:
       type: idf
     version: 5.2.2
   thingsboard/ThingsBoard:
     component_hash: 93151ce37de0eca119483717e60dc723c2e4e1c0930088f0cdc1c3447b9d09e6
+    dependencies:
+    - name: bblanchon/arduinojson
+      version: ^6.21.4
+    - name: idf
+      version: '*'
     source:
       git: https://github.com/ebroder/thingsboard-client-sdk
       path: .
       type: git
     version: 68211abb731065d7b5ea441c93eaaa242c72855b
-manifest_hash: 4db5243ca536716282beea8257c7e8a1b108fc0559ea38f2dc2140c8fd785bc3
+direct_dependencies:
+- espressif/esp-dsp
+- espressif/led_strip
+- espressif/nghttp
+- idf
+- thingsboard/ThingsBoard
+manifest_hash: d99df6c10475305d856165a72f8763c5458fc4bc54c8f969103123c7ee3aabca
 target: esp32s3
-version: 1.0.0
+version: 2.0.0
