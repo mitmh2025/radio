@@ -37,6 +37,7 @@ idf_component_register(
   audio_board
   audio_stream
   boardconfig
+  bt
   console
   file_stream
   esp_app_format
