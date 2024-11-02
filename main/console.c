@@ -13,8 +13,10 @@
 #include "argtable3/argtable3.h"
 #include "driver/gpio.h"
 #include "driver/usb_serial_jtag.h"
+#include "driver/usb_serial_jtag_vfs.h"
 #include "esp_check.h"
 #include "esp_console.h"
+#include "esp_debug_helpers.h"
 #include "esp_log.h"
 #include "esp_vfs_dev.h"
 #include "freertos/FreeRTOS.h"
@@ -90,6 +92,14 @@ static int heap_func(int argc, char **argv) {
   }
 
   heap_caps_print_heap_info(caps);
+  return 0;
+}
+
+static int trace_func(int argc, char **argv) {
+  esp_err_t ret = esp_backtrace_print_all_tasks(4);
+  if (ret != ESP_OK) {
+    printf("Failed to print backtrace: %d\n", ret);
+  }
   return 0;
 }
 
@@ -615,7 +625,7 @@ esp_err_t console_init() {
   ESP_RETURN_ON_ERROR(err, RADIO_TAG,
                       "Failed to install USB serial JTAG driver: %d", err);
 
-  esp_vfs_usb_serial_jtag_use_driver();
+  usb_serial_jtag_vfs_use_driver();
 
   esp_console_config_t cfg = ESP_CONSOLE_CONFIG_DEFAULT();
   cfg.hint_color = atoi(LOG_COLOR_CYAN);
@@ -645,6 +655,15 @@ esp_err_t console_init() {
   };
   err = esp_console_cmd_register(&cmd_panic);
   ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register panic command: %d",
+                      err);
+
+  esp_console_cmd_t cmd_trace = {
+      .command = "trace",
+      .help = "Print backtrace of all tasks",
+      .func = &trace_func,
+  };
+  err = esp_console_cmd_register(&cmd_trace);
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register trace command: %d",
                       err);
 
   heap_args.caps =
