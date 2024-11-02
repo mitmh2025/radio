@@ -229,7 +229,6 @@ static esp_err_t set_active(bool new_status,
   active = new_status;
 
 cleanup:
-  BOARD_I2C_MUTEX_UNLOCK();
   if (ret == ESP_OK && final_ctrl_reg1) {
     *final_ctrl_reg1 = ctrl_reg1;
   }
