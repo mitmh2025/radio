@@ -74,6 +74,8 @@ esp_err_t debounce_handler_add(gpio_num_t gpio_num, gpio_int_type_t intr_type,
       intr_type == GPIO_INTR_POSEDGE || intr_type == GPIO_INTR_NEGEDGE ||
           intr_type == GPIO_INTR_ANYEDGE,
       ESP_ERR_INVALID_ARG, RADIO_TAG, "Invalid interrupt type: %d", intr_type);
+  ESP_RETURN_ON_FALSE(timeout > 0, ESP_ERR_INVALID_ARG, RADIO_TAG,
+                      "Invalid timeout: %" PRIu32, timeout);
   portENTER_CRITICAL(&debounce_spinlock);
   debounce_handlers[gpio_num].state = gpio_get_level(gpio_num);
   debounce_handlers[gpio_num].intr_type = intr_type;
@@ -96,7 +98,8 @@ esp_err_t debounce_handler_remove(gpio_num_t gpio_num) {
                       "Failed to remove ISR handler");
   portENTER_CRITICAL(&debounce_spinlock);
   xTimerStop(debounce_handlers[gpio_num].timer, portMAX_DELAY);
-  memset(&debounce_handlers[gpio_num], 0, sizeof(struct debounce_config));
+  debounce_handlers[gpio_num].isr = NULL;
+  debounce_handlers[gpio_num].arg = NULL;
   portEXIT_CRITICAL(&debounce_spinlock);
   return ESP_OK;
 }
