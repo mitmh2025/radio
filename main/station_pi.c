@@ -5,6 +5,7 @@
 #include "audio_output.h"
 #include "bounds.h"
 #include "debounce.h"
+#include "led.h"
 #include "magnet.h"
 #include "main.h"
 #include "mixer.h"
@@ -182,6 +183,25 @@ static void knock_start_tone(void *arg) {
       &knock_tone));
 }
 
+static void update_led() {
+  switch (shift_state) {
+  case 0:
+    ESP_ERROR_CHECK_WITHOUT_ABORT(led_set_pixel(1, 0, 0, 0));
+    break;
+  case SHIFT_MAGNET:
+    ESP_ERROR_CHECK_WITHOUT_ABORT(led_set_pixel(1, 255, 128, 0));
+    break;
+  case SHIFT_HEADPHONE:
+    ESP_ERROR_CHECK_WITHOUT_ABORT(led_set_pixel(1, 0, 255, 255));
+    break;
+  case SHIFT_MAGNET + SHIFT_HEADPHONE:
+    ESP_ERROR_CHECK_WITHOUT_ABORT(led_set_pixel(1, 255, 255, 0));
+    break;
+  default:
+    break;
+  }
+}
+
 static void update_state() {
   if (shift_state != previous_shift_state) {
     if (light_tone) {
@@ -294,6 +314,8 @@ static void station_pi_task(void *ctx) {
       }
     }
 
+    uint8_t old_shift_state = shift_state;
+
     bool old_gpio = !(shift_state & SHIFT_HEADPHONE);
     bool gpio;
     esp_err_t err = tas2505_read_gpio(&gpio);
@@ -327,6 +349,10 @@ static void station_pi_task(void *ctx) {
       shift_state |= SHIFT_MAGNET;
     } else if (magnet_magnitude < magnet_threshold - magnet_hysteresis) {
       shift_state &= ~SHIFT_MAGNET;
+    }
+
+    if (old_shift_state != shift_state) {
+      update_led();
     }
 
     update_state();
@@ -396,6 +422,7 @@ static void entune(void *ctx) {
 
   entuned = true;
   xTaskNotify(pi_task, 0, eNoAction);
+  update_led();
 }
 
 static void detune(void *ctx) {
@@ -403,6 +430,7 @@ static void detune(void *ctx) {
   xTaskNotify(pi_task, 0, eNoAction);
   ESP_ERROR_CHECK_WITHOUT_ABORT(debounce_handler_remove(BUTTON_TRIANGLE_PIN));
   ESP_ERROR_CHECK_WITHOUT_ABORT(accelerometer_unsubscribe_pulse());
+  ESP_ERROR_CHECK_WITHOUT_ABORT(led_set_pixel(1, 0, 0, 0));
   ESP_ERROR_CHECK_WITHOUT_ABORT(audio_output_resume());
   ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_default_static(true));
   station_pi_activation_enable(true);
