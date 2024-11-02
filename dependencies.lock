@@ -40,7 +40,7 @@ dependencies:
   idf:
     source:
       type: idf
-    version: 5.2.2
+    version: 5.3.1
   thingsboard/ThingsBoard:
     component_hash: 93151ce37de0eca119483717e60dc723c2e4e1c0930088f0cdc1c3447b9d09e6
     dependencies:
@@ -59,6 +59,6 @@ direct_dependencies:
 - espressif/nghttp
 - idf
 - thingsboard/ThingsBoard
-manifest_hash: d99df6c10475305d856165a72f8763c5458fc4bc54c8f969103123c7ee3aabca
+manifest_hash: b8c2fd92d486e3d44dab682762637acc39e590b9d12a27370d5e567f4a8d6972
 target: esp32s3
 version: 2.0.0

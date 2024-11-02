@@ -10,7 +10,7 @@ targeting our custom hardware based on the ESP32-S3-MINI-1-N4R2.
 This firmware is built on Espressif's [ESP-IDF][] and [ESP-ADF][] frameworks.
 You'll need to install both. Make sure the install the correct versions of each.
 
-First, setup ESP-IDF using the [installation instructions for v5.2.2][ESP-IDF
+First, setup ESP-IDF using the [installation instructions for v5.3.1][ESP-IDF
 install]. You should only need to complete steps 1-4. In step 3, make sure to
 install the tools for `esp32s3` (which is different than just `esp32`).
 
@@ -18,14 +18,16 @@ Next, install ESP-ADF. Because we want a specific version, run:
 
 ```
 cd ~/esp
-git clone --recursive -b 0593164bf7e64c268dad56e332d6f07f0e9c37ab https://github.com/espressif/esp-adf.git
+git clone --recursive -b ff7f39dcf0a0da87671ff4ab422eb258be429049 https://github.com/espressif/esp-adf.git
+. v5.3.1/esp-idf/export.sh
+cd esp-adf && ./install.sh
 ```
 
 Once both are installed, you can activate the IDF and ADF environment by
 running:
 
 ```
-. ~/src/esp/v5.2.2/esp-idf/export.sh && . ~/src/esp/esp-adf/export.sh
+. ~/src/esp/v5.3.1/esp-idf/export.sh && . ~/src/esp/esp-adf/export.sh
 ```
 
 **Note**: You must activate ESP-IDF before activating ESP-ADF, otherwise ESP-ADF
@@ -83,8 +85,8 @@ is enumerated here as well for convenience:
   Shared Attributes, and create a key called `whep_url`. You can use
   `https://radio.mitmh2025.com/music/whep` as the value for testing.
 
-[ESP-IDF]: https://docs.espressif.com/projects/esp-idf/en/v5.2.2/esp32s3/index.html
+[ESP-IDF]: https://docs.espressif.com/projects/esp-idf/en/v5.3.1/esp32s3/index.html
 [ESP-ADF]: https://docs.espressif.com/projects/esp-adf/en/latest/
-[ESP-IDF install]: https://docs.espressif.com/projects/esp-idf/en/v5.2.2/esp32/get-started/linux-macos-setup.html
+[ESP-IDF install]: https://docs.espressif.com/projects/esp-idf/en/v5.3.1/esp32/get-started/linux-macos-setup.html
 [ESP-IDF monitor]: https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-guides/tools/idf-monitor.html
 [ThingsBoard devices page]: https://things.mitmh2025.com/entities/devices
