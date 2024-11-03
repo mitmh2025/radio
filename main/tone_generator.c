@@ -141,6 +141,13 @@ static int tone_generator_play(void *ctx, char *data, int len,
   return len;
 }
 
+static void set_frequency(tone_generator_t generator, float frequency) {
+  generator->frequency = frequency;
+  float samples_per_cycle = 48000.0f / frequency;
+  float float_increment = 256.0f / samples_per_cycle;
+  generator->increment = lroundf((1 << 24) * float_increment);
+}
+
 esp_err_t tone_generator_init(const tone_generator_config_t *config,
                               tone_generator_t *generator) {
   ESP_RETURN_ON_FALSE(config, ESP_ERR_INVALID_ARG, RADIO_TAG, "config is NULL");
@@ -154,7 +161,6 @@ esp_err_t tone_generator_init(const tone_generator_config_t *config,
     return ESP_ERR_NO_MEM;
   }
 
-  (*generator)->frequency = config->frequency;
   (*generator)->attack_time = config->attack_time;
   (*generator)->decay_time = config->decay_time;
   (*generator)->sustain_level = config->sustain_level;
@@ -171,9 +177,7 @@ esp_err_t tone_generator_init(const tone_generator_config_t *config,
                           &(*generator)->release_timer),
                       RADIO_TAG, "Failed to create release timer");
 
-  float samples_per_cycle = 48000.0f / config->frequency;
-  float float_increment = 256.0f / samples_per_cycle;
-  (*generator)->increment = lroundf((1 << 24) * float_increment);
+  set_frequency(*generator, config->frequency);
   (*generator)->start_time = esp_timer_get_time();
   (*generator)->phase = 0;
 
@@ -181,6 +185,15 @@ esp_err_t tone_generator_init(const tone_generator_config_t *config,
     tone_generator_entune(*generator);
   }
 
+  return ESP_OK;
+}
+
+esp_err_t tone_generator_adjust_frequency(tone_generator_t generator,
+                                          float frequency) {
+  ESP_RETURN_ON_FALSE(frequency > 0, ESP_ERR_INVALID_ARG, RADIO_TAG,
+                      "frequency must be greater than 0");
+
+  set_frequency(generator, frequency);
   return ESP_OK;
 }
 

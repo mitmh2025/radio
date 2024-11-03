@@ -47,31 +47,16 @@ static bounds_handle_t light_bounds;
 static const uint16_t light_threshold = 1500;
 static const uint16_t light_hysteresis = 25;
 static uint16_t light_smooth = 0xffff;
-static const float light_frequencies[] = {
-    [0] = FREQUENCY_G_4,
-    [SHIFT_MAGNET] = FREQUENCY_D_4,
-    [SHIFT_HEADPHONE] = FREQUENCY_G_5,
-    [SHIFT_MAGNET + SHIFT_HEADPHONE] = FREQUENCY_D_5,
-};
+static const float light_frequency = FREQUENCY_G_4;
 static bool light_triggered = false;
 static tone_generator_t light_tone = NULL;
 
 static uint32_t touch_threshold = 0x3000;
-static const float touch_frequencies[] = {
-    [0] = FREQUENCY_A_4,
-    [SHIFT_MAGNET] = FREQUENCY_E_4,
-    [SHIFT_HEADPHONE] = FREQUENCY_A_5,
-    [SHIFT_MAGNET + SHIFT_HEADPHONE] = FREQUENCY_E_5,
-};
+static const float touch_frequency = FREQUENCY_A_4;
 static bool touch_triggered = false;
 static tone_generator_t touch_tone = NULL;
 
-static const float button_frequencies[] = {
-    [0] = FREQUENCY_B_4,
-    [SHIFT_MAGNET] = FREQUENCY_F_SHARP_4,
-    [SHIFT_HEADPHONE] = FREQUENCY_B_5,
-    [SHIFT_MAGNET + SHIFT_HEADPHONE] = FREQUENCY_F_SHARP_5,
-};
+static const float button_frequency = FREQUENCY_B_4;
 bool button_triggered = false;
 static tone_generator_t button_tone = NULL;
 
@@ -89,15 +74,96 @@ static const accelerometer_pulse_cfg_t knock_cfg = {
 static int64_t knock_last_time = 0;
 static esp_timer_handle_t knock_start_timer = NULL;
 static esp_timer_handle_t knock_stop_timer = NULL;
-static const float knock_frequencies[] = {
-    [0] = FREQUENCY_C_5,
-    [SHIFT_MAGNET] = FREQUENCY_G_4,
-    [SHIFT_HEADPHONE] = FREQUENCY_C_6,
-    [SHIFT_MAGNET + SHIFT_HEADPHONE] = FREQUENCY_G_5,
-};
+static const float knock_frequency = FREQUENCY_C_5;
 static tone_generator_t knock_tone = NULL;
 
+#define NOTES_TRACK_SIZE 32
+struct note_t {
+  float frequency;
+  int64_t start;
+};
+static EXT_RAM_BSS_ATTR struct note_t notes_played[NOTES_TRACK_SIZE] = {};
+static size_t notes_played_index = 0;
+
+static uint8_t current_note_sequence = 0;
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-const-variable"
+// Mary Had a Little Lamb
+static const float note_sequence_0[] = {
+    FREQUENCY_B_4, FREQUENCY_A_4, FREQUENCY_G_4, FREQUENCY_A_4, FREQUENCY_B_4,
+    FREQUENCY_B_4, FREQUENCY_B_4, FREQUENCY_A_4, FREQUENCY_A_4, FREQUENCY_A_4,
+    FREQUENCY_B_4, FREQUENCY_B_4, FREQUENCY_B_4, FREQUENCY_B_4, FREQUENCY_A_4,
+    FREQUENCY_G_4, FREQUENCY_A_4, FREQUENCY_G_4, FREQUENCY_G_4, FREQUENCY_G_4,
+    FREQUENCY_G_4, FREQUENCY_A_4, FREQUENCY_A_4, FREQUENCY_G_4, FREQUENCY_A_4,
+    FREQUENCY_B_4,
+};
+// Mary Had a Little Lamb, with an option up to high D
+static const float note_sequence_0_alt[] = {
+    FREQUENCY_B_4, FREQUENCY_A_4, FREQUENCY_G_4, FREQUENCY_A_4, FREQUENCY_B_4,
+    FREQUENCY_B_4, FREQUENCY_B_4, FREQUENCY_A_4, FREQUENCY_A_4, FREQUENCY_A_4,
+    FREQUENCY_B_4, FREQUENCY_D_4, FREQUENCY_D_4, FREQUENCY_B_4, FREQUENCY_A_4,
+    FREQUENCY_G_4, FREQUENCY_A_4, FREQUENCY_G_4, FREQUENCY_G_4, FREQUENCY_G_4,
+    FREQUENCY_G_4, FREQUENCY_A_4, FREQUENCY_A_4, FREQUENCY_G_4, FREQUENCY_A_4,
+    FREQUENCY_B_4,
+};
+// Never Gonna Give You Up
+static const float note_sequence_1[] = {
+    FREQUENCY_D_4,       FREQUENCY_E_4,       FREQUENCY_G_4, FREQUENCY_D_4,
+    FREQUENCY_B_4,       FREQUENCY_B_4,       FREQUENCY_A_4, FREQUENCY_D_4,
+    FREQUENCY_E_4,       FREQUENCY_F_SHARP_4, FREQUENCY_D_4, FREQUENCY_A_4,
+    FREQUENCY_A_4,       FREQUENCY_G_4,       FREQUENCY_D_4, FREQUENCY_E_4,
+    FREQUENCY_G_4,       FREQUENCY_D_4,       FREQUENCY_G_4, FREQUENCY_G_4,
+    FREQUENCY_F_SHARP_4, FREQUENCY_D_4,       FREQUENCY_D_4, FREQUENCY_A_4,
+    FREQUENCY_G_4,
+};
+// Somewhere Over the Rainbow
+static const float note_sequence_2[] = {
+    FREQUENCY_G_4, FREQUENCY_G_5,       FREQUENCY_F_SHARP_5, FREQUENCY_D_5,
+    FREQUENCY_E_5, FREQUENCY_F_SHARP_5, FREQUENCY_G_5,       FREQUENCY_G_4,
+    FREQUENCY_E_5, FREQUENCY_D_5,       FREQUENCY_E_4,       FREQUENCY_C_5,
+    FREQUENCY_B_4, FREQUENCY_G_4,       FREQUENCY_A_4,       FREQUENCY_B_4,
+    FREQUENCY_C_5, FREQUENCY_A_4,       FREQUENCY_F_SHARP_4, FREQUENCY_G_4,
+    FREQUENCY_A_4, FREQUENCY_B_4,       FREQUENCY_G_4,
+};
+// The Final Countdown
+static const float note_sequence_3[] = {
+    FREQUENCY_B_4,       FREQUENCY_A_4,       FREQUENCY_B_4, FREQUENCY_E_4,
+    FREQUENCY_C_5,       FREQUENCY_B_4,       FREQUENCY_C_5, FREQUENCY_B_4,
+    FREQUENCY_A_4,       FREQUENCY_C_5,       FREQUENCY_B_4, FREQUENCY_C_5,
+    FREQUENCY_E_4,       FREQUENCY_A_4,       FREQUENCY_G_4, FREQUENCY_A_4,
+    FREQUENCY_G_4,       FREQUENCY_F_SHARP_4, FREQUENCY_A_4, FREQUENCY_G_4,
+    FREQUENCY_B_4,       FREQUENCY_A_4,       FREQUENCY_B_4, FREQUENCY_E_4,
+    FREQUENCY_C_5,       FREQUENCY_B_4,       FREQUENCY_C_5, FREQUENCY_B_4,
+    FREQUENCY_A_4,       FREQUENCY_C_5,       FREQUENCY_B_4, FREQUENCY_C_5,
+    FREQUENCY_E_4,       FREQUENCY_A_4,       FREQUENCY_G_4, FREQUENCY_A_4,
+    FREQUENCY_G_4,       FREQUENCY_F_SHARP_4, FREQUENCY_A_4, FREQUENCY_G_4,
+    FREQUENCY_F_SHARP_4, FREQUENCY_G_4,       FREQUENCY_A_4, FREQUENCY_G_4,
+    FREQUENCY_A_4,       FREQUENCY_B_4,       FREQUENCY_A_4, FREQUENCY_G_4,
+    FREQUENCY_F_SHARP_4, FREQUENCY_E_4,       FREQUENCY_C_5, FREQUENCY_B_4,
+    FREQUENCY_C_5,       FREQUENCY_B_4,       FREQUENCY_A_4, FREQUENCY_B_4,
+};
+#pragma GCC diagnostic pop
+
 // TODO: telemetry
+
+static void record_note(float frequency) {
+  notes_played[notes_played_index] = (struct note_t){
+      .frequency = frequency,
+      .start = esp_timer_get_time(),
+  };
+  notes_played_index = (notes_played_index + 1) % NOTES_TRACK_SIZE;
+}
+
+static float shift_note(float frequency) {
+  if (shift_state & SHIFT_MAGNET) {
+    frequency *= 0.75;
+  }
+  if (shift_state & SHIFT_HEADPHONE) {
+    frequency *= 2;
+  }
+  return frequency;
+}
 
 static void light_stop_tone() {
   tone_generator_release(light_tone);
@@ -105,6 +171,7 @@ static void light_stop_tone() {
 }
 
 static void light_start_tone() {
+  float frequency = shift_note(light_frequency);
   ESP_ERROR_CHECK_WITHOUT_ABORT(tone_generator_init(
       &(tone_generator_config_t){
           .entuned = entuned,
@@ -112,9 +179,10 @@ static void light_start_tone() {
           .decay_time = 20000,
           .sustain_level = 0x8000,
           .release_time = 100000,
-          .frequency = light_frequencies[shift_state],
+          .frequency = frequency,
       },
       &light_tone));
+  record_note(frequency);
 }
 
 static void touch_stop_tone() {
@@ -123,6 +191,7 @@ static void touch_stop_tone() {
 }
 
 static void touch_start_tone() {
+  float frequency = shift_note(touch_frequency);
   ESP_ERROR_CHECK_WITHOUT_ABORT(tone_generator_init(
       &(tone_generator_config_t){
           .entuned = entuned,
@@ -130,9 +199,10 @@ static void touch_start_tone() {
           .decay_time = 20000,
           .sustain_level = 0x8000,
           .release_time = 100000,
-          .frequency = touch_frequencies[shift_state],
+          .frequency = frequency,
       },
       &touch_tone));
+  record_note(frequency);
 }
 
 static void button_stop_tone() {
@@ -141,6 +211,7 @@ static void button_stop_tone() {
 }
 
 static void button_start_tone() {
+  float frequency = shift_note(button_frequency);
   ESP_ERROR_CHECK_WITHOUT_ABORT(tone_generator_init(
       &(tone_generator_config_t){
           .entuned = entuned,
@@ -148,9 +219,10 @@ static void button_start_tone() {
           .decay_time = 20000,
           .sustain_level = 0x8000,
           .release_time = 100000,
-          .frequency = button_frequencies[shift_state],
+          .frequency = frequency,
       },
       &button_tone));
+  record_note(frequency);
 }
 
 static void knock_stop_tone(void *arg) {
@@ -171,6 +243,7 @@ static void knock_start_tone(void *arg) {
   }
 
   ESP_ERROR_CHECK_WITHOUT_ABORT(esp_timer_start_once(knock_stop_timer, 400000));
+  float frequency = shift_note(knock_frequency);
   ESP_ERROR_CHECK_WITHOUT_ABORT(tone_generator_init(
       &(tone_generator_config_t){
           .entuned = entuned,
@@ -178,9 +251,10 @@ static void knock_start_tone(void *arg) {
           .decay_time = 20000,
           .sustain_level = 0x8000,
           .release_time = 100000,
-          .frequency = knock_frequencies[shift_state],
+          .frequency = frequency,
       },
       &knock_tone));
+  record_note(frequency);
 }
 
 static void update_led() {
@@ -220,6 +294,8 @@ static void update_state() {
       button_stop_tone();
       button_start_tone();
     }
+    // Don't need to restart knock tone since it is fixed duration
+    update_led();
     previous_shift_state = shift_state;
   }
 
@@ -317,8 +393,6 @@ static void station_pi_task(void *ctx) {
       }
     }
 
-    uint8_t old_shift_state = shift_state;
-
     bool old_gpio = !(shift_state & SHIFT_HEADPHONE);
     bool gpio;
     esp_err_t err = tas2505_read_gpio(&gpio);
@@ -352,10 +426,6 @@ static void station_pi_task(void *ctx) {
       shift_state |= SHIFT_MAGNET;
     } else if (magnet_magnitude < magnet_threshold - magnet_hysteresis) {
       shift_state &= ~SHIFT_MAGNET;
-    }
-
-    if (old_shift_state != shift_state) {
-      update_led();
     }
 
     update_state();
@@ -518,6 +588,11 @@ esp_err_t station_pi_init() {
   esp_err_t ret = nvs_get_u8(pi_nvs_handle, "enabled", &enabled);
   if (ret != ESP_ERR_NVS_NOT_FOUND) {
     ESP_RETURN_ON_ERROR(ret, RADIO_TAG, "Failed to get enabled from NVS");
+  }
+
+  ret = nvs_get_u8(pi_nvs_handle, "stage", &current_note_sequence);
+  if (ret != ESP_ERR_NVS_NOT_FOUND) {
+    ESP_RETURN_ON_ERROR(ret, RADIO_TAG, "Failed to get stage from NVS");
   }
 
   frequency_config_t config = {
