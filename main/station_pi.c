@@ -51,7 +51,7 @@ static const float light_frequency = FREQUENCY_G_4;
 static bool light_triggered = false;
 static tone_generator_t light_tone = NULL;
 
-static uint32_t touch_threshold = 0x3000;
+static uint32_t touch_threshold = 6000;
 static const float touch_frequency = FREQUENCY_A_4;
 static bool touch_triggered = false;
 static tone_generator_t touch_tone = NULL;
