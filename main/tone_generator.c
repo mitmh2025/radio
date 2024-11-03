@@ -13,7 +13,7 @@
 
 // sin lookup from 0 to 2pi in 256 steps, generated in Python with this code:
 // [round(0x7fff * math.sin(2 *math.pi * i / 256)) for i in range(256)]
-int16_t sin_lookup[256] = {
+static const int16_t sin_lookup[256] = {
     0,      804,    1608,   2410,   3212,   4011,   4808,   5602,   6393,
     7179,   7962,   8739,   9512,   10278,  11039,  11793,  12539,  13279,
     14010,  14732,  15446,  16151,  16846,  17530,  18204,  18868,  19519,

@@ -13,7 +13,7 @@
 #include "led_strip.h"
 
 static SemaphoreHandle_t led_mutex = NULL;
-static led_strip_handle_t led = NULL;
+static EXT_RAM_BSS_ATTR led_strip_handle_t led = NULL;
 static struct {
   uint32_t red;
   uint32_t green;

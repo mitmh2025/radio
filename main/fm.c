@@ -142,14 +142,14 @@ typedef uint16_t si4702_reg0d;
 typedef uint16_t si4702_reg0e;
 typedef uint16_t si4702_reg0f;
 
-static long long fm_frequency_base[] = {
+static const long long fm_frequency_base[] = {
     87500,
     76000,
     76000,
     0,
 };
 
-static long long fm_frequency_spacing[] = {
+static const long long fm_frequency_spacing[] = {
     200,
     100,
     50,
