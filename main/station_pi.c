@@ -195,7 +195,7 @@ static void update_led() {
     ESP_ERROR_CHECK_WITHOUT_ABORT(led_set_pixel(1, 0, 255, 255));
     break;
   case SHIFT_MAGNET + SHIFT_HEADPHONE:
-    ESP_ERROR_CHECK_WITHOUT_ABORT(led_set_pixel(1, 255, 255, 0));
+    ESP_ERROR_CHECK_WITHOUT_ABORT(led_set_pixel(1, 255, 128, 255));
     break;
   default:
     break;
