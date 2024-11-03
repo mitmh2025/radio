@@ -184,6 +184,10 @@ static void knock_start_tone(void *arg) {
 }
 
 static void update_led() {
+  if (!entuned) {
+    return;
+  }
+
   switch (shift_state) {
   case 0:
     ESP_ERROR_CHECK_WITHOUT_ABORT(led_set_pixel(1, 0, 0, 0));
@@ -281,8 +285,7 @@ static void light_adc_cb(void *ctx, adc_digi_output_data_t *result) {
 
 #define NOTIFY_TOUCH_ACTIVE BIT(0)
 #define NOTIFY_TOUCH_INACTIVE BIT(1)
-#define NOTIFY_BUTTON_ACTIVE BIT(2)
-#define NOTIFY_BUTTON_INACTIVE BIT(3)
+#define NOTIFY_BUTTON_TRIGGERED BIT(2)
 #define NOTIFY_KNOCK_START BIT(4)
 
 static void station_pi_task(void *ctx) {
@@ -291,9 +294,6 @@ static void station_pi_task(void *ctx) {
     TickType_t wait_time = pdMS_TO_TICKS(entuned ? (50 + esp_random() % 5)
                                                  : 1000 + esp_random() % 100);
     xTaskNotifyWait(0, ULONG_MAX, &notification, wait_time);
-    if (!entuned) {
-      continue;
-    }
 
     if (notification & NOTIFY_TOUCH_ACTIVE && !touch_tone) {
       touch_triggered = true;
@@ -301,10 +301,13 @@ static void station_pi_task(void *ctx) {
     if (notification & NOTIFY_TOUCH_INACTIVE && touch_tone) {
       touch_triggered = false;
     }
-    if (notification & NOTIFY_BUTTON_ACTIVE && !button_tone) {
+
+    bool button_active = gpio_get_level(BUTTON_TRIANGLE_PIN) == 0;
+
+    if (button_active && !button_tone) {
       button_triggered = true;
     }
-    if (notification & NOTIFY_BUTTON_INACTIVE && button_tone) {
+    if (!button_active && button_tone) {
       button_triggered = false;
     }
     if (notification & NOTIFY_KNOCK_START) {
@@ -377,9 +380,8 @@ static void IRAM_ATTR touch_intr(void *ctx) {
 
 static void IRAM_ATTR button_intr(void *ctx, bool state) {
   TaskHandle_t task_handle = (TaskHandle_t)ctx;
-  uint32_t notification = state ? NOTIFY_BUTTON_INACTIVE : NOTIFY_BUTTON_ACTIVE;
   BaseType_t higher_priority_task_woken = pdFALSE;
-  xTaskNotifyFromISR(task_handle, notification, eSetBits,
+  xTaskNotifyFromISR(task_handle, NOTIFY_BUTTON_TRIGGERED, eSetBits,
                      &higher_priority_task_woken);
   portYIELD_FROM_ISR(higher_priority_task_woken);
 }
