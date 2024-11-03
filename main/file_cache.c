@@ -39,6 +39,8 @@ static file_cache_manifest *manifest_cache = NULL;
 static time_t manifest_cache_last_update = {};
 static esp_err_t manifest_cache_last_update_err = ESP_OK;
 
+static StaticTask_t telemetry_task_buffer;
+static EXT_RAM_BSS_ATTR StackType_t telemetry_task_stack[6144];
 static TaskHandle_t task_handle = NULL;
 static size_t telemetry_index = 0;
 
@@ -655,10 +657,12 @@ esp_err_t file_cache_init(void) {
 
   // Push all work to a task because we need to wait until storage has been
   // mounted
-  ESP_RETURN_ON_FALSE(
-      pdPASS == xTaskCreatePinnedToCore(file_cache_task, "file_cache", 6144,
-                                        NULL, 4, &task_handle, 0),
-      ESP_FAIL, RADIO_TAG, "Failed to create file cache task");
+  task_handle = xTaskCreateStaticPinnedToCore(
+      file_cache_task, "file_cache",
+      sizeof(telemetry_task_stack) / sizeof(StackType_t), NULL, 4,
+      telemetry_task_stack, &telemetry_task_buffer, 0);
+  ESP_RETURN_ON_FALSE(task_handle, ESP_FAIL, RADIO_TAG,
+                      "Failed to create file cache task");
 
   things_register_telemetry_generator(telemetry_generator, "file_cache",
                                       &telemetry_index);

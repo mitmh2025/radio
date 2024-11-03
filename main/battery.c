@@ -57,6 +57,8 @@ static battery_status_t battery_status = BATTERY_DISCHARGING;
 
 static adc_cali_handle_t battery_adc_cali;
 static i2c_master_dev_handle_t battery_i2c_device;
+static StaticTask_t battery_monitor_task_buffer;
+static EXT_RAM_BSS_ATTR StackType_t battery_monitor_task_stack[4096];
 static TaskHandle_t battery_monitor_task_handle = NULL;
 static size_t battery_telemetry_index = 0;
 
@@ -238,10 +240,11 @@ esp_err_t battery_init() {
   BOARD_I2C_MUTEX_UNLOCK();
   ESP_RETURN_ON_ERROR(err, RADIO_TAG, "i2c_master_bus_add_device failed");
 
-  ESP_RETURN_ON_FALSE(pdPASS == xTaskCreatePinnedToCore(
-                                    battery_monitor, "battery_monitor", 4096,
-                                    NULL, 5, &battery_monitor_task_handle, 0),
-                      ESP_FAIL, RADIO_TAG,
+  battery_monitor_task_handle = xTaskCreateStatic(
+      battery_monitor, "battery_monitor",
+      sizeof(battery_monitor_task_stack) / sizeof(StackType_t), NULL, 5,
+      battery_monitor_task_stack, &battery_monitor_task_buffer);
+  ESP_RETURN_ON_FALSE(battery_monitor_task_handle, ESP_FAIL, RADIO_TAG,
                       "Failed to create battery monitor task");
   things_register_telemetry_generator(battery_telemetry_generator, "battery",
                                       &battery_telemetry_index);
