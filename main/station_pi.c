@@ -85,7 +85,7 @@ struct note_t {
 static EXT_RAM_BSS_ATTR struct note_t notes_played[NOTES_TRACK_SIZE] = {};
 static size_t notes_played_index = 0;
 
-static uint8_t current_note_sequence = 0;
+static uint8_t current_stage = 0;
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-const-variable"
@@ -597,7 +597,7 @@ esp_err_t station_pi_init() {
     ESP_RETURN_ON_ERROR(ret, RADIO_TAG, "Failed to get enabled from NVS");
   }
 
-  ret = nvs_get_u8(pi_nvs_handle, "stage", &current_note_sequence);
+  ret = nvs_get_u8(pi_nvs_handle, "stage", &current_stage);
   if (ret != ESP_ERR_NVS_NOT_FOUND) {
     ESP_RETURN_ON_ERROR(ret, RADIO_TAG, "Failed to get stage from NVS");
   }
