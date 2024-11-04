@@ -156,11 +156,18 @@ static void record_note(float frequency) {
 }
 
 static float shift_note(float frequency) {
-  if (shift_state & SHIFT_MAGNET) {
+  switch (shift_state) {
+  case 0:
+    break;
+  case SHIFT_MAGNET:
     frequency *= 0.75;
-  }
-  if (shift_state & SHIFT_HEADPHONE) {
+    break;
+  case SHIFT_HEADPHONE:
+    frequency *= 1.5;
+    break;
+  case SHIFT_MAGNET + SHIFT_HEADPHONE:
     frequency *= 2;
+    break;
   }
   return frequency;
 }
