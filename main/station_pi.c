@@ -43,23 +43,6 @@ static uint64_t magnet_threshold =
     1200 * 1200; // roughly 1.5mT, but we test with magnitude^2
 static uint64_t magnet_hysteresis = 100 * 100;
 
-static bounds_handle_t light_bounds;
-static const uint16_t light_threshold = 1500;
-static const uint16_t light_hysteresis = 25;
-static uint16_t light_smooth = 0xffff;
-static const float light_frequency = FREQUENCY_G_4;
-static bool light_triggered = false;
-static tone_generator_t light_tone = NULL;
-
-static uint32_t touch_threshold = 6000;
-static const float touch_frequency = FREQUENCY_A_4;
-static bool touch_triggered = false;
-static tone_generator_t touch_tone = NULL;
-
-static const float button_frequency = FREQUENCY_B_4;
-bool button_triggered = false;
-static tone_generator_t button_tone = NULL;
-
 // Requires harder knocks than we require for activation
 static const accelerometer_pulse_cfg_t knock_cfg = {
     .odr = ACCELEROMETER_DR_100HZ,
@@ -74,8 +57,25 @@ static const accelerometer_pulse_cfg_t knock_cfg = {
 static int64_t knock_last_time = 0;
 static esp_timer_handle_t knock_start_timer = NULL;
 static esp_timer_handle_t knock_stop_timer = NULL;
-static const float knock_frequency = FREQUENCY_C_5;
+static const float knock_frequency = FREQUENCY_G_4;
 static tone_generator_t knock_tone = NULL;
+
+static bounds_handle_t light_bounds;
+static const uint16_t light_threshold = 1500;
+static const uint16_t light_hysteresis = 25;
+static uint16_t light_smooth = 0xffff;
+static const float light_frequency = FREQUENCY_C_5;
+static bool light_triggered = false;
+static tone_generator_t light_tone = NULL;
+
+static uint32_t touch_threshold = 6000;
+static const float touch_frequency = FREQUENCY_A_4;
+static bool touch_triggered = false;
+static tone_generator_t touch_tone = NULL;
+
+static const float button_frequency = FREQUENCY_B_4;
+bool button_triggered = false;
+static tone_generator_t button_tone = NULL;
 
 #define NOTES_TRACK_SIZE 32
 struct note_t {
