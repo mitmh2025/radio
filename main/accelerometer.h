@@ -47,8 +47,6 @@ typedef enum {
 
 // Not going to attempt to fully document these, see the MMA8451Q datasheet
 typedef struct {
-  accelerometer_odr_t odr;
-  accelerometer_osm_t osm;
   uint8_t threshold_x;
   uint8_t threshold_y;
   uint8_t threshold_z;

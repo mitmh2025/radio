@@ -14,10 +14,6 @@
 
 // Configuration also used in station_pi; should probably be kept in sync
 static const accelerometer_pulse_cfg_t pulse_cfg = {
-    // 100Hz is fast enough to detect anything we care about and makes the math
-    // easy
-    .odr = ACCELEROMETER_DR_100HZ,
-    .osm = ACCELEROMETER_OSM_NORMAL,
     // This threshold (1.375g, give or take) was chosen based on testing on a
     // development setup that is - notably - lacking the legs. We need to
     // re-test on a final device and decide how sensitive we want to be

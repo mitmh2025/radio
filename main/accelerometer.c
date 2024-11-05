@@ -150,8 +150,6 @@ typedef union {
 static TaskHandle_t task_handle = NULL;
 static SemaphoreHandle_t mutex = NULL;
 static bool active = false;
-static accelerometer_odr_t odr;
-static accelerometer_osm_t osm;
 static accelerometer_pulse_callback_t pulse_callback;
 static void *pulse_arg;
 
@@ -252,8 +250,7 @@ static esp_err_t write_register(uint8_t reg, uint8_t value) {
 static bool should_activate() { return pulse_callback; }
 
 // Must be called with mutex held
-static esp_err_t set_active(bool new_status,
-                            mma8451q_ctrl_reg1_t *final_ctrl_reg1) {
+static esp_err_t set_active(bool new_status) {
   mma8451q_ctrl_reg1_t ctrl_reg1 = {};
 
   esp_err_t ret = ESP_OK;
@@ -267,9 +264,6 @@ static esp_err_t set_active(bool new_status,
   active = new_status;
 
 cleanup:
-  if (ret == ESP_OK && final_ctrl_reg1) {
-    *final_ctrl_reg1 = ctrl_reg1;
-  }
   return ret;
 }
 
@@ -321,6 +315,19 @@ esp_err_t accelerometer_init() {
 
   // Wait 500µs for reset to complete
   esp_rom_delay_us(500);
+
+  mma8451q_ctrl_reg1_t ctrl_reg1 = {};
+  ESP_RETURN_ON_ERROR(read_register(MMA8451Q_REG_CTRL_REG1, &ctrl_reg1.raw),
+                      TAG, "Failed to read CTRL_REG1 register");
+  ctrl_reg1.refined.dr = ACCELEROMETER_DR_100HZ;
+  ESP_RETURN_ON_ERROR(write_register(MMA8451Q_REG_CTRL_REG1, ctrl_reg1.raw),
+                      TAG, "Failed to write CTRL_REG1 register");
+
+  ESP_RETURN_ON_ERROR(read_register(MMA8451Q_REG_CTRL_REG2, &ctrl_reg2.raw),
+                      TAG, "Failed to read CTRL_REG2 register");
+  ctrl_reg2.refined.mods = ACCELEROMETER_OSM_NORMAL;
+  ESP_RETURN_ON_ERROR(write_register(MMA8451Q_REG_CTRL_REG2, ctrl_reg2.raw),
+                      TAG, "Failed to write CTRL_REG2 register");
 
   // If the accelerometer is otherwise on, compute the orientation
   mma8451q_pl_cfg_t pl_cfg = {
@@ -375,23 +382,7 @@ esp_err_t accelerometer_subscribe_pulse(const accelerometer_pulse_cfg_t *cfg,
   xSemaphoreTake(mutex, portMAX_DELAY);
   esp_err_t ret = ESP_OK;
 
-  ESP_GOTO_ON_FALSE(!active || (odr == cfg->odr && osm == cfg->osm), ESP_FAIL,
-                    cleanup, TAG, "Cannot change ODR or OSM while active");
-
-  mma8451q_ctrl_reg1_t ctrl_reg1 = {};
-  ESP_GOTO_ON_ERROR(set_active(false, &ctrl_reg1), cleanup, TAG,
-                    "Failed to set inactive");
-
-  ctrl_reg1.refined.dr = cfg->odr;
-  ESP_GOTO_ON_ERROR(write_register(MMA8451Q_REG_CTRL_REG1, ctrl_reg1.raw),
-                    cleanup, TAG, "Failed to write CTRL_REG1 register");
-
-  mma8451q_ctrl_reg2_t ctrl_reg2 = {};
-  ESP_GOTO_ON_ERROR(read_register(MMA8451Q_REG_CTRL_REG2, &ctrl_reg2.raw),
-                    cleanup, TAG, "Failed to read CTRL_REG2 register");
-  ctrl_reg2.refined.mods = cfg->osm;
-  ESP_GOTO_ON_ERROR(write_register(MMA8451Q_REG_CTRL_REG2, ctrl_reg2.raw),
-                    cleanup, TAG, "Failed to write CTRL_REG2 register");
+  ESP_GOTO_ON_ERROR(set_active(false), cleanup, TAG, "Failed to set inactive");
 
   mma8451q_pulse_cfg_t pulse_cfg = {
       .refined =
@@ -426,8 +417,7 @@ esp_err_t accelerometer_subscribe_pulse(const accelerometer_pulse_cfg_t *cfg,
   pulse_callback = callback;
   pulse_arg = arg;
 
-  ESP_GOTO_ON_ERROR(set_active(true, NULL), cleanup, TAG,
-                    "Failed to set active");
+  ESP_GOTO_ON_ERROR(set_active(true), cleanup, TAG, "Failed to set active");
 
 cleanup:
   xSemaphoreGive(mutex);
@@ -438,8 +428,7 @@ esp_err_t accelerometer_unsubscribe_pulse(void) {
   xSemaphoreTake(mutex, portMAX_DELAY);
   esp_err_t ret = ESP_OK;
 
-  ESP_GOTO_ON_ERROR(set_active(false, NULL), cleanup, TAG,
-                    "Failed to set inactive");
+  ESP_GOTO_ON_ERROR(set_active(false), cleanup, TAG, "Failed to set inactive");
 
   mma8451q_ctrl_reg4_t ctrl_reg4 = {};
   ESP_GOTO_ON_ERROR(read_register(MMA8451Q_REG_CTRL_REG4, &ctrl_reg4.raw),
@@ -452,8 +441,7 @@ esp_err_t accelerometer_unsubscribe_pulse(void) {
   pulse_arg = NULL;
 
   if (should_activate()) {
-    ESP_GOTO_ON_ERROR(set_active(true, NULL), cleanup, TAG,
-                      "Failed to set active");
+    ESP_GOTO_ON_ERROR(set_active(true), cleanup, TAG, "Failed to set active");
   }
 
 cleanup:

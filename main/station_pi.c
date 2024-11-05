@@ -45,8 +45,6 @@ static uint64_t magnet_hysteresis = 100 * 100;
 
 // Requires harder knocks than we require for activation
 static const accelerometer_pulse_cfg_t knock_cfg = {
-    .odr = ACCELEROMETER_DR_100HZ,
-    .osm = ACCELEROMETER_OSM_NORMAL,
     .threshold_x = 34,
     .threshold_y = 34,
     .threshold_z = 34,
