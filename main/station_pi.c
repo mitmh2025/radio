@@ -536,7 +536,7 @@ esp_err_t station_pi_init() {
                       "Failed to initialize touch");
   ESP_RETURN_ON_ERROR(touch_pad_filter_set_config(&(touch_filter_config_t){
                           .smh_lvl = TOUCH_PAD_SMOOTH_IIR_2,
-                          .mode = TOUCH_PAD_FILTER_IIR_256,
+                          .mode = TOUCH_PAD_FILTER_IIR_64,
                       }),
                       RADIO_TAG, "Failed to initialize touch");
   ESP_RETURN_ON_ERROR(touch_pad_filter_enable(), RADIO_TAG,
