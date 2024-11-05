@@ -176,6 +176,7 @@ esp_err_t magnet_init(void) {
 
   ret = i2c_master_transmit(magnet_i2c_device,
                             (uint8_t[]){TMAG5273_REG_T_CONFIG, 1}, 2, -1);
+  ESP_GOTO_ON_ERROR(ret, cleanup, TAG, "Failed to write temperature config");
 
   tmag5723_device_config_2_t device_config_2 = {
       .operating_mode = TMAG5273_OPERATING_MODE_CONTINUOUS,
