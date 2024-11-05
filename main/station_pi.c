@@ -55,23 +55,43 @@ static const accelerometer_pulse_cfg_t knock_cfg = {
 static int64_t knock_last_time = 0;
 static esp_timer_handle_t knock_start_timer = NULL;
 static esp_timer_handle_t knock_stop_timer = NULL;
-static const float knock_frequency = FREQUENCY_G_4;
+static const float knock_frequencies[] = {
+    [0] = FREQUENCY_G_4,
+    [SHIFT_MAGNET] = FREQUENCY_D_4,
+    [SHIFT_HEADPHONE] = FREQUENCY_D_5,
+    [SHIFT_MAGNET + SHIFT_HEADPHONE] = FREQUENCY_G_5,
+};
 static tone_generator_t knock_tone = NULL;
 
 static bounds_handle_t light_bounds;
 static const uint16_t light_threshold = 1500;
 static const uint16_t light_hysteresis = 25;
 static uint16_t light_smooth = 0xffff;
-static const float light_frequency = FREQUENCY_C_5;
+static const float light_frequencies[] = {
+    [0] = FREQUENCY_C_5,
+    [SHIFT_MAGNET] = FREQUENCY_G_4,
+    [SHIFT_HEADPHONE] = FREQUENCY_G_5,
+    [SHIFT_MAGNET + SHIFT_HEADPHONE] = FREQUENCY_C_6,
+};
 static bool light_triggered = false;
 static tone_generator_t light_tone = NULL;
 
 static uint32_t touch_threshold = 6000;
-static const float touch_frequency = FREQUENCY_A_4;
+static const float touch_frequencies[] = {
+    [0] = FREQUENCY_A_4,
+    [SHIFT_MAGNET] = FREQUENCY_E_4,
+    [SHIFT_HEADPHONE] = FREQUENCY_E_5,
+    [SHIFT_MAGNET + SHIFT_HEADPHONE] = FREQUENCY_A_5,
+};
 static bool touch_triggered = false;
 static tone_generator_t touch_tone = NULL;
 
-static const float button_frequency = FREQUENCY_B_4;
+static const float button_frequencies[] = {
+    [0] = FREQUENCY_B_4,
+    [SHIFT_MAGNET] = FREQUENCY_F_SHARP_4,
+    [SHIFT_HEADPHONE] = FREQUENCY_F_SHARP_5,
+    [SHIFT_MAGNET + SHIFT_HEADPHONE] = FREQUENCY_B_5,
+};
 bool button_triggered = false;
 static tone_generator_t button_tone = NULL;
 
@@ -123,30 +143,13 @@ static void record_note(float frequency) {
   notes_played_index = (notes_played_index + 1) % NOTES_TRACK_SIZE;
 }
 
-static float shift_note(float frequency) {
-  switch (shift_state) {
-  case 0:
-    break;
-  case SHIFT_MAGNET:
-    frequency *= 0.75;
-    break;
-  case SHIFT_HEADPHONE:
-    frequency *= 1.5;
-    break;
-  case SHIFT_MAGNET + SHIFT_HEADPHONE:
-    frequency *= 2;
-    break;
-  }
-  return frequency;
-}
-
 static void light_stop_tone() {
   tone_generator_release(light_tone);
   light_tone = NULL;
 }
 
 static void light_start_tone() {
-  float frequency = shift_note(light_frequency);
+  float frequency = light_frequencies[shift_state];
   ESP_ERROR_CHECK_WITHOUT_ABORT(tone_generator_init(
       &(tone_generator_config_t){
           .entuned = entuned,
@@ -166,7 +169,7 @@ static void touch_stop_tone() {
 }
 
 static void touch_start_tone() {
-  float frequency = shift_note(touch_frequency);
+  float frequency = touch_frequencies[shift_state];
   ESP_ERROR_CHECK_WITHOUT_ABORT(tone_generator_init(
       &(tone_generator_config_t){
           .entuned = entuned,
@@ -186,7 +189,7 @@ static void button_stop_tone() {
 }
 
 static void button_start_tone() {
-  float frequency = shift_note(button_frequency);
+  float frequency = button_frequencies[shift_state];
   ESP_ERROR_CHECK_WITHOUT_ABORT(tone_generator_init(
       &(tone_generator_config_t){
           .entuned = entuned,
@@ -218,7 +221,7 @@ static void knock_start_tone(void *arg) {
   }
 
   ESP_ERROR_CHECK_WITHOUT_ABORT(esp_timer_start_once(knock_stop_timer, 400000));
-  float frequency = shift_note(knock_frequency);
+  float frequency = knock_frequencies[shift_state];
   ESP_ERROR_CHECK_WITHOUT_ABORT(tone_generator_init(
       &(tone_generator_config_t){
           .entuned = entuned,
