@@ -34,8 +34,9 @@ static bool configured = false;
 static bool attr_enabled = false;
 static bool local_enabled = true;
 
-static int64_t last_pulses[8] = {};
-static int last_pulse_index = 0;
+static int64_t last_knocks[8] = {};
+static int last_knock_index = 0;
+static int64_t last_pulse = 0;
 
 static int64_t rhythm_min_period = PULSE_MIN_SEPARATION_US;
 static int64_t rhythm_max_period = PULSE_MAX_SEPARATION_US;
@@ -49,20 +50,20 @@ static int64_t activate_last_trigger = 0;
 static size_t telemetry_index;
 
 static void telemetry_generator() {
-  char pulse_buffer[170];
+  char knock_buffer[170];
   // Report the most recent pulse first
-  snprintf(pulse_buffer, sizeof(pulse_buffer),
+  snprintf(knock_buffer, sizeof(knock_buffer),
            "[%" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64
            ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 "]",
-           last_pulses[(last_pulse_index + 8) % 8],
-           last_pulses[(last_pulse_index + 7) % 8],
-           last_pulses[(last_pulse_index + 6) % 8],
-           last_pulses[(last_pulse_index + 5) % 8],
-           last_pulses[(last_pulse_index + 4) % 8],
-           last_pulses[(last_pulse_index + 3) % 8],
-           last_pulses[(last_pulse_index + 2) % 8],
-           last_pulses[(last_pulse_index + 1) % 8]);
-  things_send_telemetry_string("pi_activation_pulses", pulse_buffer);
+           last_knocks[(last_knock_index + 8) % 8],
+           last_knocks[(last_knock_index + 7) % 8],
+           last_knocks[(last_knock_index + 6) % 8],
+           last_knocks[(last_knock_index + 5) % 8],
+           last_knocks[(last_knock_index + 4) % 8],
+           last_knocks[(last_knock_index + 3) % 8],
+           last_knocks[(last_knock_index + 2) % 8],
+           last_knocks[(last_knock_index + 1) % 8]);
+  things_send_telemetry_string("pi_activation_knocks", knock_buffer);
 
   things_send_telemetry_int("pi_activation_last_trigger",
                             activate_last_trigger);
@@ -129,22 +130,21 @@ static void timer_callback(void *arg) {
 static void pulse_callback(accelerometer_pulse_axis_t axis, void *arg) {
 
   int64_t now = esp_timer_get_time();
-  int64_t last_pulse = last_pulses[last_pulse_index];
 
   // Debounce the pulse
   if (now - last_pulse < PULSE_DEBOUNCE_US) {
-    // Don't advance the index, but pull the most recent pulse forward
-    last_pulses[last_pulse_index] = now;
+    last_pulse = now;
     return;
   }
 
-  int64_t earliest_time = last_pulse + rhythm_min_period;
-  int64_t latest_time = last_pulse + rhythm_max_period;
+  int64_t last_knock = last_knocks[last_knock_index];
+  int64_t earliest_time = last_knock + rhythm_min_period;
+  int64_t latest_time = last_knock + rhythm_max_period;
   if (latest_time < now || now < earliest_time) {
     // This is out of sync, but if it was supposed to be a 3rd pulse, it might
     // actually be a 2nd pulse establishing a rhythm
     esp_timer_stop(rhythm_timer);
-    if (rhythm_count == 2 && (now - last_pulse) < PULSE_MAX_SEPARATION_US) {
+    if (rhythm_count == 2 && (now - last_knock) < PULSE_MAX_SEPARATION_US) {
       rhythm_count = 1;
     } else {
       // Reset
@@ -161,7 +161,7 @@ static void pulse_callback(accelerometer_pulse_axis_t axis, void *arg) {
     break;
   case 2: {
     // Use separation between two pulses to establish period
-    int64_t period = now - last_pulse;
+    int64_t period = now - last_knock;
     rhythm_min_period = (period * 4) / 5;
     rhythm_max_period = (period * 6) / 5;
     break;
@@ -176,8 +176,9 @@ static void pulse_callback(accelerometer_pulse_axis_t axis, void *arg) {
     break;
   }
 
-  last_pulse_index = (last_pulse_index + 1) % 8;
-  last_pulses[last_pulse_index] = now;
+  last_knock_index = (last_knock_index + 1) % 8;
+  last_knocks[last_knock_index] = now;
+  last_pulse = now;
 
   things_force_telemetry(telemetry_index);
 }
