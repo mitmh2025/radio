@@ -55,12 +55,20 @@ typedef struct {
 } accelerometer_pulse_cfg_t;
 
 esp_err_t accelerometer_init(void);
+
 typedef void (*accelerometer_pulse_callback_t)(accelerometer_pulse_axis_t,
                                                void *);
 esp_err_t accelerometer_subscribe_pulse(const accelerometer_pulse_cfg_t *cfg,
                                         accelerometer_pulse_callback_t callback,
                                         void *arg);
 esp_err_t accelerometer_unsubscribe_pulse(void);
+
+typedef void (*accelerometer_data_callback_t)(int16_t x, int16_t y, int16_t z,
+                                              void *);
+esp_err_t accelerometer_subscribe_data(accelerometer_data_callback_t callback,
+                                       void *arg);
+esp_err_t accelerometer_unsubscribe_data(void);
+
 esp_err_t
 accelerometer_get_orientation(accelerometer_orientation_t *orientation);
 

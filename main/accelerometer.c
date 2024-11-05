@@ -12,6 +12,7 @@ static i2c_master_dev_handle_t i2c_device;
 
 #define I2C_ADDR 0x1c
 
+#define MMA8451Q_REG_STATUS 0x00
 #define MMA8451Q_REG_INT_SOURCE 0x0c
 #define MMA8451Q_REG_WHO_AM_I 0x0d
 #define MMA8451Q_REG_PL_STATUS 0x10
@@ -150,8 +151,12 @@ typedef union {
 static TaskHandle_t task_handle = NULL;
 static SemaphoreHandle_t mutex = NULL;
 static bool active = false;
+
 static accelerometer_pulse_callback_t pulse_callback;
 static void *pulse_arg;
+
+static accelerometer_data_callback_t data_callback;
+static void *data_arg;
 
 static void telemetry_generator() {
   // TODO
@@ -214,6 +219,36 @@ static void accelerometer_task(void *ctx) {
         int_src.refined.src_pulse = 0;
       }
 
+      if (int_src.refined.src_drdy) {
+        // Read data to clear the interrupt
+        int16_t x, y, z;
+        uint8_t buffer[7];
+        BOARD_I2C_MUTEX_LOCK();
+        err = i2c_master_transmit_receive(
+            i2c_device, (uint8_t[]){MMA8451Q_REG_STATUS}, 1, buffer, 7, -1);
+        BOARD_I2C_MUTEX_UNLOCK();
+
+        if (err != ESP_OK) {
+          ESP_LOGE(TAG, "Failed to read data: %d", err);
+          continue;
+        }
+
+        x = (buffer[1] << 8) | buffer[2];
+        y = (buffer[3] << 8) | buffer[4];
+        z = (buffer[5] << 8) | buffer[6];
+
+        xSemaphoreTake(mutex, portMAX_DELAY);
+        accelerometer_data_callback_t cb = data_callback;
+        void *arg = data_arg;
+        xSemaphoreGive(mutex);
+
+        if (cb) {
+          cb(x, y, z, arg);
+        }
+
+        int_src.refined.src_drdy = 0;
+      }
+
       if (int_src.raw != 0) {
         ESP_LOGW(TAG, "Unhandled interrupt source: 0x%02x", int_src.raw);
       }
@@ -247,7 +282,7 @@ static esp_err_t write_register(uint8_t reg, uint8_t value) {
   return ret;
 }
 
-static bool should_activate() { return pulse_callback; }
+static bool should_activate() { return pulse_callback || data_callback; }
 
 // Must be called with mutex held
 static esp_err_t set_active(bool new_status) {
@@ -319,7 +354,7 @@ esp_err_t accelerometer_init() {
   mma8451q_ctrl_reg1_t ctrl_reg1 = {};
   ESP_RETURN_ON_ERROR(read_register(MMA8451Q_REG_CTRL_REG1, &ctrl_reg1.raw),
                       TAG, "Failed to read CTRL_REG1 register");
-  ctrl_reg1.refined.dr = ACCELEROMETER_DR_100HZ;
+  ctrl_reg1.refined.dr = ACCELEROMETER_DR_400HZ;
   ESP_RETURN_ON_ERROR(write_register(MMA8451Q_REG_CTRL_REG1, ctrl_reg1.raw),
                       TAG, "Failed to write CTRL_REG1 register");
 
@@ -439,6 +474,57 @@ esp_err_t accelerometer_unsubscribe_pulse(void) {
 
   pulse_callback = NULL;
   pulse_arg = NULL;
+
+  if (should_activate()) {
+    ESP_GOTO_ON_ERROR(set_active(true), cleanup, TAG, "Failed to set active");
+  }
+
+cleanup:
+  xSemaphoreGive(mutex);
+  return ret;
+}
+
+esp_err_t accelerometer_subscribe_data(accelerometer_data_callback_t callback,
+                                       void *arg) {
+  ESP_RETURN_ON_FALSE(callback, ESP_ERR_INVALID_ARG, TAG, "callback is NULL");
+
+  xSemaphoreTake(mutex, portMAX_DELAY);
+  esp_err_t ret = ESP_OK;
+
+  ESP_GOTO_ON_ERROR(set_active(false), cleanup, TAG, "Failed to set inactive");
+
+  mma8451q_ctrl_reg4_t ctrl_reg4 = {};
+  ESP_GOTO_ON_ERROR(read_register(MMA8451Q_REG_CTRL_REG4, &ctrl_reg4.raw),
+                    cleanup, TAG, "Failed to read CTRL_REG4 register");
+  ctrl_reg4.refined.int_en_drdy = 1;
+  ESP_GOTO_ON_ERROR(write_register(MMA8451Q_REG_CTRL_REG4, ctrl_reg4.raw),
+                    cleanup, TAG, "Failed to write CTRL_REG4 register");
+
+  data_callback = callback;
+  data_arg = arg;
+
+  ESP_GOTO_ON_ERROR(set_active(true), cleanup, TAG, "Failed to set active");
+
+cleanup:
+  xSemaphoreGive(mutex);
+  return ret;
+}
+
+esp_err_t accelerometer_unsubscribe_data(void) {
+  xSemaphoreTake(mutex, portMAX_DELAY);
+  esp_err_t ret = ESP_OK;
+
+  ESP_GOTO_ON_ERROR(set_active(false), cleanup, TAG, "Failed to set inactive");
+
+  mma8451q_ctrl_reg4_t ctrl_reg4 = {};
+  ESP_GOTO_ON_ERROR(read_register(MMA8451Q_REG_CTRL_REG4, &ctrl_reg4.raw),
+                    cleanup, TAG, "Failed to read CTRL_REG4 register");
+  ctrl_reg4.refined.int_en_drdy = 0;
+  ESP_GOTO_ON_ERROR(write_register(MMA8451Q_REG_CTRL_REG4, ctrl_reg4.raw),
+                    cleanup, TAG, "Failed to write CTRL_REG4 register");
+
+  data_callback = NULL;
+  data_arg = NULL;
 
   if (should_activate()) {
     ESP_GOTO_ON_ERROR(set_active(true), cleanup, TAG, "Failed to set active");
