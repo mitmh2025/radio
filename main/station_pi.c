@@ -102,36 +102,47 @@ struct note_t {
 };
 static EXT_RAM_BSS_ATTR struct note_t notes_played[NOTES_TRACK_SIZE] = {};
 static size_t notes_played_index = 0;
+static int64_t sequence_check_timeout = 500000;
+static esp_timer_handle_t sequence_check_timer = NULL;
 
 static uint8_t current_stage = 0;
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-const-variable"
 // Mary Had a Little Lamb
 static const float note_sequence_0[] = {
     FREQUENCY_B_4, FREQUENCY_A_4, FREQUENCY_G_4, FREQUENCY_A_4,
     FREQUENCY_B_4, FREQUENCY_B_4, FREQUENCY_B_4,
 };
-// Never Gonna Give You Up
+// Old MacDonald
 static const float note_sequence_1[] = {
-    FREQUENCY_D_4, FREQUENCY_E_4,       FREQUENCY_G_4, FREQUENCY_D_4,
-    FREQUENCY_B_4, FREQUENCY_B_4,       FREQUENCY_A_4, FREQUENCY_D_4,
-    FREQUENCY_E_4, FREQUENCY_F_SHARP_4, FREQUENCY_D_4, FREQUENCY_A_4,
-    FREQUENCY_A_4, FREQUENCY_G_4,
+    FREQUENCY_G_4, FREQUENCY_G_4, FREQUENCY_G_4, FREQUENCY_D_4,
+    FREQUENCY_E_4, FREQUENCY_E_4, FREQUENCY_D_4,
+};
+// Never Gonna Give You Up
+static const float note_sequence_2[] = {
+    FREQUENCY_D_4, FREQUENCY_E_4, FREQUENCY_G_4, FREQUENCY_E_4, FREQUENCY_B_4,
+    FREQUENCY_B_4, FREQUENCY_A_4, FREQUENCY_D_4, FREQUENCY_E_4, FREQUENCY_G_4,
+    FREQUENCY_E_4, FREQUENCY_A_4, FREQUENCY_A_4, FREQUENCY_G_4,
 };
 // Somewhere Over the Rainbow
-static const float note_sequence_2[] = {
+static const float note_sequence_3[] = {
     FREQUENCY_G_4, FREQUENCY_G_5,       FREQUENCY_F_SHARP_5, FREQUENCY_D_5,
     FREQUENCY_E_5, FREQUENCY_F_SHARP_5, FREQUENCY_G_5,       FREQUENCY_G_4,
     FREQUENCY_E_5, FREQUENCY_D_5,
 };
 // Battle Hymn of the Republic
-static const float note_sequence_3[] = {
+static const float note_sequence_4[] = {
     FREQUENCY_D_5, FREQUENCY_D_5, FREQUENCY_D_5, FREQUENCY_D_5, FREQUENCY_C_5,
     FREQUENCY_B_4, FREQUENCY_D_5, FREQUENCY_G_5, FREQUENCY_A_5, FREQUENCY_B_5,
     FREQUENCY_B_5, FREQUENCY_B_5, FREQUENCY_A_5, FREQUENCY_G_5,
 };
-#pragma GCC diagnostic pop
+// Final Countdown
+static const float note_sequence_5[] = {
+    FREQUENCY_B_4, FREQUENCY_A_4,       FREQUENCY_B_4, FREQUENCY_E_4,
+    FREQUENCY_C_5, FREQUENCY_B_4,       FREQUENCY_C_5, FREQUENCY_B_4,
+    FREQUENCY_A_4, FREQUENCY_C_5,       FREQUENCY_B_4, FREQUENCY_C_5,
+    FREQUENCY_E_4, FREQUENCY_A_4,       FREQUENCY_G_4, FREQUENCY_A_4,
+    FREQUENCY_G_4, FREQUENCY_F_SHARP_4, FREQUENCY_A_4, FREQUENCY_G_4,
+};
 
 // TODO: telemetry
 
@@ -143,12 +154,74 @@ static void record_note(float frequency) {
   notes_played_index = (notes_played_index + 1) % NOTES_TRACK_SIZE;
 }
 
+static void check_sequence(void *arg) {
+  // Only check sequences when no notes are playing
+  if (light_tone || touch_tone || button_tone || knock_tone) {
+    return;
+  }
+
+  const float *sequence = NULL;
+  size_t sequence_size = 0;
+
+  switch (current_stage) {
+  case 0:
+    sequence = &note_sequence_0[0];
+    sequence_size = sizeof(note_sequence_0) / sizeof(note_sequence_0[0]);
+    break;
+  case 1:
+    sequence = &note_sequence_1[0];
+    sequence_size = sizeof(note_sequence_1) / sizeof(note_sequence_1[0]);
+    break;
+  case 2:
+    sequence = &note_sequence_2[0];
+    sequence_size = sizeof(note_sequence_2) / sizeof(note_sequence_2[0]);
+    break;
+  case 3:
+    sequence = &note_sequence_3[0];
+    sequence_size = sizeof(note_sequence_3) / sizeof(note_sequence_3[0]);
+    break;
+  case 4:
+    sequence = &note_sequence_4[0];
+    sequence_size = sizeof(note_sequence_4) / sizeof(note_sequence_4[0]);
+    break;
+  case 5:
+    sequence = &note_sequence_5[0];
+    sequence_size = sizeof(note_sequence_5) / sizeof(note_sequence_5[0]);
+    break;
+  default:
+    return;
+  }
+
+  size_t played_sequence_start =
+      (notes_played_index + NOTES_TRACK_SIZE - sequence_size) %
+      NOTES_TRACK_SIZE;
+  for (size_t i = 0; i < sequence_size; i++) {
+    if (fabsf(notes_played[(played_sequence_start + i) % NOTES_TRACK_SIZE]
+                  .frequency -
+              sequence[i]) > 0.1) {
+      return;
+    }
+  }
+
+  ESP_LOGI(RADIO_TAG, "Sequence matched for stage %d", current_stage);
+  current_stage++;
+}
+
+static void schedule_sequence_check() {
+  esp_timer_stop(sequence_check_timer);
+  ESP_ERROR_CHECK_WITHOUT_ABORT(
+      esp_timer_start_once(sequence_check_timer, sequence_check_timeout));
+}
+
 static void light_stop_tone() {
   tone_generator_release(light_tone);
   light_tone = NULL;
+
+  schedule_sequence_check();
 }
 
 static void light_start_tone() {
+  esp_timer_stop(sequence_check_timer);
   float frequency = light_frequencies[shift_state];
   ESP_ERROR_CHECK_WITHOUT_ABORT(tone_generator_init(
       &(tone_generator_config_t){
@@ -166,9 +239,12 @@ static void light_start_tone() {
 static void touch_stop_tone() {
   tone_generator_release(touch_tone);
   touch_tone = NULL;
+
+  schedule_sequence_check();
 }
 
 static void touch_start_tone() {
+  esp_timer_stop(sequence_check_timer);
   float frequency = touch_frequencies[shift_state];
   ESP_ERROR_CHECK_WITHOUT_ABORT(tone_generator_init(
       &(tone_generator_config_t){
@@ -186,9 +262,12 @@ static void touch_start_tone() {
 static void button_stop_tone() {
   tone_generator_release(button_tone);
   button_tone = NULL;
+
+  schedule_sequence_check();
 }
 
 static void button_start_tone() {
+  esp_timer_stop(sequence_check_timer);
   float frequency = button_frequencies[shift_state];
   ESP_ERROR_CHECK_WITHOUT_ABORT(tone_generator_init(
       &(tone_generator_config_t){
@@ -208,6 +287,8 @@ static void knock_stop_tone(void *arg) {
   if (knock_tone) {
     tone_generator_release(knock_tone);
     knock_tone = NULL;
+
+    schedule_sequence_check();
   }
 }
 
@@ -220,6 +301,7 @@ static void knock_start_tone(void *arg) {
     knock_stop_tone(NULL);
   }
 
+  esp_timer_stop(sequence_check_timer);
   ESP_ERROR_CHECK_WITHOUT_ABORT(esp_timer_start_once(knock_stop_timer, 400000));
   float frequency = knock_frequencies[shift_state];
   ESP_ERROR_CHECK_WITHOUT_ABORT(tone_generator_init(
@@ -561,6 +643,15 @@ esp_err_t station_pi_init() {
                       "Failed to initialize touch");
   ESP_RETURN_ON_ERROR(touch_pad_fsm_start(), RADIO_TAG,
                       "Failed to initialize touch");
+
+  ESP_RETURN_ON_ERROR(esp_timer_create(
+                          &(esp_timer_create_args_t){
+                              .dispatch_method = ESP_TIMER_TASK,
+                              .name = "sequence_check",
+                              .callback = check_sequence,
+                          },
+                          &sequence_check_timer),
+                      RADIO_TAG, "Failed to initialize sequence check timer");
 
   uint8_t enabled = 0;
   esp_err_t ret = nvs_get_u8(pi_nvs_handle, "enabled", &enabled);
