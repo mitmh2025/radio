@@ -131,7 +131,8 @@ static void timer_callback(void *arg) {
   }
 }
 
-static void pulse_callback(void *arg) {
+static void pulse_callback(accelerometer_pulse_axis_t axis, void *arg) {
+
   int64_t now = esp_timer_get_time();
   int64_t last_pulse = last_pulses[last_pulse_index];
 

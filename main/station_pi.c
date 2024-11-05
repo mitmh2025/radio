@@ -463,7 +463,7 @@ static void IRAM_ATTR button_intr(void *ctx, bool state) {
   portYIELD_FROM_ISR(higher_priority_task_woken);
 }
 
-static void knock_cb(void *arg) {
+static void knock_cb(accelerometer_pulse_axis_t axis, void *arg) {
   int64_t now = esp_timer_get_time();
 
   // Debounce the pulse

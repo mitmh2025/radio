@@ -14,6 +14,8 @@ static i2c_master_dev_handle_t i2c_device;
 
 #define MMA8451Q_REG_INT_SOURCE 0x0c
 #define MMA8451Q_REG_WHO_AM_I 0x0d
+#define MMA8451Q_REG_PL_STATUS 0x10
+#define MMA8451Q_REG_PL_CFG 0x11
 #define MMA8451Q_REG_CTRL_REG1 0x2a
 #define MMA8451Q_REG_CTRL_REG2 0x2b
 #define MMA8451Q_REG_CTRL_REG3 0x2c
@@ -27,6 +29,24 @@ static i2c_master_dev_handle_t i2c_device;
 #define MMA8451Q_REG_PULSE_TMLT 0x26
 #define MMA8451Q_REG_PULSE_LTCY 0x27
 
+typedef union {
+  struct {
+    uint8_t bafro : 1;
+    uint8_t lapo : 2;
+    uint8_t reserved : 3;
+    uint8_t lo : 1;
+    uint8_t newlp : 1;
+  } refined;
+  uint8_t raw;
+} mma8451q_pl_status_t;
+typedef union {
+  struct {
+    uint8_t reserved : 6;
+    uint8_t pl_en : 1;
+    uint8_t dbcntm : 1;
+  } refined;
+  uint8_t raw;
+} mma8451q_pl_cfg_t;
 typedef union {
   struct {
     uint8_t active : 1;
@@ -132,7 +152,7 @@ static SemaphoreHandle_t mutex = NULL;
 static bool active = false;
 static accelerometer_odr_t odr;
 static accelerometer_osm_t osm;
-static void (*pulse_callback)(void *);
+static accelerometer_pulse_callback_t pulse_callback;
 static void *pulse_arg;
 
 static void telemetry_generator() {
@@ -171,11 +191,27 @@ static void accelerometer_task(void *ctx) {
           continue;
         }
 
-        xSemaphoreTake(mutex, portMAX_DELAY);
-        if (pulse_callback) {
-          pulse_callback(pulse_arg);
+        accelerometer_pulse_axis_t axis = 0;
+        if (pulse_src.refined.ax_x) {
+          axis |= (pulse_src.refined.pol_x ? ACCELEROMETER_PULSE_AXIS_X_NEG
+                                           : ACCELEROMETER_PULSE_AXIS_X_POS);
         }
+        if (pulse_src.refined.ax_y) {
+          axis |= (pulse_src.refined.pol_y ? ACCELEROMETER_PULSE_AXIS_Y_NEG
+                                           : ACCELEROMETER_PULSE_AXIS_Y_POS);
+        }
+        if (pulse_src.refined.ax_z) {
+          axis |= (pulse_src.refined.pol_z ? ACCELEROMETER_PULSE_AXIS_Z_NEG
+                                           : ACCELEROMETER_PULSE_AXIS_Z_POS);
+        }
+
+        xSemaphoreTake(mutex, portMAX_DELAY);
+        accelerometer_pulse_callback_t cb = pulse_callback;
+        void *arg = pulse_arg;
         xSemaphoreGive(mutex);
+        if (cb) {
+          cb(axis, arg);
+        }
 
         int_src.refined.src_pulse = 0;
       }
@@ -212,6 +248,8 @@ static esp_err_t write_register(uint8_t reg, uint8_t value) {
   BOARD_I2C_MUTEX_UNLOCK();
   return ret;
 }
+
+static bool should_activate() { return pulse_callback; }
 
 // Must be called with mutex held
 static esp_err_t set_active(bool new_status,
@@ -284,6 +322,16 @@ esp_err_t accelerometer_init() {
   // Wait 500µs for reset to complete
   esp_rom_delay_us(500);
 
+  // If the accelerometer is otherwise on, compute the orientation
+  mma8451q_pl_cfg_t pl_cfg = {
+      .refined =
+          {
+              .pl_en = 1,
+          },
+  };
+  ESP_RETURN_ON_ERROR(write_register(MMA8451Q_REG_PL_CFG, pl_cfg.raw), TAG,
+                      "Failed to write PL_CFG register");
+
   // We may not turn any of these interrupts on, but all interrupts go to INT1
   mma8451q_ctrl_reg5_t ctrl_reg5 = {.raw = 0xff};
   ESP_RETURN_ON_ERROR(write_register(MMA8451Q_REG_CTRL_REG5, ctrl_reg5.raw),
@@ -313,7 +361,8 @@ esp_err_t accelerometer_init() {
 }
 
 esp_err_t accelerometer_subscribe_pulse(const accelerometer_pulse_cfg_t *cfg,
-                                        void (*callback)(void *), void *arg) {
+                                        accelerometer_pulse_callback_t callback,
+                                        void *arg) {
   ESP_RETURN_ON_FALSE(cfg, ESP_ERR_INVALID_ARG, TAG, "cfg is NULL");
   ESP_RETURN_ON_FALSE(callback, ESP_ERR_INVALID_ARG, TAG, "callback is NULL");
   ESP_RETURN_ON_FALSE(cfg->threshold_x < 0x80, ESP_ERR_INVALID_ARG, TAG,
@@ -402,7 +451,50 @@ esp_err_t accelerometer_unsubscribe_pulse(void) {
   pulse_callback = NULL;
   pulse_arg = NULL;
 
-  // TODO: decide whether we need to re-activate
+  if (should_activate()) {
+    ESP_GOTO_ON_ERROR(set_active(true, NULL), cleanup, TAG,
+                      "Failed to set active");
+  }
+
+cleanup:
+  xSemaphoreGive(mutex);
+  return ret;
+}
+
+esp_err_t
+accelerometer_get_orientation(accelerometer_orientation_t *orientation) {
+  ESP_RETURN_ON_FALSE(orientation, ESP_ERR_INVALID_ARG, TAG,
+                      "orientation is NULL");
+
+  xSemaphoreTake(mutex, portMAX_DELAY);
+  esp_err_t ret = ESP_OK;
+
+  ESP_GOTO_ON_FALSE(active, ESP_FAIL, cleanup, TAG,
+                    "Cannot get orientation while inactive");
+
+  mma8451q_pl_status_t pl_status;
+  ESP_GOTO_ON_ERROR(read_register(MMA8451Q_REG_PL_STATUS, &pl_status.raw),
+                    cleanup, TAG, "Failed to read PL_STATUS register");
+
+  if (pl_status.refined.lo) {
+    *orientation = pl_status.refined.bafro ? ACCELEROMETER_ORIENTATION_BACK_UP
+                                           : ACCELEROMETER_ORIENTATION_FRONT_UP;
+  } else {
+    switch (pl_status.refined.lapo) {
+    case 0:
+      *orientation = ACCELEROMETER_ORIENTATION_TOP_UP;
+      break;
+    case 1:
+      *orientation = ACCELEROMETER_ORIENTATION_BOTTOM_UP;
+      break;
+    case 2:
+      *orientation = ACCELEROMETER_ORIENTATION_LEFT_UP;
+      break;
+    case 3:
+      *orientation = ACCELEROMETER_ORIENTATION_RIGHT_UP;
+      break;
+    }
+  }
 
 cleanup:
   xSemaphoreGive(mutex);
