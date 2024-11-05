@@ -167,8 +167,8 @@ static void pulse_callback(accelerometer_pulse_axis_t axis, void *arg) {
   case 2: {
     // Use separation between two pulses to establish period
     int64_t period = now - last_pulse;
-    rhythm_min_period = (period * 9) / 10;
-    rhythm_max_period = (period * 11) / 10;
+    rhythm_min_period = (period * 4) / 5;
+    rhythm_max_period = (period * 6) / 5;
     break;
   }
   case 3:
@@ -183,6 +183,8 @@ static void pulse_callback(accelerometer_pulse_axis_t axis, void *arg) {
 
   last_pulse_index = (last_pulse_index + 1) % 8;
   last_pulses[last_pulse_index] = now;
+
+  things_force_telemetry(telemetry_index);
 }
 
 static esp_err_t check_enable() {
