@@ -171,36 +171,36 @@ static const char *stage_to_completion(uint8_t stage) {
   }
 }
 
-// Mary Had a Little Lamb
+// Mary Had a Little Lamb - 7 notes
 static const float note_sequence_0[] = {
     FREQUENCY_B_4, FREQUENCY_A_4, FREQUENCY_G_4, FREQUENCY_A_4,
     FREQUENCY_B_4, FREQUENCY_B_4, FREQUENCY_B_4,
 };
-// Old MacDonald
+// Old MacDonald - 7 notes
 static const float note_sequence_1[] = {
     FREQUENCY_G_4, FREQUENCY_G_4, FREQUENCY_G_4, FREQUENCY_D_4,
     FREQUENCY_E_4, FREQUENCY_E_4, FREQUENCY_D_4,
 };
-// Never Gonna Give You Up
+// Never Gonna Give You Up - 14 notes
 static const float note_sequence_2[] = {
     FREQUENCY_D_4, FREQUENCY_E_4, FREQUENCY_G_4, FREQUENCY_E_4, FREQUENCY_B_4,
     FREQUENCY_B_4, FREQUENCY_A_4, FREQUENCY_D_4, FREQUENCY_E_4, FREQUENCY_G_4,
     FREQUENCY_E_4, FREQUENCY_A_4, FREQUENCY_A_4, FREQUENCY_G_4,
 };
-// Somewhere Over the Rainbow
+// Somewhere Over the Rainbow - 10 notes
 static const float note_sequence_3[] = {
     FREQUENCY_G_4, FREQUENCY_G_5,       FREQUENCY_F_SHARP_5, FREQUENCY_D_5,
     FREQUENCY_E_5, FREQUENCY_F_SHARP_5, FREQUENCY_G_5,       FREQUENCY_G_4,
     FREQUENCY_E_5, FREQUENCY_D_5,
 };
-// Hot To Go
+// Hot To Go - 16 notes
 static const float note_sequence_4[] = {
     FREQUENCY_B_4, FREQUENCY_D_5, FREQUENCY_D_5, FREQUENCY_D_5,
     FREQUENCY_E_5, FREQUENCY_D_5, FREQUENCY_E_5, FREQUENCY_D_5,
     FREQUENCY_B_4, FREQUENCY_D_5, FREQUENCY_G_5, FREQUENCY_A_5,
     FREQUENCY_A_5, FREQUENCY_B_5, FREQUENCY_A_5, FREQUENCY_G_5,
 };
-// Final Countdown
+// Final Countdown - 20 notes
 static const float note_sequence_5[] = {
     FREQUENCY_B_4, FREQUENCY_A_4,       FREQUENCY_B_4, FREQUENCY_E_4,
     FREQUENCY_C_5, FREQUENCY_B_4,       FREQUENCY_C_5, FREQUENCY_B_4,
@@ -848,6 +848,14 @@ esp_err_t station_pi_enable() {
 
   ESP_RETURN_ON_ERROR(tuner_enable_pm_frequency(freq_handle), RADIO_TAG,
                       "Failed to enable pi frequency");
+
+  return ESP_OK;
+}
+
+esp_err_t station_pi_set_stage(uint8_t stage) {
+  current_stage = stage;
+  ESP_RETURN_ON_ERROR(nvs_set_u8(pi_nvs_handle, "stage", current_stage),
+                      RADIO_TAG, "Failed to save stage");
 
   return ESP_OK;
 }

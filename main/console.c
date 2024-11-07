@@ -5,6 +5,7 @@
 #include "calibration.h"
 #include "console.h"
 #include "main.h"
+#include "station_pi.h"
 #include "storage.h"
 #include "things.h"
 
@@ -614,6 +615,33 @@ static int nvs_rm(int argc, char **argv) {
   return 0;
 }
 
+static struct {
+  struct arg_int *stage;
+  struct arg_end *end;
+} pi_set_stage_args;
+
+static int pi_set_stage(int argc, char **argv) {
+  int nerrors = arg_parse(argc, argv, (void **)&pi_set_stage_args);
+
+  if (nerrors != 0) {
+    arg_print_errors(stderr, pi_set_stage_args.end, argv[0]);
+    return 1;
+  }
+
+  if (pi_set_stage_args.stage->count == 0) {
+    arg_print_syntax(stderr, (void **)&pi_set_stage_args, argv[0]);
+    return 1;
+  }
+
+  esp_err_t err = station_pi_set_stage(pi_set_stage_args.stage->ival[0]);
+  if (err != ESP_OK) {
+    printf("Failed to save stage: %d\n", err);
+    return 1;
+  }
+
+  return 0;
+}
+
 esp_err_t console_init() {
   // Block on stdin and stdout
   fcntl(fileno(stdout), F_SETFL, 0);
@@ -831,6 +859,20 @@ esp_err_t console_init() {
   err = esp_console_cmd_register(&cmd_nvs_rm);
   ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register nvs-rm command: %d",
                       err);
+
+  pi_set_stage_args.stage =
+      arg_int1(NULL, NULL, "<stage>", "Stage to set (0-indexed)");
+  pi_set_stage_args.end = arg_end(1);
+  esp_console_cmd_t cmd_pi_set_stage = {
+      .command = "pi-set-stage",
+      .help = "Set the current stage for the Pi",
+      .hint = NULL,
+      .func = &pi_set_stage,
+      .argtable = &pi_set_stage_args,
+  };
+  err = esp_console_cmd_register(&cmd_pi_set_stage);
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG,
+                      "Failed to register pi-set-stage command: %d", err);
 
   ESP_RETURN_ON_FALSE(
       pdPASS == xTaskCreate(console_task, "console", 4096, NULL, 21, NULL),
