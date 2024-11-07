@@ -5,6 +5,7 @@
 
 #include "file_stream.h"
 
+#include <errno.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -43,7 +44,7 @@ esp_err_t playback_file(const playback_cfg_t *cfg,
 
   handle->fd = file_cache_open_file(handle->path);
   ESP_RETURN_ON_FALSE(handle->fd >= 0, ESP_FAIL, RADIO_TAG,
-                      "Failed to open file: %d", handle->fd);
+                      "Failed to open file: %d", errno);
 
   audio_pipeline_cfg_t pipeline_cfg = {
       .rb_size = 2048,
@@ -96,6 +97,11 @@ esp_err_t playback_file(const playback_cfg_t *cfg,
                     "Failed to create event interface");
   ESP_GOTO_ON_ERROR(audio_pipeline_set_listener(handle->pipeline, handle->evt),
                     cleanup, RADIO_TAG, "Failed to set listener for pipeline");
+  // Need the event interface to listen to itself (i.e. plug its external queue
+  // into its queue set)
+  ESP_GOTO_ON_ERROR(audio_event_iface_set_listener(handle->evt, handle->evt),
+                    cleanup, RADIO_TAG,
+                    "Failed to set listener for event interface");
 
   ESP_GOTO_ON_ERROR(audio_pipeline_run(handle->pipeline), cleanup, RADIO_TAG,
                     "Failed to start audio pipeline");
@@ -129,6 +135,7 @@ esp_err_t playback_wait_for_completion(playback_handle_t handle) {
       } else if (msg.cmd == AEL_MSG_CMD_RESUME) {
         handle->tuned = true;
       } else if (msg.cmd == AEL_MSG_CMD_STOP) {
+        ESP_LOGI(RADIO_TAG, "Playback stopped");
         break;
       }
     }

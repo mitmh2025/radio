@@ -6,7 +6,7 @@
 extern "C" {
 #endif
 
-#define FILE_STREAM_BUF_SIZE (4096)
+#define FILE_STREAM_BUF_SIZE (4096 * 16)
 #define FILE_STREAM_TASK_STACK (3072)
 #define FILE_STREAM_TASK_CORE (0)
 #define FILE_STREAM_TASK_PRIO (4)

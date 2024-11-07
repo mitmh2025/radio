@@ -117,7 +117,8 @@ static VOID webrtc_logger(UINT32 level, const PCHAR tag, const PCHAR fmt, ...) {
     return;
   }
 
-  ESP_LOG_LEVEL_LOCAL(esp_log_level, "kvswebrtc", "%s: %s", tag, buffer);
+  ESP_LOG_LEVEL_LOCAL(esp_log_level, "kvswebrtc", "%s: %s",
+                      tag ? tag : "unknown", buffer);
   free(buffer);
 }
 

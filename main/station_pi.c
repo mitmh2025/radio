@@ -9,6 +9,7 @@
 #include "magnet.h"
 #include "main.h"
 #include "mixer.h"
+#include "playback.h"
 #include "station_pi.h"
 #include "station_pi_activation.h"
 #include "tas2505.h"
@@ -18,6 +19,7 @@
 #include "board.h"
 
 #include <math.h>
+#include <string.h>
 
 #include "driver/touch_sensor.h"
 #include "esp_check.h"
@@ -31,6 +33,11 @@ static TaskHandle_t pi_task = NULL;
 
 static frequency_handle_t freq_handle;
 static bool entuned = false;
+static bool instrument_enabled = true;
+
+static QueueHandle_t playback_queue = NULL;
+static SemaphoreHandle_t playback_mutex = NULL;
+static playback_handle_t playback = NULL;
 
 #define SHIFT_MAGNET BIT(0)
 #define SHIFT_HEADPHONE BIT(1)
@@ -107,6 +114,63 @@ static esp_timer_handle_t sequence_check_timer = NULL;
 
 static uint8_t current_stage = 0;
 
+static const char *stage_to_entuned_intro(uint8_t stage) {
+  switch (stage) {
+  case 0:
+    return "practical-fighter/stage-0-intro.opus";
+  case 1:
+    return "practical-fighter/stage-1-intro.opus";
+  case 2:
+    return "practical-fighter/stage-2-intro.opus";
+  case 3:
+    return "practical-fighter/stage-3-intro.opus";
+  case 4:
+    return "practical-fighter/stage-4-intro.opus";
+  case 5:
+    return "practical-fighter/stage-5-intro.opus";
+  default:
+    return NULL;
+  }
+}
+
+static const char *stage_to_intro(uint8_t stage) {
+  switch (stage) {
+  case 0:
+    return "practical-fighter/stage-0-intro.opus";
+  case 1:
+    return "practical-fighter/stage-1-intro.opus";
+  case 2:
+    return "practical-fighter/stage-2-intro.opus";
+  case 3:
+    return "practical-fighter/stage-3-intro.opus";
+  case 4:
+    return "practical-fighter/stage-4-intro.opus";
+  case 5:
+    return "practical-fighter/stage-5-intro.opus";
+  default:
+    return "practical-fighter/completion.opus";
+  }
+}
+
+static const char *stage_to_completion(uint8_t stage) {
+  switch (stage) {
+  case 0:
+    return "practical-fighter/stage-0-completion.opus";
+  case 1:
+    return "practical-fighter/stage-1-completion.opus";
+  case 2:
+    return "practical-fighter/stage-2-completion.opus";
+  case 3:
+    return "practical-fighter/stage-3-completion.opus";
+  case 4:
+    return "practical-fighter/stage-4-completion.opus";
+  case 5:
+    return "practical-fighter/stage-5-completion.opus";
+  default:
+    return NULL;
+  }
+}
+
 // Mary Had a Little Lamb
 static const float note_sequence_0[] = {
     FREQUENCY_B_4, FREQUENCY_A_4, FREQUENCY_G_4, FREQUENCY_A_4,
@@ -129,11 +193,12 @@ static const float note_sequence_3[] = {
     FREQUENCY_E_5, FREQUENCY_F_SHARP_5, FREQUENCY_G_5,       FREQUENCY_G_4,
     FREQUENCY_E_5, FREQUENCY_D_5,
 };
-// Battle Hymn of the Republic
+// Hot To Go
 static const float note_sequence_4[] = {
-    FREQUENCY_D_5, FREQUENCY_D_5, FREQUENCY_D_5, FREQUENCY_D_5, FREQUENCY_C_5,
-    FREQUENCY_B_4, FREQUENCY_D_5, FREQUENCY_G_5, FREQUENCY_A_5, FREQUENCY_B_5,
-    FREQUENCY_B_5, FREQUENCY_B_5, FREQUENCY_A_5, FREQUENCY_G_5,
+    FREQUENCY_B_4, FREQUENCY_D_5, FREQUENCY_D_5, FREQUENCY_D_5,
+    FREQUENCY_E_5, FREQUENCY_D_5, FREQUENCY_E_5, FREQUENCY_D_5,
+    FREQUENCY_B_4, FREQUENCY_D_5, FREQUENCY_G_5, FREQUENCY_A_5,
+    FREQUENCY_A_5, FREQUENCY_B_5, FREQUENCY_A_5, FREQUENCY_G_5,
 };
 // Final Countdown
 static const float note_sequence_5[] = {
@@ -204,7 +269,19 @@ static void check_sequence(void *arg) {
   }
 
   ESP_LOGI(RADIO_TAG, "Sequence matched for stage %d", current_stage);
+  const char *completion = stage_to_completion(current_stage);
+  if (completion) {
+    xQueueSend(playback_queue, &completion, portMAX_DELAY);
+  }
   current_stage++;
+  esp_err_t err = nvs_set_u8(pi_nvs_handle, "stage", current_stage);
+  if (err != ESP_OK) {
+    ESP_LOGE(RADIO_TAG, "Failed to save stage: %d", err);
+  }
+  const char *intro = stage_to_intro(current_stage);
+  if (intro) {
+    xQueueSend(playback_queue, &intro, portMAX_DELAY);
+  }
 }
 
 static void schedule_sequence_check() {
@@ -225,7 +302,7 @@ static void light_start_tone() {
   float frequency = light_frequencies[shift_state];
   ESP_ERROR_CHECK_WITHOUT_ABORT(tone_generator_init(
       &(tone_generator_config_t){
-          .entuned = entuned,
+          .entuned = entuned && instrument_enabled,
           .attack_time = 20000,
           .decay_time = 20000,
           .sustain_level = 0x8000,
@@ -248,7 +325,7 @@ static void touch_start_tone() {
   float frequency = touch_frequencies[shift_state];
   ESP_ERROR_CHECK_WITHOUT_ABORT(tone_generator_init(
       &(tone_generator_config_t){
-          .entuned = entuned,
+          .entuned = entuned && instrument_enabled,
           .attack_time = 20000,
           .decay_time = 20000,
           .sustain_level = 0x8000,
@@ -271,7 +348,7 @@ static void button_start_tone() {
   float frequency = button_frequencies[shift_state];
   ESP_ERROR_CHECK_WITHOUT_ABORT(tone_generator_init(
       &(tone_generator_config_t){
-          .entuned = entuned,
+          .entuned = entuned && instrument_enabled,
           .attack_time = 20000,
           .decay_time = 20000,
           .sustain_level = 0x8000,
@@ -306,7 +383,7 @@ static void knock_start_tone(void *arg) {
   float frequency = knock_frequencies[shift_state];
   ESP_ERROR_CHECK_WITHOUT_ABORT(tone_generator_init(
       &(tone_generator_config_t){
-          .entuned = entuned,
+          .entuned = entuned && instrument_enabled,
           .attack_time = 20000,
           .decay_time = 20000,
           .sustain_level = 0x8000,
@@ -319,6 +396,11 @@ static void knock_start_tone(void *arg) {
 
 static void update_led() {
   if (!entuned) {
+    return;
+  }
+
+  if (!instrument_enabled) {
+    ESP_ERROR_CHECK_WITHOUT_ABORT(led_set_pixel(1, 0, 0, 0));
     return;
   }
 
@@ -378,16 +460,16 @@ static void update_state() {
   }
 
   if (light_tone) {
-    tone_generator_set_entuned(light_tone, entuned);
+    tone_generator_set_entuned(light_tone, entuned && instrument_enabled);
   }
   if (knock_tone) {
-    tone_generator_set_entuned(knock_tone, entuned);
+    tone_generator_set_entuned(knock_tone, entuned && instrument_enabled);
   }
   if (touch_tone) {
-    tone_generator_set_entuned(touch_tone, entuned);
+    tone_generator_set_entuned(touch_tone, entuned && instrument_enabled);
   }
   if (button_tone) {
-    tone_generator_set_entuned(button_tone, entuned);
+    tone_generator_set_entuned(button_tone, entuned && instrument_enabled);
   }
 }
 
@@ -421,7 +503,8 @@ static void light_adc_cb(void *ctx, adc_digi_output_data_t *result) {
 
 #define NOTIFY_TOUCH_ACTIVE BIT(0)
 #define NOTIFY_TOUCH_INACTIVE BIT(1)
-#define NOTIFY_BUTTON_TRIGGERED BIT(2)
+#define NOTIFY_TRIANGLE_BUTTON_TRIGGERED BIT(2)
+#define NOTIFY_CIRCLE_BUTTON_TRIGGERED BIT(3)
 #define NOTIFY_KNOCK_START BIT(4)
 
 static void station_pi_task(void *ctx) {
@@ -430,6 +513,19 @@ static void station_pi_task(void *ctx) {
     TickType_t wait_time = pdMS_TO_TICKS(entuned ? (50 + esp_random() % 5)
                                                  : 1000 + esp_random() % 100);
     xTaskNotifyWait(0, ULONG_MAX, &notification, wait_time);
+
+    if (notification & NOTIFY_CIRCLE_BUTTON_TRIGGERED) {
+      xSemaphoreTake(playback_mutex, portMAX_DELAY);
+      if (playback) {
+        playback_stop(playback);
+      } else {
+        const char *file = stage_to_intro(current_stage);
+        if (file) {
+          xQueueSend(playback_queue, &file, portMAX_DELAY);
+        }
+      }
+      xSemaphoreGive(playback_mutex);
+    }
 
     if (notification & NOTIFY_TOUCH_ACTIVE && !touch_tone) {
       touch_triggered = true;
@@ -492,6 +588,48 @@ static void station_pi_task(void *ctx) {
   }
 }
 
+static void playback_task(void *ctx) {
+  while (true) {
+    const char *file;
+    xQueueReceive(playback_queue, &file, portMAX_DELAY);
+    if (!file || !entuned) {
+      continue;
+    }
+
+    instrument_enabled = false;
+    xTaskNotify(pi_task, 0, eNoAction);
+    update_led();
+
+    xSemaphoreTake(playback_mutex, portMAX_DELAY);
+    esp_err_t err = playback_file(
+        &(playback_cfg_t){
+            .path = file,
+            .tuned = true,
+        },
+        &playback);
+    xSemaphoreGive(playback_mutex);
+    if (err != ESP_OK) {
+      ESP_LOGE(RADIO_TAG, "Failed to play queued file: %d", err);
+      continue;
+    }
+
+    err = playback_wait_for_completion(playback);
+    if (err != ESP_OK) {
+      ESP_LOGE(RADIO_TAG, "Failed to wait for completion: %d", err);
+    }
+
+    instrument_enabled = true;
+    xTaskNotify(pi_task, 0, eNoAction);
+    update_led();
+
+    xSemaphoreTake(playback_mutex, portMAX_DELAY);
+    playback_handle_t p = playback;
+    playback = NULL;
+    playback_free(p);
+    xSemaphoreGive(playback_mutex);
+  }
+}
+
 static void IRAM_ATTR touch_intr(void *ctx) {
   TaskHandle_t task_handle = (TaskHandle_t)ctx;
   uint32_t touch_status = touch_pad_read_intr_status_mask();
@@ -508,10 +646,18 @@ static void IRAM_ATTR touch_intr(void *ctx) {
   portYIELD_FROM_ISR(higher_priority_task_woken);
 }
 
-static void IRAM_ATTR button_intr(void *ctx, bool state) {
+static void IRAM_ATTR triangle_button_intr(void *ctx, bool state) {
   TaskHandle_t task_handle = (TaskHandle_t)ctx;
   BaseType_t higher_priority_task_woken = pdFALSE;
-  xTaskNotifyFromISR(task_handle, NOTIFY_BUTTON_TRIGGERED, eSetBits,
+  xTaskNotifyFromISR(task_handle, NOTIFY_TRIANGLE_BUTTON_TRIGGERED, eSetBits,
+                     &higher_priority_task_woken);
+  portYIELD_FROM_ISR(higher_priority_task_woken);
+}
+
+static void IRAM_ATTR circle_button_intr(void *ctx, bool state) {
+  TaskHandle_t task_handle = (TaskHandle_t)ctx;
+  BaseType_t higher_priority_task_woken = pdFALSE;
+  xTaskNotifyFromISR(task_handle, NOTIFY_CIRCLE_BUTTON_TRIGGERED, eSetBits,
                      &higher_priority_task_woken);
   portYIELD_FROM_ISR(higher_priority_task_woken);
 }
@@ -539,19 +685,27 @@ static void entune(void *ctx) {
   ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_default_static(false));
   ESP_ERROR_CHECK_WITHOUT_ABORT(audio_output_suspend());
   ESP_ERROR_CHECK_WITHOUT_ABORT(tas2505_set_output(TAS2505_OUTPUT_SPEAKER));
+  memset(notes_played, 0, sizeof(notes_played));
   ESP_ERROR_CHECK_WITHOUT_ABORT(
       accelerometer_subscribe_pulse(&knock_cfg, knock_cb, pi_task));
   ESP_ERROR_CHECK_WITHOUT_ABORT(gpio_config(&(gpio_config_t){
-      .pin_bit_mask = 1ULL << BUTTON_TRIANGLE_PIN,
+      .pin_bit_mask = BIT64(BUTTON_TRIANGLE_PIN) | BIT64(BUTTON_CIRCLE_PIN),
       .mode = GPIO_MODE_INPUT,
       .pull_up_en = GPIO_PULLUP_ENABLE,
       .pull_down_en = GPIO_PULLDOWN_DISABLE,
       .intr_type = GPIO_INTR_ANYEDGE,
   }));
   ESP_ERROR_CHECK_WITHOUT_ABORT(
-      debounce_handler_add(BUTTON_TRIANGLE_PIN, GPIO_INTR_ANYEDGE, button_intr,
-                           pi_task, pdMS_TO_TICKS(10)));
+      debounce_handler_add(BUTTON_TRIANGLE_PIN, GPIO_INTR_ANYEDGE,
+                           triangle_button_intr, pi_task, pdMS_TO_TICKS(10)));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(
+      debounce_handler_add(BUTTON_CIRCLE_PIN, GPIO_INTR_POSEDGE,
+                           circle_button_intr, pi_task, pdMS_TO_TICKS(10)));
 
+  const char *file = stage_to_entuned_intro(current_stage);
+  if (file) {
+    xQueueSend(playback_queue, &file, portMAX_DELAY);
+  }
   entuned = true;
   xTaskNotify(pi_task, 0, eNoAction);
   update_led();
@@ -560,6 +714,12 @@ static void entune(void *ctx) {
 static void detune(void *ctx) {
   entuned = false;
   xTaskNotify(pi_task, 0, eNoAction);
+  xSemaphoreTake(playback_mutex, portMAX_DELAY);
+  if (playback) {
+    playback_stop(playback);
+  }
+  xSemaphoreGive(playback_mutex);
+  ESP_ERROR_CHECK_WITHOUT_ABORT(debounce_handler_remove(BUTTON_CIRCLE_PIN));
   ESP_ERROR_CHECK_WITHOUT_ABORT(debounce_handler_remove(BUTTON_TRIANGLE_PIN));
   ESP_ERROR_CHECK_WITHOUT_ABORT(accelerometer_unsubscribe_pulse());
   ESP_ERROR_CHECK_WITHOUT_ABORT(led_set_pixel(1, 0, 0, 0));
@@ -569,6 +729,11 @@ static void detune(void *ctx) {
 }
 
 esp_err_t station_pi_init() {
+  playback_mutex = xSemaphoreCreateMutex();
+  playback_queue = xQueueCreate(2, sizeof(const char *));
+  xTaskCreatePinnedToCore(playback_task, "pi_playback", 4096, NULL, 11, NULL,
+                          1);
+
   ESP_RETURN_ON_ERROR(
       nvs_open(STATION_PI_NVS_NAMESPACE, NVS_READWRITE, &pi_nvs_handle),
       RADIO_TAG, "Failed to open NVS handle for station pi");

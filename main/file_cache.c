@@ -619,9 +619,6 @@ cleanup:
 }
 
 static void file_cache_task(void *context) {
-  // load_manifest will log its own failures, and failures are soft anyway
-  load_manifest();
-
   things_subscribe_attribute("file_manifest", url_callback);
 
   while (true) {
@@ -654,6 +651,9 @@ static void file_cache_task(void *context) {
 esp_err_t file_cache_init(void) {
   manifest_url_mutex = xSemaphoreCreateMutex();
   manifest_cache_mutex = xSemaphoreCreateMutex();
+
+  // load_manifest will log its own failures, and failures are soft anyway
+  load_manifest();
 
   // Push all work to a task because we need to wait until storage has been
   // mounted
