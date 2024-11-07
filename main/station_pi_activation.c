@@ -173,7 +173,7 @@ static void pulse_callback(accelerometer_pulse_axis_t axis, void *arg) {
   }
   case 3:
     // Set a timer to make sure we don't get any more pulses
-    esp_timer_start_once(rhythm_timer, rhythm_max_period * 2);
+    esp_timer_start_once(rhythm_timer, 1000000);
     break;
   default:
     // Too many pulses, cancel the timer (but let them keep pulsing)
