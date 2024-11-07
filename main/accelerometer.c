@@ -222,20 +222,11 @@ static void accelerometer_task(void *ctx) {
       if (int_src.refined.src_drdy) {
         // Read data to clear the interrupt
         int16_t x, y, z;
-        uint8_t buffer[7];
-        BOARD_I2C_MUTEX_LOCK();
-        err = i2c_master_transmit_receive(
-            i2c_device, (uint8_t[]){MMA8451Q_REG_STATUS}, 1, buffer, 7, -1);
-        BOARD_I2C_MUTEX_UNLOCK();
-
+        err = accelerometer_read_data(&x, &y, &z);
         if (err != ESP_OK) {
-          ESP_LOGE(TAG, "Failed to read data: %d", err);
+          ESP_LOGE(TAG, "Failed to read accelerometer data: %d", err);
           continue;
         }
-
-        x = (buffer[1] << 8) | buffer[2];
-        y = (buffer[3] << 8) | buffer[4];
-        z = (buffer[5] << 8) | buffer[6];
 
         xSemaphoreTake(mutex, portMAX_DELAY);
         accelerometer_data_callback_t cb = data_callback;
@@ -569,6 +560,32 @@ accelerometer_get_orientation(accelerometer_orientation_t *orientation) {
       break;
     }
   }
+
+cleanup:
+  xSemaphoreGive(mutex);
+  return ret;
+}
+
+esp_err_t accelerometer_read_data(int16_t *x, int16_t *y, int16_t *z) {
+  ESP_RETURN_ON_FALSE(x && y && z, ESP_ERR_INVALID_ARG, TAG,
+                      "x, y, and z must not be NULL");
+
+  xSemaphoreTake(mutex, portMAX_DELAY);
+  esp_err_t ret = ESP_OK;
+
+  ESP_GOTO_ON_FALSE(active, ESP_FAIL, cleanup, TAG,
+                    "Cannot read data while inactive");
+
+  uint8_t buffer[7];
+  BOARD_I2C_MUTEX_LOCK();
+  esp_err_t err = i2c_master_transmit_receive(
+      i2c_device, (uint8_t[]){MMA8451Q_REG_STATUS}, 1, buffer, 7, -1);
+  BOARD_I2C_MUTEX_UNLOCK();
+  ESP_GOTO_ON_ERROR(err, cleanup, TAG, "Failed to read data");
+
+  *x = (buffer[1] << 8) | buffer[2];
+  *y = (buffer[3] << 8) | buffer[4];
+  *z = (buffer[5] << 8) | buffer[6];
 
 cleanup:
   xSemaphoreGive(mutex);

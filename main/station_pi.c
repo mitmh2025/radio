@@ -45,6 +45,7 @@ static playback_handle_t playback = NULL;
 uint8_t previous_shift_state = 0;
 uint8_t shift_state = 0;
 int64_t last_headphone_change = 0;
+float pitch_bend = 1.0f;
 
 static uint64_t magnet_threshold =
     1200 * 1200; // roughly 1.5mT, but we test with magnitude^2
@@ -300,6 +301,9 @@ static void light_stop_tone() {
 static void light_start_tone() {
   esp_timer_stop(sequence_check_timer);
   float frequency = light_frequencies[shift_state];
+  if (current_stage >= 6) {
+    frequency *= pitch_bend;
+  }
   ESP_ERROR_CHECK_WITHOUT_ABORT(tone_generator_init(
       &(tone_generator_config_t){
           .entuned = entuned && instrument_enabled,
@@ -323,6 +327,9 @@ static void touch_stop_tone() {
 static void touch_start_tone() {
   esp_timer_stop(sequence_check_timer);
   float frequency = touch_frequencies[shift_state];
+  if (current_stage >= 6) {
+    frequency *= pitch_bend;
+  }
   ESP_ERROR_CHECK_WITHOUT_ABORT(tone_generator_init(
       &(tone_generator_config_t){
           .entuned = entuned && instrument_enabled,
@@ -346,6 +353,9 @@ static void button_stop_tone() {
 static void button_start_tone() {
   esp_timer_stop(sequence_check_timer);
   float frequency = button_frequencies[shift_state];
+  if (current_stage >= 6) {
+    frequency *= pitch_bend;
+  }
   ESP_ERROR_CHECK_WITHOUT_ABORT(tone_generator_init(
       &(tone_generator_config_t){
           .entuned = entuned && instrument_enabled,
@@ -381,6 +391,9 @@ static void knock_start_tone(void *arg) {
   esp_timer_stop(sequence_check_timer);
   ESP_ERROR_CHECK_WITHOUT_ABORT(esp_timer_start_once(knock_stop_timer, 400000));
   float frequency = knock_frequencies[shift_state];
+  if (current_stage >= 6) {
+    frequency *= pitch_bend;
+  }
   ESP_ERROR_CHECK_WITHOUT_ABORT(tone_generator_init(
       &(tone_generator_config_t){
           .entuned = entuned && instrument_enabled,
@@ -439,6 +452,21 @@ static void update_state() {
     // Don't need to restart knock tone since it is fixed duration
     update_led();
     previous_shift_state = shift_state;
+  }
+
+  if (pitch_bend != 1.0f) {
+    if (light_tone) {
+      tone_generator_adjust_frequency(
+          light_tone, light_frequencies[shift_state] * pitch_bend);
+    }
+    if (touch_tone) {
+      tone_generator_adjust_frequency(
+          touch_tone, touch_frequencies[shift_state] * pitch_bend);
+    }
+    if (button_tone) {
+      tone_generator_adjust_frequency(
+          button_tone, button_frequencies[shift_state] * pitch_bend);
+    }
   }
 
   if (light_triggered && !light_tone) {
@@ -506,6 +534,8 @@ static void light_adc_cb(void *ctx, adc_digi_output_data_t *result) {
 #define NOTIFY_TRIANGLE_BUTTON_TRIGGERED BIT(2)
 #define NOTIFY_CIRCLE_BUTTON_TRIGGERED BIT(3)
 #define NOTIFY_KNOCK_START BIT(4)
+
+static int16_t accel_x_smoothed, accel_y_smoothed, accel_z_smoothed;
 
 static void station_pi_task(void *ctx) {
   while (true) {
@@ -582,6 +612,39 @@ static void station_pi_task(void *ctx) {
       shift_state |= SHIFT_MAGNET;
     } else if (magnet_magnitude < magnet_threshold - magnet_hysteresis) {
       shift_state &= ~SHIFT_MAGNET;
+    }
+
+    if (current_stage >= 6) {
+      // Don't pitch bend if there's an active knock going on because that
+      // throws off the accelerometer
+      if (knock_last_time + PULSE_DEBOUNCE_US < esp_timer_get_time()) {
+        int16_t accel_x, accel_y, accel_z;
+        err = accelerometer_read_data(&accel_x, &accel_y, &accel_z);
+        if (err != ESP_OK) {
+          ESP_LOGE(RADIO_TAG, "Failed to read accelerometer: %d", err);
+          accel_x = accel_y = accel_z = 0;
+        }
+
+        accel_x_smoothed =
+            accel_x_smoothed - (accel_x_smoothed >> 3) + (accel_x >> 3);
+        accel_y_smoothed =
+            accel_y_smoothed - (accel_y_smoothed >> 3) + (accel_y >> 3);
+        accel_z_smoothed =
+            accel_z_smoothed - (accel_z_smoothed >> 3) + (accel_z >> 3);
+
+        float roll = atan2f(
+            accel_y, (accel_x < 0 ? 1 : -1) *
+                         sqrtf(accel_x * accel_x + 0.001 * accel_z * accel_z));
+        // To turn this into a pitch bend, take the absolute value, scale it
+        // from [0, pi] to [-2, 2], and then compute 2^(x/12). (This means the
+        // range goes from 2^(-2/12) to 2^(2/12) which is the ratio of a full
+        // step in either direction)
+        float new_pitch_bend =
+            powf(2.0f, -((4.0f * fabsf(roll) / M_PI) - 2.0f) / 12.0f);
+        pitch_bend = pitch_bend * 0.25f + new_pitch_bend * 0.75f;
+      }
+    } else {
+      pitch_bend = 1.0f;
     }
 
     update_state();
