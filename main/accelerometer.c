@@ -591,3 +591,23 @@ cleanup:
   xSemaphoreGive(mutex);
   return ret;
 }
+
+const char *
+accelerometer_pulse_axis_to_string(accelerometer_pulse_axis_t axis) {
+  switch (axis) {
+  case ACCELEROMETER_PULSE_AXIS_X_POS:
+    return "x+";
+  case ACCELEROMETER_PULSE_AXIS_X_NEG:
+    return "x-";
+  case ACCELEROMETER_PULSE_AXIS_Y_POS:
+    return "y+";
+  case ACCELEROMETER_PULSE_AXIS_Y_NEG:
+    return "y-";
+  case ACCELEROMETER_PULSE_AXIS_Z_POS:
+    return "z+";
+  case ACCELEROMETER_PULSE_AXIS_Z_NEG:
+    return "z-";
+  default:
+    return "unknown";
+  }
+}

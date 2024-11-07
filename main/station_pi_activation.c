@@ -133,6 +133,8 @@ static void pulse_callback(accelerometer_pulse_axis_t axis, void *arg) {
 
   // Debounce the pulse
   if (now - last_pulse < PULSE_DEBOUNCE_US) {
+    ESP_LOGD(RADIO_TAG, "Pulse on axis %s (debounced)",
+             accelerometer_pulse_axis_to_string(axis));
     last_pulse = now;
     return;
   }
@@ -155,6 +157,9 @@ static void pulse_callback(accelerometer_pulse_axis_t axis, void *arg) {
   }
 
   rhythm_count++;
+  ESP_LOGD(RADIO_TAG, "Pulse on axis %s (count %d)",
+           accelerometer_pulse_axis_to_string(axis), rhythm_count);
+
   switch (rhythm_count) {
   case 1:
     // Nothing to do on first pulse

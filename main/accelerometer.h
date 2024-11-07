@@ -74,6 +74,8 @@ accelerometer_get_orientation(accelerometer_orientation_t *orientation);
 
 esp_err_t accelerometer_read_data(int16_t *x, int16_t *y, int16_t *z);
 
+const char *accelerometer_pulse_axis_to_string(accelerometer_pulse_axis_t axis);
+
 #ifdef __cplusplus
 }
 #endif
