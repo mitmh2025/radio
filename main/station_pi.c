@@ -687,6 +687,7 @@ static void playback_task(void *ctx) {
 
     // If we're about to play another file, don't re-enable the instrument
     if (uxQueueMessagesWaiting(playback_queue) == 0) {
+      memset(notes_played, 0, sizeof(notes_played));
       instrument_enabled = true;
       xTaskNotify(pi_task, 0, eNoAction);
       update_led();
