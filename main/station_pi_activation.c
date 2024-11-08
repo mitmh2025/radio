@@ -16,9 +16,9 @@
 static const accelerometer_pulse_cfg_t pulse_cfg = {
     // This threshold (1g) was chosen to be fairly generous to avoid false
     // negatives
-    .threshold_x = 8,
-    .threshold_y = 8,
-    .threshold_z = 8,
+    .threshold_x = 16,
+    .threshold_y = 16,
+    .threshold_z = 16,
     .timelimit = 24, // 30ms
     // The pulse latency setting doesn't apply if you're reading and clearing
     // the interrupt status. Once that's done, new pulses seem to come in, so we
