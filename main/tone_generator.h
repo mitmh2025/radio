@@ -120,9 +120,10 @@ extern "C" {
 typedef struct {
   bool entuned;
   float frequency;
+  uint16_t volume;
   int64_t attack_time;    // in microseconds
   int64_t decay_time;     // in microseconds
-  uint16_t sustain_level; // 0-0xffff
+  uint16_t sustain_level; // 0-0xffff, stacks with volume
   // In microseconds. Note that once a generator is released, it will no longer
   // repsect entune/detune calls, so release time should be fairly short
   int64_t release_time;

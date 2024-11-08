@@ -53,6 +53,7 @@ struct tone_generator {
   int64_t release_start_time;
   esp_timer_handle_t release_timer;
 
+  uint16_t volume;
   int64_t attack_time;
   int64_t decay_time;
   uint16_t sustain_level;
@@ -132,6 +133,7 @@ static int tone_generator_play(void *ctx, char *data, int len,
       adsr_factor = (time_since_start * 0xffff) / generator->attack_time;
     }
     sample = (sample * adsr_factor) >> 16;
+    sample = (sample * generator->volume) >> 16;
 
     samples[i] = sample;
 
@@ -161,6 +163,7 @@ esp_err_t tone_generator_init(const tone_generator_config_t *config,
     return ESP_ERR_NO_MEM;
   }
 
+  (*generator)->volume = config->volume;
   (*generator)->attack_time = config->attack_time;
   (*generator)->decay_time = config->decay_time;
   (*generator)->sustain_level = config->sustain_level;

@@ -310,9 +310,10 @@ static void light_start_tone() {
   ESP_ERROR_CHECK_WITHOUT_ABORT(tone_generator_init(
       &(tone_generator_config_t){
           .entuned = entuned && instrument_enabled,
+          .volume = 0x8000,
           .attack_time = 20000,
           .decay_time = 20000,
-          .sustain_level = 0x4000,
+          .sustain_level = 0x8000,
           .release_time = 100000,
           .frequency = frequency,
       },
@@ -336,9 +337,10 @@ static void touch_start_tone() {
   ESP_ERROR_CHECK_WITHOUT_ABORT(tone_generator_init(
       &(tone_generator_config_t){
           .entuned = entuned && instrument_enabled,
+          .volume = 0x8000,
           .attack_time = 20000,
           .decay_time = 20000,
-          .sustain_level = 0x4000,
+          .sustain_level = 0x8000,
           .release_time = 100000,
           .frequency = frequency,
       },
@@ -362,9 +364,10 @@ static void button_start_tone() {
   ESP_ERROR_CHECK_WITHOUT_ABORT(tone_generator_init(
       &(tone_generator_config_t){
           .entuned = entuned && instrument_enabled,
+          .volume = 0x8000,
           .attack_time = 20000,
           .decay_time = 20000,
-          .sustain_level = 0x4000,
+          .sustain_level = 0x8000,
           .release_time = 100000,
           .frequency = frequency,
       },
@@ -400,9 +403,10 @@ static void knock_start_tone(void *arg) {
   ESP_ERROR_CHECK_WITHOUT_ABORT(tone_generator_init(
       &(tone_generator_config_t){
           .entuned = entuned && instrument_enabled,
+          .volume = 0x8000,
           .attack_time = 20000,
           .decay_time = 20000,
-          .sustain_level = 0x4000,
+          .sustain_level = 0x8000,
           .release_time = 100000,
           .frequency = frequency,
       },
