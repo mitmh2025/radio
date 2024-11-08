@@ -159,6 +159,8 @@ static void play_on_success(uint8_t stage) {
     xQueueSend(playback_queue, &intro, portMAX_DELAY);
     const char *example = examples[stage];
     xQueueSend(playback_queue, &example, portMAX_DELAY);
+  } else {
+    xQueueSend(playback_queue, &final_completion, portMAX_DELAY);
   }
 }
 
