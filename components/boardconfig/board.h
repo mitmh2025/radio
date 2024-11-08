@@ -47,7 +47,7 @@ extern "C" {
 #define RADIO_SPI_PIN_CS2 GPIO_NUM_47
 #define RADIO_SPI_PIN_SD_CS GPIO_NUM_10
 
-#define BOARD_PA_GAIN (6) /* Power amplifier gain defined by board (dB) */
+#define BOARD_PA_GAIN (12) /* Power amplifier gain defined by board (dB) */
 #define TAS2505_RST_GPIO GPIO_NUM_15
 #define PA_ENABLE_GPIO TAS2505_RST_GPIO
 
