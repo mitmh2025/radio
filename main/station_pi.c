@@ -114,61 +114,71 @@ static int64_t sequence_check_timeout = 500000;
 static esp_timer_handle_t sequence_check_timer = NULL;
 
 static uint8_t current_stage = 0;
+#define STAGE_COUNT 6
 
-static const char *stage_to_entuned_intro(uint8_t stage) {
-  switch (stage) {
-  case 0:
-    return "practical-fighter/stage-0-intro.opus";
-  case 1:
-    return "practical-fighter/stage-1-intro.opus";
-  case 2:
-    return "practical-fighter/stage-2-intro.opus";
-  case 3:
-    return "practical-fighter/stage-3-intro.opus";
-  case 4:
-    return "practical-fighter/stage-4-intro.opus";
-  case 5:
-    return "practical-fighter/stage-5-intro.opus";
-  default:
-    return NULL;
+static const char *intros[STAGE_COUNT] = {
+    [0] = "practical-fighter/stage-0-intro.opus",
+    [1] = "practical-fighter/stage-1-intro.opus",
+    [2] = "practical-fighter/stage-2-intro.opus",
+    [3] = "practical-fighter/stage-3-intro.opus",
+    [4] = "practical-fighter/stage-4-intro.opus",
+    [5] = "practical-fighter/stage-5-intro.opus",
+};
+
+static const char *examples[STAGE_COUNT] = {
+    [0] = "practical-fighter/stage-0-example.opus",
+    [1] = "practical-fighter/stage-1-example.opus",
+    [2] = "practical-fighter/stage-2-example.opus",
+    [3] = "practical-fighter/stage-3-example.opus",
+    [4] = "practical-fighter/stage-4-example.opus",
+    [5] = "practical-fighter/stage-5-example.opus",
+};
+
+static const char *completions[STAGE_COUNT] = {
+    [0] = "practical-fighter/stage-0-completion.opus",
+    [1] = "practical-fighter/stage-1-completion.opus",
+    [2] = "practical-fighter/stage-2-completion.opus",
+    [3] = "practical-fighter/stage-3-completion.opus",
+    [4] = "practical-fighter/stage-4-completion.opus",
+    [5] = "practical-fighter/stage-5-completion.opus",
+};
+
+static const char *final_completion = "practical-fighter/completion.opus";
+
+static void play_on_success(uint8_t stage) {
+  if (stage < STAGE_COUNT) {
+    const char *completion = completions[stage];
+    xQueueSend(playback_queue, &completion, portMAX_DELAY);
+  }
+
+  // intro and example are from the next stage
+  stage++;
+
+  if (stage < STAGE_COUNT) {
+    const char *intro = intros[stage];
+    xQueueSend(playback_queue, &intro, portMAX_DELAY);
+    const char *example = examples[stage];
+    xQueueSend(playback_queue, &example, portMAX_DELAY);
   }
 }
 
-static const char *stage_to_intro(uint8_t stage) {
-  switch (stage) {
-  case 0:
-    return "practical-fighter/stage-0-intro.opus";
-  case 1:
-    return "practical-fighter/stage-1-intro.opus";
-  case 2:
-    return "practical-fighter/stage-2-intro.opus";
-  case 3:
-    return "practical-fighter/stage-3-intro.opus";
-  case 4:
-    return "practical-fighter/stage-4-intro.opus";
-  case 5:
-    return "practical-fighter/stage-5-intro.opus";
-  default:
-    return "practical-fighter/completion.opus";
+static void play_on_entune(uint8_t stage) {
+  if (stage < STAGE_COUNT) {
+    const char *intro = intros[stage];
+    xQueueSend(playback_queue, &intro, portMAX_DELAY);
+    const char *example = examples[stage];
+    xQueueSend(playback_queue, &example, portMAX_DELAY);
   }
 }
 
-static const char *stage_to_completion(uint8_t stage) {
-  switch (stage) {
-  case 0:
-    return "practical-fighter/stage-0-completion.opus";
-  case 1:
-    return "practical-fighter/stage-1-completion.opus";
-  case 2:
-    return "practical-fighter/stage-2-completion.opus";
-  case 3:
-    return "practical-fighter/stage-3-completion.opus";
-  case 4:
-    return "practical-fighter/stage-4-completion.opus";
-  case 5:
-    return "practical-fighter/stage-5-completion.opus";
-  default:
-    return NULL;
+static void play_on_button(uint8_t stage) {
+  if (stage < STAGE_COUNT) {
+    const char *intro = intros[stage];
+    xQueueSend(playback_queue, &intro, portMAX_DELAY);
+    const char *example = examples[stage];
+    xQueueSend(playback_queue, &example, portMAX_DELAY);
+  } else {
+    xQueueSend(playback_queue, &final_completion, portMAX_DELAY);
   }
 }
 
@@ -270,18 +280,11 @@ static void check_sequence(void *arg) {
   }
 
   ESP_LOGI(RADIO_TAG, "Sequence matched for stage %d", current_stage);
-  const char *completion = stage_to_completion(current_stage);
-  if (completion) {
-    xQueueSend(playback_queue, &completion, portMAX_DELAY);
-  }
+  play_on_success(current_stage);
   current_stage++;
   esp_err_t err = nvs_set_u8(pi_nvs_handle, "stage", current_stage);
   if (err != ESP_OK) {
     ESP_LOGE(RADIO_TAG, "Failed to save stage: %d", err);
-  }
-  const char *intro = stage_to_intro(current_stage);
-  if (intro) {
-    xQueueSend(playback_queue, &intro, portMAX_DELAY);
   }
 }
 
@@ -301,7 +304,7 @@ static void light_stop_tone() {
 static void light_start_tone() {
   esp_timer_stop(sequence_check_timer);
   float frequency = light_frequencies[shift_state];
-  if (current_stage >= 6) {
+  if (current_stage >= STAGE_COUNT) {
     frequency *= pitch_bend;
   }
   ESP_ERROR_CHECK_WITHOUT_ABORT(tone_generator_init(
@@ -327,7 +330,7 @@ static void touch_stop_tone() {
 static void touch_start_tone() {
   esp_timer_stop(sequence_check_timer);
   float frequency = touch_frequencies[shift_state];
-  if (current_stage >= 6) {
+  if (current_stage >= STAGE_COUNT) {
     frequency *= pitch_bend;
   }
   ESP_ERROR_CHECK_WITHOUT_ABORT(tone_generator_init(
@@ -353,7 +356,7 @@ static void button_stop_tone() {
 static void button_start_tone() {
   esp_timer_stop(sequence_check_timer);
   float frequency = button_frequencies[shift_state];
-  if (current_stage >= 6) {
+  if (current_stage >= STAGE_COUNT) {
     frequency *= pitch_bend;
   }
   ESP_ERROR_CHECK_WITHOUT_ABORT(tone_generator_init(
@@ -391,7 +394,7 @@ static void knock_start_tone(void *arg) {
   esp_timer_stop(sequence_check_timer);
   ESP_ERROR_CHECK_WITHOUT_ABORT(esp_timer_start_once(knock_stop_timer, 400000));
   float frequency = knock_frequencies[shift_state];
-  if (current_stage >= 6) {
+  if (current_stage >= STAGE_COUNT) {
     frequency *= pitch_bend;
   }
   ESP_ERROR_CHECK_WITHOUT_ABORT(tone_generator_init(
@@ -549,10 +552,7 @@ static void station_pi_task(void *ctx) {
       if (playback) {
         playback_stop(playback);
       } else {
-        const char *file = stage_to_intro(current_stage);
-        if (file) {
-          xQueueSend(playback_queue, &file, portMAX_DELAY);
-        }
+        play_on_button(current_stage);
       }
       xSemaphoreGive(playback_mutex);
     }
@@ -614,7 +614,7 @@ static void station_pi_task(void *ctx) {
       shift_state &= ~SHIFT_MAGNET;
     }
 
-    if (current_stage >= 6) {
+    if (current_stage >= STAGE_COUNT) {
       // Don't pitch bend if there's an active knock going on because that
       // throws off the accelerometer
       if (knock_last_time + PULSE_DEBOUNCE_US < esp_timer_get_time()) {
@@ -681,9 +681,12 @@ static void playback_task(void *ctx) {
       ESP_LOGE(RADIO_TAG, "Failed to wait for completion: %d", err);
     }
 
-    instrument_enabled = true;
-    xTaskNotify(pi_task, 0, eNoAction);
-    update_led();
+    // If we're about to play another file, don't re-enable the instrument
+    if (uxQueueMessagesWaiting(playback_queue) == 0) {
+      instrument_enabled = true;
+      xTaskNotify(pi_task, 0, eNoAction);
+      update_led();
+    }
 
     xSemaphoreTake(playback_mutex, portMAX_DELAY);
     playback_handle_t p = playback;
@@ -765,10 +768,7 @@ static void entune(void *ctx) {
       debounce_handler_add(BUTTON_CIRCLE_PIN, GPIO_INTR_POSEDGE,
                            circle_button_intr, pi_task, pdMS_TO_TICKS(10)));
 
-  const char *file = stage_to_entuned_intro(current_stage);
-  if (file) {
-    xQueueSend(playback_queue, &file, portMAX_DELAY);
-  }
+  play_on_entune(current_stage);
   entuned = true;
   xTaskNotify(pi_task, 0, eNoAction);
   update_led();
@@ -793,7 +793,7 @@ static void detune(void *ctx) {
 
 esp_err_t station_pi_init() {
   playback_mutex = xSemaphoreCreateMutex();
-  playback_queue = xQueueCreate(2, sizeof(const char *));
+  playback_queue = xQueueCreate(4, sizeof(const char *));
   xTaskCreatePinnedToCore(playback_task, "pi_playback", 4096, NULL, 11, NULL,
                           1);
 
