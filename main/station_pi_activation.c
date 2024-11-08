@@ -27,7 +27,7 @@ static const accelerometer_pulse_cfg_t pulse_cfg = {
 };
 
 #define PULSE_DEBOUNCE_US (50 * 1000)
-#define PULSE_MIN_SEPARATION_US (150 * 1000)
+#define PULSE_MIN_SEPARATION_US (300 * 1000)
 #define PULSE_MAX_SEPARATION_US (800 * 1000)
 
 static bool configured = false;
