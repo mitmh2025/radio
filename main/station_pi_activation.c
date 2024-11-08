@@ -146,7 +146,8 @@ static void pulse_callback(accelerometer_pulse_axis_t axis, void *arg) {
     // This is out of sync, but if it was supposed to be a 3rd pulse, it might
     // actually be a 2nd pulse establishing a rhythm
     esp_timer_stop(rhythm_timer);
-    if (rhythm_count == 2 && (now - last_knock) < PULSE_MAX_SEPARATION_US) {
+    if (rhythm_count == 2 && (now - last_knock) > PULSE_MIN_SEPARATION_US &&
+        (now - last_knock) < PULSE_MAX_SEPARATION_US) {
       rhythm_count = 1;
     } else {
       // Reset
