@@ -149,10 +149,14 @@ esp_err_t wifi_init() {
   ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register ip event handler: %d",
                       err);
 
-  wifi_config_t wifi_config = {.sta = {
-                                   .ssid = RADIO_WIFI_SSID,
-                                   .password = RADIO_WIFI_PASSWORD,
-                               }};
+  wifi_config_t wifi_config = {
+      .sta =
+          {
+              .ssid = RADIO_WIFI_SSID,
+              .password = RADIO_WIFI_PASSWORD,
+              .ft_enabled = true,
+          },
+  };
 
   // TODO: AP/captive portal mode, retries, etc.
   err = esp_wifi_set_mode(WIFI_MODE_STA);
