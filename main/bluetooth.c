@@ -1,6 +1,8 @@
 #include "bluetooth.h"
 #include "main.h"
+#include "things.h"
 
+#include <math.h>
 #include <stdint.h>
 #include <sys/queue.h>
 
@@ -36,10 +38,16 @@ static const ble_uuid128_t radio_uuid =
 // static const uint16_t major_giant_switch = 0x0002;
 // static const uint16_t major_dimpled_star = 0x0003;
 
+static bool synced = false;
+
 static SemaphoreHandle_t beacon_mutex = NULL;
 static struct bt_beacon_list beacons = TAILQ_HEAD_INITIALIZER(beacons);
 
 static esp_timer_handle_t beacon_cleanup_timer = NULL;
+
+static SemaphoreHandle_t adv_mutex = NULL;
+static uint16_t adv_major = UINT16_MAX;
+static uint16_t adv_minor = UINT16_MAX;
 
 static uint8_t mac[6] = {0};
 
@@ -55,6 +63,40 @@ void beacon_cleanup(void *arg) {
     }
   }
   xSemaphoreGive(beacon_mutex);
+}
+
+static void advertise() {
+  xSemaphoreTake(adv_mutex, portMAX_DELAY);
+  if (!synced) {
+    goto cleanup;
+  }
+
+  int rc = ble_gap_adv_stop();
+  if (rc != 0 && rc != BLE_HS_EALREADY) {
+    ESP_LOGE(RADIO_TAG, "Failed to stop advertising: %d", rc);
+    goto cleanup;
+  }
+
+  if (adv_major == UINT16_MAX && adv_minor == UINT16_MAX) {
+    goto cleanup;
+  }
+
+  rc = ble_ibeacon_set_adv_data((void *)&radio_uuid.value, adv_major, adv_minor,
+                                0);
+  if (rc != 0) {
+    ESP_LOGE(RADIO_TAG, "Failed to set iBeacon advertisement data: %d", rc);
+    goto cleanup;
+  }
+
+  struct ble_gap_adv_params adv_params = {};
+  rc = ble_gap_adv_start(BLE_OWN_ADDR_PUBLIC, NULL, BLE_HS_FOREVER, &adv_params,
+                         NULL, NULL);
+  if (rc != 0) {
+    ESP_LOGE(RADIO_TAG, "Failed to start advertising: %d", rc);
+  }
+
+cleanup:
+  xSemaphoreGive(adv_mutex);
 }
 
 static int gap_event(struct ble_gap_event *event, void *arg) {
@@ -159,7 +201,10 @@ static void on_sync() {
     return;
   }
 
+  synced = true;
+
   scan();
+  advertise();
 }
 
 static void bluetooth_task(void *param) {
@@ -169,8 +214,55 @@ static void bluetooth_task(void *param) {
   nimble_port_freertos_deinit();
 }
 
+static void things_attr_cb(const char *key, const things_attribute_t *attr) {
+  xSemaphoreTake(adv_mutex, portMAX_DELAY);
+
+  // Default to resetting to unset
+  adv_major = UINT16_MAX;
+  adv_minor = UINT16_MAX;
+
+  switch (attr->type) {
+  case THINGS_ATTRIBUTE_TYPE_INT:
+    if (attr->value.i > 0xffffffff || attr->value.i < 0) {
+      ESP_LOGW(RADIO_TAG, "Attribute %s is too large (treating as unset)", key);
+      goto cleanup;
+    }
+    adv_major = (uint16_t)(attr->value.i >> 16);
+    adv_minor = (uint16_t)(attr->value.i & 0xffff);
+    break;
+  case THINGS_ATTRIBUTE_TYPE_FLOAT:
+    // Ugh this really should be an int, but the TB web interface seems to
+    // always ship values as floats
+    if (attr->value.f > 0xffffffff || attr->value.f < 0 ||
+        isnan(attr->value.f) || isinf(attr->value.f) ||
+        attr->value.f != (int)attr->value.f) {
+      ESP_LOGW(RADIO_TAG, "Attribute %s is invalid (treating as unset)", key);
+      goto cleanup;
+    }
+    adv_major = (uint16_t)((uint32_t)attr->value.f >> 16);
+    adv_minor = (uint16_t)((uint32_t)attr->value.f & 0xffff);
+    break;
+  case THINGS_ATTRIBUTE_TYPE_UNSET:
+    break;
+  default:
+    ESP_LOGW(RADIO_TAG,
+             "Invalid attribute type for %s (type %d, treating as unset)", key,
+             attr->type);
+    break;
+  }
+
+cleanup:
+  xSemaphoreGive(adv_mutex);
+  advertise();
+}
+
 esp_err_t bluetooth_init(void) {
   beacon_mutex = xSemaphoreCreateMutex();
+  ESP_RETURN_ON_FALSE(beacon_mutex != NULL, ESP_ERR_NO_MEM, RADIO_TAG,
+                      "Failed to create beacon mutex");
+  adv_mutex = xSemaphoreCreateMutex();
+  ESP_RETURN_ON_FALSE(adv_mutex != NULL, ESP_ERR_NO_MEM, RADIO_TAG,
+                      "Failed to create advertisement mutex");
 
   ESP_RETURN_ON_ERROR(esp_timer_create(
                           &(esp_timer_create_args_t){
@@ -203,6 +295,8 @@ esp_err_t bluetooth_init(void) {
                       "Failed to set device name: %d", rc);
 
   nimble_port_freertos_init(bluetooth_task);
+
+  things_subscribe_attribute("beacon_identity", things_attr_cb);
 
   return ESP_OK;
 }
