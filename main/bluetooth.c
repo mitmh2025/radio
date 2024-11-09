@@ -1,0 +1,208 @@
+#include "bluetooth.h"
+#include "main.h"
+
+#include <stdint.h>
+#include <sys/queue.h>
+
+#include "esp_check.h"
+#include "esp_log.h"
+#include "esp_mac.h"
+#include "esp_timer.h"
+
+#include "host/ble_gap.h"
+#include "host/ble_hs.h"
+#include "host/util/util.h"
+#include "nimble/nimble_port.h"
+#include "nimble/nimble_port_freertos.h"
+#include "services/gap/ble_svc_gap.h"
+
+struct bt_beacon {
+  TAILQ_ENTRY(bt_beacon) entries;
+  uint16_t major;
+  uint16_t minor;
+  int8_t rssi;
+  int8_t tx_power;
+  int64_t last_seen;
+};
+
+TAILQ_HEAD(bt_beacon_list, bt_beacon);
+
+// B7F8C378-248E-40E0-9157-8B517DA07783
+static const ble_uuid128_t radio_uuid =
+    BLE_UUID128_INIT(0xb7, 0xf8, 0xc3, 0x78, 0x24, 0x8e, 0x40, 0xe0, 0x91, 0x57,
+                     0x8b, 0x51, 0x7d, 0xa0, 0x77, 0x83, );
+
+// static const uint16_t major_radio = 0x00001;
+// static const uint16_t major_giant_switch = 0x0002;
+// static const uint16_t major_dimpled_star = 0x0003;
+
+static SemaphoreHandle_t beacon_mutex = NULL;
+static struct bt_beacon_list beacons = TAILQ_HEAD_INITIALIZER(beacons);
+
+static esp_timer_handle_t beacon_cleanup_timer = NULL;
+
+static uint8_t mac[6] = {0};
+
+void beacon_cleanup(void *arg) {
+  // Remove any beacon we haven't seen in the last minute
+  int64_t now = esp_timer_get_time();
+  xSemaphoreTake(beacon_mutex, portMAX_DELAY);
+  struct bt_beacon *beacon, *tmp;
+  TAILQ_FOREACH_SAFE(beacon, &beacons, entries, tmp) {
+    if (now - beacon->last_seen > 60 * 1000 * 1000) {
+      TAILQ_REMOVE(&beacons, beacon, entries);
+      free(beacon);
+    }
+  }
+  xSemaphoreGive(beacon_mutex);
+}
+
+static int gap_event(struct ble_gap_event *event, void *arg) {
+  switch (event->type) {
+  case BLE_GAP_EVENT_DISC: {
+    struct ble_hs_adv_fields parsed_fields;
+    int ret = ble_hs_adv_parse_fields(&parsed_fields, event->disc.data,
+                                      event->disc.length_data);
+    if (ret != 0) {
+      ESP_LOGD(RADIO_TAG, "Failed to parse advertisement data: %d", ret);
+      return 0;
+    }
+
+    // 25 bytes is the size of an iBeacon advertisement
+    if (parsed_fields.mfg_data_len != 25) {
+      return 0;
+    }
+
+    if (memcmp(parsed_fields.mfg_data, "\x4c\x00\x02\x15", 4) != 0) {
+      return 0;
+    }
+
+    ble_uuid_any_t beacon_uuid;
+    ble_uuid_init_from_buf(&beacon_uuid, parsed_fields.mfg_data + 4, 16);
+
+    if (ble_uuid_cmp(&beacon_uuid.u, &radio_uuid.u) != 0) {
+      return 0;
+    }
+
+    uint16_t major = get_be16(parsed_fields.mfg_data + 20);
+    uint16_t minor = get_be16(parsed_fields.mfg_data + 22);
+    int8_t tx_power = (int8_t)parsed_fields.mfg_data[24];
+
+    xSemaphoreTake(beacon_mutex, portMAX_DELAY);
+    struct bt_beacon *beacon = NULL;
+    TAILQ_FOREACH(beacon, &beacons, entries) {
+      if (beacon->major == major && beacon->minor == minor) {
+        break;
+      }
+    }
+    if (!beacon) {
+      ESP_LOGD(RADIO_TAG,
+               "Found radio beacon: major=%" PRIu16 ", minor=%" PRIu16
+               " (rssi=%d)",
+               major, minor, event->disc.rssi);
+
+      beacon = calloc(1, sizeof(struct bt_beacon));
+      if (!beacon) {
+        ESP_LOGE(RADIO_TAG, "Failed to allocate memory for beacon");
+        xSemaphoreGive(beacon_mutex);
+        return 0;
+      }
+      beacon->major = major;
+      beacon->minor = minor;
+      TAILQ_INSERT_TAIL(&beacons, beacon, entries);
+    }
+
+    beacon->rssi = event->disc.rssi;
+    beacon->tx_power = tx_power;
+    beacon->last_seen = esp_timer_get_time();
+    xSemaphoreGive(beacon_mutex);
+    break;
+  }
+  default:
+    break;
+  }
+
+  return 0;
+};
+
+static void scan() {
+  uint8_t own_addr_type;
+
+  int rc = ble_hs_id_infer_auto(0, &own_addr_type);
+  if (rc != 0) {
+    ESP_LOGE(RADIO_TAG, "Failed to infer own address type: %d", rc);
+    return;
+  }
+
+  struct ble_gap_disc_params disc_params = {
+      .filter_policy = BLE_HCI_SCAN_FILT_NO_WL,
+      .filter_duplicates = 0,
+      .passive = 1,
+      .itvl = BLE_GAP_SCAN_SLOW_INTERVAL1,
+      .window = BLE_GAP_SCAN_FAST_WINDOW,
+  };
+
+  rc = ble_gap_disc(own_addr_type, BLE_HS_FOREVER, &disc_params, gap_event,
+                    NULL);
+  if (rc != 0) {
+    ESP_LOGE(RADIO_TAG, "Error initiating GAP discovery procedure; rc=%d\n",
+             rc);
+  }
+};
+
+static void on_sync() {
+  ESP_LOGD(RADIO_TAG, "Bluetooth initialized");
+
+  int rc = ble_hs_util_ensure_addr(0);
+  if (rc != 0) {
+    ESP_LOGE(RADIO_TAG, "Failed to ensure Bluetooth address: %d", rc);
+    return;
+  }
+
+  scan();
+}
+
+static void bluetooth_task(void *param) {
+  // This function will return only when nimble_port_stop() is executed
+  nimble_port_run();
+
+  nimble_port_freertos_deinit();
+}
+
+esp_err_t bluetooth_init(void) {
+  beacon_mutex = xSemaphoreCreateMutex();
+
+  ESP_RETURN_ON_ERROR(esp_timer_create(
+                          &(esp_timer_create_args_t){
+                              .callback = beacon_cleanup,
+                              .arg = NULL,
+                              .dispatch_method = ESP_TIMER_TASK,
+                              .name = "beacon_cleanup",
+                          },
+                          &beacon_cleanup_timer),
+                      RADIO_TAG, "Failed to create beacon cleanup timer: %d",
+                      err_rc_);
+  ESP_RETURN_ON_ERROR(
+      esp_timer_start_periodic(beacon_cleanup_timer, 5 * 1000 * 1000),
+      RADIO_TAG, "Failed to start beacon cleanup timer: %d", err_rc_);
+
+  ESP_RETURN_ON_ERROR(nimble_port_init(), RADIO_TAG,
+                      "Failed to initialize NimBLE port: %d", err_rc_);
+  ble_svc_gap_init();
+
+  ble_hs_cfg.sync_cb = on_sync;
+  ble_hs_cfg.store_status_cb = ble_store_util_status_rr;
+
+  ESP_RETURN_ON_ERROR(esp_read_mac(mac, ESP_MAC_BT), RADIO_TAG,
+                      "Failed to read Bluetooth MAC address: %d", err_rc_);
+  char device_name[13] = {0};
+  snprintf(device_name, sizeof(device_name), "radio-%02x%02x%02x", mac[3],
+           mac[4], mac[5]);
+  int rc = ble_svc_gap_device_name_set(device_name);
+  ESP_RETURN_ON_FALSE(rc == 0, ESP_ERR_INVALID_STATE, RADIO_TAG,
+                      "Failed to set device name: %d", rc);
+
+  nimble_port_freertos_init(bluetooth_task);
+
+  return ESP_OK;
+}

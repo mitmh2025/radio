@@ -4,6 +4,7 @@
 #include "adc.h"
 #include "audio_output.h"
 #include "battery.h"
+#include "bluetooth.h"
 #include "board.h"
 #include "calibration.h"
 #include "console.h"
@@ -94,6 +95,7 @@ void app_main(void) {
   esp_log_level_set("AUDIO_PIPELINE", ESP_LOG_ERROR);
   esp_log_level_set("AUDIO_ELEMENT", ESP_LOG_ERROR);
   esp_log_level_set(RADIO_TAG, ESP_LOG_DEBUG);
+  esp_log_level_set("radio:bt", ESP_LOG_DEBUG);
   esp_log_level_set("kvswebrtc", ESP_LOG_WARN);
 
   esp_err_t err = nvs_flash_init();
@@ -117,6 +119,7 @@ void app_main(void) {
   ESP_ERROR_CHECK(adc_init());
   ESP_ERROR_CHECK(led_init());
   ESP_ERROR_CHECK(wifi_init());
+  ESP_ERROR_CHECK(bluetooth_init());
   ESP_ERROR_CHECK(board_i2c_init());
   ESP_ERROR_CHECK(battery_init());
   ESP_ERROR_CHECK(tas2505_init());

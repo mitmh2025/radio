@@ -4,6 +4,7 @@ idf_component_register(
   adc.c
   audio_output.c
   battery.c
+  bluetooth.c
   bounds.c
   calibration.c
   console.c
