@@ -81,6 +81,7 @@ static void advertise() {
     goto cleanup;
   }
 
+  // TODO: figure out how to set the tx power
   rc = ble_ibeacon_set_adv_data((void *)&radio_uuid.value, adv_major, adv_minor,
                                 0);
   if (rc != 0) {
