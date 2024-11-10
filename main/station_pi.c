@@ -579,9 +579,9 @@ static void station_pi_task(void *ctx) {
       button_triggered = false;
     }
     if (notification & NOTIFY_KNOCK_START) {
-      if (esp_timer_restart(knock_start_timer, 50000) ==
+      if (esp_timer_restart(knock_start_timer, 100000) ==
           ESP_ERR_INVALID_STATE) {
-        esp_timer_start_once(knock_start_timer, 50000);
+        esp_timer_start_once(knock_start_timer, 100000);
       }
     }
 
