@@ -48,7 +48,7 @@ int64_t last_headphone_change = 0;
 float pitch_bend = 1.0f;
 
 static uint64_t magnet_threshold =
-    1200 * 1200; // roughly 1.5mT, but we test with magnitude^2
+    2400 * 2400; // roughly 3mT, but we test with magnitude^2
 static uint64_t magnet_hysteresis = 100 * 100;
 
 // Requires harder knocks than we require for activation
