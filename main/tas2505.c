@@ -445,3 +445,5 @@ esp_err_t tas2505_set_volume(uint8_t volume) {
 
   return err;
 }
+
+uint8_t tas2505_get_volume() { return current_volume; }

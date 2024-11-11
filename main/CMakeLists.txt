@@ -3,6 +3,7 @@ idf_component_register(
   accelerometer.c
   adc.c
   audio_output.c
+  audio_volume.c
   battery.c
   bluetooth.c
   bounds.c

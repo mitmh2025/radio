@@ -3,6 +3,7 @@
 #include "accelerometer.h"
 #include "adc.h"
 #include "audio_output.h"
+#include "audio_volume.h"
 #include "battery.h"
 #include "bluetooth.h"
 #include "board.h"
@@ -43,52 +44,6 @@
 const char *RADIO_TAG = "radio";
 
 EventGroupHandle_t radio_event_group;
-
-static bool volume_increasing = true;
-// TAS2505 defaults to max volume, so start at max volume
-static uint16_t average_volume_raw = 0xfff;
-static uint8_t last_volume_setting = 0xff;
-static void volume_callback(void *user_data, adc_digi_output_data_t *result) {
-  radio_calibration_t *calibration = (radio_calibration_t *)user_data;
-
-  average_volume_raw = average_volume_raw - (average_volume_raw >> 3) +
-                       (result->type2.data >> 3);
-
-  // Scale volume from calibration minimum to maximum (with clamping) to 0-512
-  // (one more bit than actual volume setting, to allow for hysteresis)
-  if (average_volume_raw < calibration->volume_min) {
-    average_volume_raw = calibration->volume_min;
-  } else if (average_volume_raw > calibration->volume_max) {
-    average_volume_raw = calibration->volume_max;
-  }
-  uint16_t new_volume_setting =
-      (uint64_t)((average_volume_raw - calibration->volume_min) * 512) /
-      (calibration->volume_max - calibration->volume_min);
-  if (new_volume_setting & 0x1) {
-    if (volume_increasing) {
-      new_volume_setting++;
-    } else {
-      new_volume_setting--;
-    }
-  }
-  new_volume_setting >>= 1;
-
-  // Clamp one more time
-  if (new_volume_setting > 0xff) {
-    new_volume_setting = 0xff;
-  }
-
-  if (new_volume_setting > last_volume_setting) {
-    volume_increasing = true;
-  } else if (new_volume_setting < last_volume_setting) {
-    volume_increasing = false;
-  }
-
-  if (new_volume_setting != last_volume_setting) {
-    tas2505_set_volume(new_volume_setting);
-    last_volume_setting = new_volume_setting;
-  }
-}
 
 void app_main(void) {
   esp_log_set_level_master(ESP_LOG_DEBUG);
@@ -144,15 +99,7 @@ void app_main(void) {
   }
   ESP_ERROR_CHECK(err);
 
-  ESP_ERROR_CHECK_WITHOUT_ABORT(adc_subscribe(
-      &(adc_digi_pattern_config_t){
-          .atten = ADC_ATTEN_DB_12,
-          .channel = VOLUME_ADC_CHANNEL,
-          .unit = ADC_UNIT_1,
-          .bit_width = 12,
-      },
-      volume_callback, &calibration));
-
+  ESP_ERROR_CHECK_WITHOUT_ABORT(audio_volume_init(&calibration));
   ESP_ERROR_CHECK_WITHOUT_ABORT(audio_output_init());
   ESP_ERROR_CHECK_WITHOUT_ABORT(webrtc_init());
   ESP_ERROR_CHECK_WITHOUT_ABORT(things_init());

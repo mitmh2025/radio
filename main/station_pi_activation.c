@@ -1,8 +1,11 @@
 #include "station_pi_activation.h"
 #include "accelerometer.h"
+#include "audio_output.h"
+#include "audio_volume.h"
 #include "main.h"
 #include "playback.h"
 #include "station_pi.h"
+#include "tas2505.h"
 #include "things.h"
 #include "tuner.h"
 
@@ -78,6 +81,10 @@ static void activate_task(void *arg) {
     goto cleanup;
   }
 
+  audio_output_suspend();
+  tas2505_set_output(TAS2505_OUTPUT_SPEAKER);
+  audio_volume_set_floor(180);
+
   playback_handle_t playback;
   err = playback_file(
       &(playback_cfg_t){
@@ -111,6 +118,8 @@ static void activate_task(void *arg) {
   things_force_telemetry(telemetry_index);
 
 cleanup:
+  audio_volume_clear_floor();
+  audio_output_resume();
   activate_task_handle = NULL;
   vTaskDelete(NULL);
 }
