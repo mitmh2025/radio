@@ -114,7 +114,7 @@ static int64_t sequence_check_timeout = 500000;
 static esp_timer_handle_t sequence_check_timer = NULL;
 
 static uint8_t current_stage = 0;
-#define STAGE_COUNT 6
+#define STAGE_COUNT 5
 
 static const char *intros[STAGE_COUNT] = {
     [0] = "practical-fighter/stage-0-intro.opus",
@@ -122,7 +122,6 @@ static const char *intros[STAGE_COUNT] = {
     [2] = "practical-fighter/stage-2-intro.opus",
     [3] = "practical-fighter/stage-3-intro.opus",
     [4] = "practical-fighter/stage-4-intro.opus",
-    [5] = "practical-fighter/stage-5-intro.opus",
 };
 
 static const char *examples[STAGE_COUNT] = {
@@ -131,7 +130,6 @@ static const char *examples[STAGE_COUNT] = {
     [2] = "practical-fighter/stage-2-example.opus",
     [3] = "practical-fighter/stage-3-example.opus",
     [4] = "practical-fighter/stage-4-example.opus",
-    [5] = "practical-fighter/stage-5-example.opus",
 };
 
 static const char *completions[STAGE_COUNT] = {
@@ -140,7 +138,6 @@ static const char *completions[STAGE_COUNT] = {
     [2] = "practical-fighter/stage-2-completion.opus",
     [3] = "practical-fighter/stage-3-completion.opus",
     [4] = "practical-fighter/stage-4-completion.opus",
-    [5] = "practical-fighter/stage-5-completion.opus",
 };
 
 static const char *final_completion = "practical-fighter/completion.opus";
@@ -189,32 +186,26 @@ static const float note_sequence_0[] = {
     FREQUENCY_B_4, FREQUENCY_A_4, FREQUENCY_G_4, FREQUENCY_A_4,
     FREQUENCY_B_4, FREQUENCY_B_4, FREQUENCY_B_4,
 };
-// Old MacDonald - 7 notes
+// Never Gonna Give You Up - 7 notes
 static const float note_sequence_1[] = {
-    FREQUENCY_G_4, FREQUENCY_G_4, FREQUENCY_G_4, FREQUENCY_D_4,
-    FREQUENCY_E_4, FREQUENCY_E_4, FREQUENCY_D_4,
-};
-// Never Gonna Give You Up - 14 notes
-static const float note_sequence_2[] = {
-    FREQUENCY_D_4, FREQUENCY_E_4, FREQUENCY_G_4, FREQUENCY_E_4, FREQUENCY_B_4,
-    FREQUENCY_B_4, FREQUENCY_A_4, FREQUENCY_D_4, FREQUENCY_E_4, FREQUENCY_G_4,
-    FREQUENCY_E_4, FREQUENCY_A_4, FREQUENCY_A_4, FREQUENCY_G_4,
+    FREQUENCY_D_4, FREQUENCY_E_4, FREQUENCY_G_4, FREQUENCY_E_4,
+    FREQUENCY_B_4, FREQUENCY_B_4, FREQUENCY_A_4,
 };
 // Somewhere Over the Rainbow - 10 notes
-static const float note_sequence_3[] = {
+static const float note_sequence_2[] = {
     FREQUENCY_G_4, FREQUENCY_G_5,       FREQUENCY_F_SHARP_5, FREQUENCY_D_5,
     FREQUENCY_E_5, FREQUENCY_F_SHARP_5, FREQUENCY_G_5,       FREQUENCY_G_4,
     FREQUENCY_E_5, FREQUENCY_D_5,
 };
 // Hot To Go - 16 notes
-static const float note_sequence_4[] = {
+static const float note_sequence_3[] = {
     FREQUENCY_B_4, FREQUENCY_D_5, FREQUENCY_D_5, FREQUENCY_D_5,
     FREQUENCY_E_5, FREQUENCY_D_5, FREQUENCY_E_5, FREQUENCY_D_5,
     FREQUENCY_B_4, FREQUENCY_D_5, FREQUENCY_G_5, FREQUENCY_A_5,
     FREQUENCY_A_5, FREQUENCY_B_5, FREQUENCY_A_5, FREQUENCY_G_5,
 };
 // Final Countdown - 20 notes
-static const float note_sequence_5[] = {
+static const float note_sequence_4[] = {
     FREQUENCY_B_4, FREQUENCY_A_4,       FREQUENCY_B_4, FREQUENCY_E_4,
     FREQUENCY_C_5, FREQUENCY_B_4,       FREQUENCY_C_5, FREQUENCY_B_4,
     FREQUENCY_A_4, FREQUENCY_C_5,       FREQUENCY_B_4, FREQUENCY_C_5,
@@ -261,10 +252,6 @@ static void check_sequence(void *arg) {
   case 4:
     sequence = &note_sequence_4[0];
     sequence_size = sizeof(note_sequence_4) / sizeof(note_sequence_4[0]);
-    break;
-  case 5:
-    sequence = &note_sequence_5[0];
-    sequence_size = sizeof(note_sequence_5) / sizeof(note_sequence_5[0]);
     break;
   default:
     return;
@@ -597,27 +584,31 @@ static void station_pi_task(void *ctx) {
     if (old_gpio != gpio) {
       last_headphone_change = esp_timer_get_time();
     }
-    if (gpio) {
+    if (gpio || current_stage < 2) {
       shift_state &= ~SHIFT_HEADPHONE;
     } else {
       shift_state |= SHIFT_HEADPHONE;
     }
 
-    int16_t magnet_x, magnet_y, magnet_z;
-    err = magnet_read(&magnet_x, &magnet_y, &magnet_z);
-    if (err != ESP_OK) {
-      ESP_LOGE(RADIO_TAG, "Failed to read magnetometer: %d", err);
-      // default to not connected
-      magnet_x = magnet_y = magnet_z = 0;
-    }
-
-    uint64_t magnet_magnitude = (uint64_t)magnet_x * magnet_x +
-                                (uint64_t)magnet_y * magnet_y +
-                                (uint64_t)magnet_z * magnet_z;
-    if (magnet_magnitude > magnet_threshold + magnet_hysteresis) {
-      shift_state |= SHIFT_MAGNET;
-    } else if (magnet_magnitude < magnet_threshold - magnet_hysteresis) {
+    if (current_stage < 1) {
       shift_state &= ~SHIFT_MAGNET;
+    } else {
+      int16_t magnet_x, magnet_y, magnet_z;
+      err = magnet_read(&magnet_x, &magnet_y, &magnet_z);
+      if (err != ESP_OK) {
+        ESP_LOGE(RADIO_TAG, "Failed to read magnetometer: %d", err);
+        // default to not connected
+        magnet_x = magnet_y = magnet_z = 0;
+      }
+
+      uint64_t magnet_magnitude = (uint64_t)magnet_x * magnet_x +
+                                  (uint64_t)magnet_y * magnet_y +
+                                  (uint64_t)magnet_z * magnet_z;
+      if (magnet_magnitude > magnet_threshold + magnet_hysteresis) {
+        shift_state |= SHIFT_MAGNET;
+      } else if (magnet_magnitude < magnet_threshold - magnet_hysteresis) {
+        shift_state &= ~SHIFT_MAGNET;
+      }
     }
 
     if (current_stage >= STAGE_COUNT) {
