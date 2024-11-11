@@ -5,6 +5,8 @@
 
 #include "file_stream.h"
 
+#include "opusfile.h"
+
 #include <errno.h>
 #include <string.h>
 #include <unistd.h>
@@ -259,4 +261,44 @@ void playback_free(playback_handle_t handle) {
   }
 
   free(handle);
+}
+
+esp_err_t playback_duration(const char *path, int64_t *duration) {
+  ESP_RETURN_ON_FALSE(path, ESP_ERR_INVALID_ARG, RADIO_TAG, "Invalid path");
+  ESP_RETURN_ON_FALSE(duration, ESP_ERR_INVALID_ARG, RADIO_TAG,
+                      "Invalid duration");
+
+  int fd = file_cache_open_file(path);
+  ESP_RETURN_ON_FALSE(fd >= 0, ESP_FAIL, RADIO_TAG, "Failed to open file: %d",
+                      errno);
+
+  esp_err_t ret = ESP_OK;
+  OggOpusFile *opus_file = NULL;
+
+  OpusFileCallbacks cb = {};
+  void *opus_stream = op_fdopen(&cb, fd, "rb");
+  ESP_GOTO_ON_FALSE(opus_stream, ESP_FAIL, cleanup, RADIO_TAG,
+                    "Failed to open Opus stream: %d", errno);
+  int err;
+  opus_file = op_open_callbacks(opus_stream, &cb, NULL, 0, &err);
+  ESP_GOTO_ON_FALSE(opus_file, ESP_FAIL, cleanup, RADIO_TAG,
+                    "Failed to open Opus file: %d", err);
+  fd = -1;
+
+  int64_t pcm_duration = op_pcm_total(opus_file, -1);
+  ESP_GOTO_ON_FALSE(pcm_duration >= 0, ESP_FAIL, cleanup, RADIO_TAG,
+                    "Failed to get PCM duration: %" PRId64, pcm_duration);
+
+  *duration = pcm_duration;
+
+cleanup:
+  if (opus_file != NULL) {
+    op_free(opus_file);
+  }
+
+  if (fd >= 0) {
+    close(fd);
+  }
+
+  return ret;
 }

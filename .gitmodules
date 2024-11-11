@@ -16,3 +16,6 @@
 [submodule "components/esp_littlefs"]
 	path = components/esp_littlefs
 	url = git@github.com:mitmh2025/esp_littlefs
+[submodule "components/opusfile/opusfile"]
+	path = components/opusfile/opusfile
+	url = https://github.com/xiph/opusfile

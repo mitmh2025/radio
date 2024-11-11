@@ -23,6 +23,10 @@ esp_err_t playback_entune(playback_handle_t handle);
 esp_err_t playback_stop(playback_handle_t handle);
 void playback_free(playback_handle_t handle);
 
+// Must be called from a task with a large enough stack for Opus decoding (e.g.
+// at least 20KB or so)
+esp_err_t playback_duration(const char *path, int64_t *duration);
+
 #ifdef __cplusplus
 }
 #endif

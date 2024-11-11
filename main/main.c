@@ -14,6 +14,7 @@
 #include "led.h"
 #include "magnet.h"
 #include "mixer.h"
+#include "playback.h"
 #include "station_2pi.h"
 #include "station_pi.h"
 #include "station_pi_activation.h"
