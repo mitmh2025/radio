@@ -122,17 +122,63 @@ static void update_attr_nvs(std::string key,
             return nvs_erase_key(things_attr_nvs_handle, key.c_str());
           },
           [&](std::string &v) {
+            // Check to make sure the value is changed before updating NVS
+            std::string tmp;
+            size_t length;
+            ESP_RETURN_ON_ERROR(
+                nvs_get_str(things_attr_nvs_handle, key.c_str(), NULL, &length),
+                RADIO_TAG, "Failed to get attribute %s from NVS", key.c_str());
+            tmp.resize(length);
+            ESP_RETURN_ON_ERROR(
+                nvs_get_str(things_attr_nvs_handle, key.c_str(), tmp.data(),
+                            &length),
+                RADIO_TAG, "Failed to get attribute %s from NVS", key.c_str());
+            if (tmp == v) {
+              return ESP_OK;
+            }
+
             return nvs_set_str(things_attr_nvs_handle, key.c_str(), v.c_str());
           },
           [&](float &v) {
-            // NVS doesn't support floats
+            // NVS doesn't support floats, so we store them as blobs (which is a
+            // bit messy)
+
+            // Check to make sure this is a new value
+            float tmp;
+            size_t length = sizeof(tmp);
+            ESP_RETURN_ON_ERROR(
+                nvs_get_blob(things_attr_nvs_handle, key.c_str(), &tmp,
+                             &length),
+                RADIO_TAG, "Failed to get attribute %s from NVS", key.c_str());
+            if (length == sizeof(v) && tmp == v) {
+              return ESP_OK;
+            }
+
             return nvs_set_blob(things_attr_nvs_handle, key.c_str(), &v,
                                 sizeof(v));
           },
           [&](long long &v) {
+            // Check to make sure this is a new value
+            long long tmp;
+            ESP_RETURN_ON_ERROR(
+                nvs_get_i64(things_attr_nvs_handle, key.c_str(), &tmp),
+                RADIO_TAG, "Failed to get attribute %s from NVS", key.c_str());
+            if (tmp == v) {
+              return ESP_OK;
+            }
+
             return nvs_set_i64(things_attr_nvs_handle, key.c_str(), v);
           },
           [&](bool &v) {
+            // Check to make sure this is a new value
+            uint8_t tmp;
+            ESP_RETURN_ON_ERROR(
+                nvs_get_u8(things_attr_nvs_handle, key.c_str(), &tmp),
+                RADIO_TAG, "Failed to get attribute %s from NVS", key.c_str());
+            if (tmp == v) {
+              return ESP_OK;
+            }
+
             return nvs_set_u8(things_attr_nvs_handle, key.c_str(), v);
           },
       },
