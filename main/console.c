@@ -647,6 +647,16 @@ static int pi_set_stage(int argc, char **argv) {
   return 0;
 }
 
+static int pi_reset_play_time(int argc, char **argv) {
+  esp_err_t err = station_pi_reset_play_time();
+  if (err != ESP_OK) {
+    printf("Failed to reset play time: %d\n", err);
+    return 1;
+  }
+
+  return 0;
+}
+
 esp_err_t console_init() {
   // Block on stdin and stdout
   fcntl(fileno(stdout), F_SETFL, 0);
@@ -887,6 +897,15 @@ esp_err_t console_init() {
   err = esp_console_cmd_register(&cmd_pi_set_stage);
   ESP_RETURN_ON_ERROR(err, RADIO_TAG,
                       "Failed to register pi-set-stage command: %d", err);
+
+  esp_console_cmd_t cmd_pi_reset_play_time = {
+      .command = "pi-reset-play-time",
+      .help = "Reset the total play time for the Pi",
+      .func = &pi_reset_play_time,
+  };
+  err = esp_console_cmd_register(&cmd_pi_reset_play_time);
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG,
+                      "Failed to register pi-reset-play-time command: %d", err);
 
   ESP_RETURN_ON_FALSE(
       pdPASS == xTaskCreate(console_task, "console", 4096, NULL, 21, NULL),

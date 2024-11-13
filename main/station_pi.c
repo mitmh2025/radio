@@ -1056,3 +1056,18 @@ esp_err_t station_pi_set_stage(uint8_t stage) {
 
   return ESP_OK;
 }
+
+esp_err_t station_pi_reset_play_time() {
+  xSemaphoreTake(play_time_mutex, portMAX_DELAY);
+  esp_err_t ret = ESP_OK;
+  total_play_time = 0;
+  last_flushed_total_play_time = 0;
+  ESP_GOTO_ON_ERROR(nvs_set_i64(pi_nvs_handle, "total_play_time", 0), cleanup,
+                    RADIO_TAG, "Failed to erase total play time");
+  ESP_GOTO_ON_ERROR(nvs_commit(pi_nvs_handle), cleanup, RADIO_TAG,
+                    "Failed to commit total play time");
+cleanup:
+  xSemaphoreGive(play_time_mutex);
+
+  return ret;
+}
