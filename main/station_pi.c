@@ -31,6 +31,15 @@
 static nvs_handle_t pi_nvs_handle;
 static TaskHandle_t pi_task = NULL;
 
+static const int64_t play_time_idle_timeout = 30000000;
+static SemaphoreHandle_t play_time_mutex = NULL;
+static bool currently_playing = false;
+static int64_t last_flushed_total_play_time = 0;
+static int64_t total_play_time = 0;
+static int64_t last_play_time_check = 0;
+static esp_timer_handle_t idle_timer = NULL;
+static esp_timer_handle_t play_flush_timer = NULL;
+
 static frequency_handle_t freq_handle;
 static bool entuned = false;
 static bool instrument_enabled = true;
@@ -283,14 +292,64 @@ static void schedule_sequence_check() {
       esp_timer_start_once(sequence_check_timer, sequence_check_timeout));
 }
 
+static void flush_total_play_time() {
+  if (last_flushed_total_play_time == total_play_time) {
+    return;
+  }
+
+  ESP_ERROR_CHECK_WITHOUT_ABORT(
+      nvs_set_i64(pi_nvs_handle, "total_play_time", total_play_time));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(nvs_commit(pi_nvs_handle));
+  last_flushed_total_play_time = total_play_time;
+}
+
+static void idle_timer_cb(void *arg) {
+  int64_t now = esp_timer_get_time();
+  xSemaphoreTake(play_time_mutex, portMAX_DELAY);
+  total_play_time += now - last_play_time_check;
+  last_play_time_check = now;
+  currently_playing = false;
+  flush_total_play_time();
+  xSemaphoreGive(play_time_mutex);
+}
+
+static void start_play_tracking() {
+  xSemaphoreTake(play_time_mutex, portMAX_DELAY);
+  if (!currently_playing) {
+    esp_timer_stop(idle_timer);
+    last_play_time_check = esp_timer_get_time();
+    currently_playing = true;
+  }
+  xSemaphoreGive(play_time_mutex);
+}
+
+static void schedule_idle_timer() {
+  esp_timer_stop(idle_timer);
+  ESP_ERROR_CHECK_WITHOUT_ABORT(
+      esp_timer_start_once(idle_timer, play_time_idle_timeout));
+}
+
+static void play_flush_timer_cb(void *arg) {
+  xSemaphoreTake(play_time_mutex, portMAX_DELAY);
+  if (currently_playing) {
+    int64_t now = esp_timer_get_time();
+    total_play_time += now - last_play_time_check;
+    last_play_time_check = now;
+  }
+  flush_total_play_time();
+  xSemaphoreGive(play_time_mutex);
+}
+
 static void light_stop_tone() {
   tone_generator_release(light_tone);
   light_tone = NULL;
 
   schedule_sequence_check();
+  schedule_idle_timer();
 }
 
 static void light_start_tone() {
+  start_play_tracking();
   esp_timer_stop(sequence_check_timer);
   float frequency = light_frequencies[shift_state];
   if (current_stage >= STAGE_COUNT) {
@@ -315,9 +374,11 @@ static void touch_stop_tone() {
   touch_tone = NULL;
 
   schedule_sequence_check();
+  schedule_idle_timer();
 }
 
 static void touch_start_tone() {
+  start_play_tracking();
   esp_timer_stop(sequence_check_timer);
   float frequency = touch_frequencies[shift_state];
   if (current_stage >= STAGE_COUNT) {
@@ -342,9 +403,11 @@ static void button_stop_tone() {
   button_tone = NULL;
 
   schedule_sequence_check();
+  schedule_idle_timer();
 }
 
 static void button_start_tone() {
+  start_play_tracking();
   esp_timer_stop(sequence_check_timer);
   float frequency = button_frequencies[shift_state];
   if (current_stage >= STAGE_COUNT) {
@@ -371,6 +434,7 @@ static void knock_stop_tone(void *arg) {
     knock_tone = NULL;
 
     schedule_sequence_check();
+    schedule_idle_timer();
   }
 }
 
@@ -383,6 +447,7 @@ static void knock_start_tone(void *arg) {
     knock_stop_tone(NULL);
   }
 
+  start_play_tracking();
   esp_timer_stop(sequence_check_timer);
   ESP_ERROR_CHECK_WITHOUT_ABORT(esp_timer_start_once(knock_stop_timer, 400000));
   float frequency = knock_frequencies[shift_state];
@@ -656,6 +721,7 @@ static void playback_task(void *ctx) {
       continue;
     }
 
+    start_play_tracking();
     instrument_enabled = false;
     xTaskNotify(pi_task, 0, eNoAction);
     update_led();
@@ -684,6 +750,7 @@ static void playback_task(void *ctx) {
       instrument_enabled = true;
       xTaskNotify(pi_task, 0, eNoAction);
       update_led();
+      schedule_idle_timer();
     }
 
     xSemaphoreTake(playback_mutex, portMAX_DELAY);
@@ -790,14 +857,48 @@ static void detune(void *ctx) {
 }
 
 esp_err_t station_pi_init() {
-  playback_mutex = xSemaphoreCreateMutex();
-  playback_queue = xQueueCreate(4, sizeof(const char *));
-  xTaskCreatePinnedToCore(playback_task, "pi_playback", 4096, NULL, 11, NULL,
-                          1);
-
   ESP_RETURN_ON_ERROR(
       nvs_open(STATION_PI_NVS_NAMESPACE, NVS_READWRITE, &pi_nvs_handle),
       RADIO_TAG, "Failed to open NVS handle for station pi");
+
+  esp_err_t err =
+      nvs_get_i64(pi_nvs_handle, "total_play_time", &total_play_time);
+  if (err != ESP_ERR_NVS_NOT_FOUND) {
+    ESP_RETURN_ON_ERROR(err, RADIO_TAG,
+                        "Failed to get total play time from NVS");
+  }
+  last_flushed_total_play_time = total_play_time;
+
+  play_time_mutex = xSemaphoreCreateMutex();
+  ESP_RETURN_ON_FALSE(play_time_mutex, ESP_ERR_NO_MEM, RADIO_TAG,
+                      "Failed to create play time mutex");
+  ESP_RETURN_ON_ERROR(esp_timer_create(
+                          &(esp_timer_create_args_t){
+                              .dispatch_method = ESP_TIMER_TASK,
+                              .name = "pi_play_flush",
+                              .callback = play_flush_timer_cb,
+                          },
+                          &play_flush_timer),
+                      RADIO_TAG, "Failed to initialize play time flush timer");
+  ESP_RETURN_ON_ERROR(esp_timer_start_periodic(play_flush_timer, 60000000),
+                      RADIO_TAG, "Failed to start play time flush timer");
+  ESP_RETURN_ON_ERROR(esp_timer_create(
+                          &(esp_timer_create_args_t){
+                              .dispatch_method = ESP_TIMER_TASK,
+                              .name = "pi_idle",
+                              .callback = idle_timer_cb,
+                          },
+                          &idle_timer),
+                      RADIO_TAG, "Failed to initialize idle timer");
+
+  playback_mutex = xSemaphoreCreateMutex();
+  ESP_RETURN_ON_FALSE(playback_mutex, ESP_ERR_NO_MEM, RADIO_TAG,
+                      "Failed to create playback mutex");
+  playback_queue = xQueueCreate(4, sizeof(const char *));
+  ESP_RETURN_ON_FALSE(pdPASS == xTaskCreatePinnedToCore(playback_task,
+                                                        "pi_playback", 4096,
+                                                        NULL, 11, NULL, 1),
+                      ESP_FAIL, RADIO_TAG, "Failed to create playback task");
 
   ESP_RETURN_ON_FALSE(pdPASS == xTaskCreatePinnedToCore(station_pi_task, "pi",
                                                         4096, NULL, 11,
