@@ -139,6 +139,11 @@ static int intr_func(int argc, char **argv) {
   return 0;
 }
 
+static int timers_func(int argc, char **argv) {
+  esp_timer_dump(stdout);
+  return 0;
+}
+
 static struct {
   struct arg_str *token;
   struct arg_end *end;
@@ -743,6 +748,15 @@ esp_err_t console_init() {
   };
   err = esp_console_cmd_register(&cmd_gpio);
   ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register gpio command: %d",
+                      err);
+
+  esp_console_cmd_t cmd_timers = {
+      .command = "timers",
+      .help = "Print timer information",
+      .func = &timers_func,
+  };
+  err = esp_console_cmd_register(&cmd_timers);
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register timer command: %d",
                       err);
 
   provision_args.token =
