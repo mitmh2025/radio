@@ -13,6 +13,7 @@
 #include "station_pi.h"
 #include "station_pi_activation.h"
 #include "tas2505.h"
+#include "things.h"
 #include "tone_generator.h"
 #include "tuner.h"
 
@@ -30,6 +31,7 @@
 #define STATION_PI_NVS_NAMESPACE "radio:pi"
 static nvs_handle_t pi_nvs_handle;
 static TaskHandle_t pi_task = NULL;
+static size_t telemetry_index = 0;
 
 static const int64_t play_time_idle_timeout = 30000000;
 static SemaphoreHandle_t play_time_mutex = NULL;
@@ -222,7 +224,27 @@ static const float note_sequence_4[] = {
     FREQUENCY_G_4, FREQUENCY_F_SHARP_4, FREQUENCY_A_4, FREQUENCY_G_4,
 };
 
-// TODO: telemetry
+static void telemetry_generator() {
+  things_send_telemetry_int("pi_stage", current_stage);
+  things_send_telemetry_int("pi_total_play_time",
+                            total_play_time / (1000 * 1000));
+  things_send_telemetry_bool("pi_note_knock", knock_tone != NULL && entuned &&
+                                                  instrument_enabled);
+  things_send_telemetry_bool("pi_note_light", light_tone != NULL && entuned &&
+                                                  instrument_enabled);
+  things_send_telemetry_bool("pi_note_touch", touch_tone != NULL && entuned &&
+                                                  instrument_enabled);
+  things_send_telemetry_bool("pi_note_button", button_tone != NULL && entuned &&
+                                                   instrument_enabled);
+  things_send_telemetry_bool("pi_shift_magnet", shift_state & SHIFT_MAGNET &&
+                                                    entuned &&
+                                                    instrument_enabled);
+  things_send_telemetry_bool("pi_shift_headphone",
+                             shift_state & SHIFT_HEADPHONE && entuned &&
+                                 instrument_enabled);
+}
+
+static void force_telemetry() { things_force_telemetry(telemetry_index); }
 
 static void record_note(float frequency) {
   notes_played[notes_played_index] = (struct note_t){
@@ -346,6 +368,7 @@ static void light_stop_tone() {
 
   schedule_sequence_check();
   schedule_idle_timer();
+  force_telemetry();
 }
 
 static void light_start_tone() {
@@ -367,6 +390,7 @@ static void light_start_tone() {
       },
       &light_tone));
   record_note(frequency);
+  force_telemetry();
 }
 
 static void touch_stop_tone() {
@@ -375,6 +399,7 @@ static void touch_stop_tone() {
 
   schedule_sequence_check();
   schedule_idle_timer();
+  force_telemetry();
 }
 
 static void touch_start_tone() {
@@ -396,6 +421,7 @@ static void touch_start_tone() {
       },
       &touch_tone));
   record_note(frequency);
+  force_telemetry();
 }
 
 static void button_stop_tone() {
@@ -404,6 +430,7 @@ static void button_stop_tone() {
 
   schedule_sequence_check();
   schedule_idle_timer();
+  force_telemetry();
 }
 
 static void button_start_tone() {
@@ -425,6 +452,7 @@ static void button_start_tone() {
       },
       &button_tone));
   record_note(frequency);
+  force_telemetry();
 }
 
 static void knock_stop_tone(void *arg) {
@@ -435,6 +463,7 @@ static void knock_stop_tone(void *arg) {
 
     schedule_sequence_check();
     schedule_idle_timer();
+    force_telemetry();
   }
 }
 
@@ -466,6 +495,7 @@ static void knock_start_tone(void *arg) {
       },
       &knock_tone));
   record_note(frequency);
+  force_telemetry();
 }
 
 static void update_led() {
@@ -512,6 +542,7 @@ static void update_state() {
     }
     // Don't need to restart knock tone since it is fixed duration
     update_led();
+    force_telemetry();
     previous_shift_state = shift_state;
   }
 
@@ -857,6 +888,10 @@ static void detune(void *ctx) {
 }
 
 esp_err_t station_pi_init() {
+  ESP_RETURN_ON_ERROR(things_register_telemetry_generator(
+                          telemetry_generator, "pi", &telemetry_index),
+                      RADIO_TAG, "Failed to register pi telemetry generator");
+
   ESP_RETURN_ON_ERROR(
       nvs_open(STATION_PI_NVS_NAMESPACE, NVS_READWRITE, &pi_nvs_handle),
       RADIO_TAG, "Failed to open NVS handle for station pi");
