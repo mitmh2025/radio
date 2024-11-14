@@ -206,9 +206,8 @@ static void tuner_task(void *ctx) {
       ESP_LOGD(RADIO_TAG, "Tuning to frequency %0.3f",
                current_frequency->frequency);
       current_frequency->entune(current_frequency->ctx);
+      things_force_telemetry(telemetry_index);
     }
-
-    things_force_telemetry(telemetry_index);
 
   next:
     xTaskNotifyWait(0, ULONG_MAX, NULL, portMAX_DELAY);

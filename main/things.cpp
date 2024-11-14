@@ -62,7 +62,7 @@ using RadioThingsBoard = ThingsBoardSized<ESPLogger>;
 
 static constexpr uint8_t FIRMWARE_FAILURE_RETRIES = 12U;
 static constexpr uint16_t FIRMWARE_PACKET_SIZE = 4096U;
-static constexpr uint16_t MAX_MESSAGE_SIZE = 256U;
+static constexpr uint16_t MAX_MESSAGE_SIZE = 1024U;
 
 static constexpr char THINGSBOARD_SERVER[] = RADIO_THINGSBOARD_SERVER;
 static constexpr uint16_t THINGSBOARD_PORT = 8883U;
@@ -84,7 +84,7 @@ static things_telemetry_generator_t
 static size_t things_force_telemetry_next_bit = 0;
 
 static constexpr TickType_t CONNECT_TIMEOUT = pdMS_TO_TICKS(5000);
-static constexpr TickType_t HEALTHCHECK_TIMEOUT = pdMS_TO_TICKS(2000);
+static constexpr TickType_t HEALTHCHECK_TIMEOUT = pdMS_TO_TICKS(5000);
 
 template <class... Ts> struct overloaded : Ts... {
   using Ts::operator()...;
@@ -125,16 +125,21 @@ static void update_attr_nvs(std::string key,
             // Check to make sure the value is changed before updating NVS
             std::string tmp;
             size_t length;
-            ESP_RETURN_ON_ERROR(
-                nvs_get_str(things_attr_nvs_handle, key.c_str(), NULL, &length),
-                RADIO_TAG, "Failed to get attribute %s from NVS", key.c_str());
-            tmp.resize(length);
-            ESP_RETURN_ON_ERROR(
-                nvs_get_str(things_attr_nvs_handle, key.c_str(), tmp.data(),
-                            &length),
-                RADIO_TAG, "Failed to get attribute %s from NVS", key.c_str());
-            if (tmp == v) {
-              return ESP_OK;
+            esp_err_t err =
+                nvs_get_str(things_attr_nvs_handle, key.c_str(), NULL, &length);
+            if (err != ESP_ERR_NVS_NOT_FOUND) {
+              ESP_RETURN_ON_ERROR(err, RADIO_TAG,
+                                  "Failed to get attribute %s from NVS",
+                                  key.c_str());
+              tmp.resize(length);
+              ESP_RETURN_ON_ERROR(nvs_get_str(things_attr_nvs_handle,
+                                              key.c_str(), tmp.data(), &length),
+                                  RADIO_TAG,
+                                  "Failed to get attribute %s from NVS",
+                                  key.c_str());
+              if (tmp == v) {
+                return ESP_OK;
+              }
             }
 
             return nvs_set_str(things_attr_nvs_handle, key.c_str(), v.c_str());
@@ -146,12 +151,15 @@ static void update_attr_nvs(std::string key,
             // Check to make sure this is a new value
             float tmp;
             size_t length = sizeof(tmp);
-            ESP_RETURN_ON_ERROR(
-                nvs_get_blob(things_attr_nvs_handle, key.c_str(), &tmp,
-                             &length),
-                RADIO_TAG, "Failed to get attribute %s from NVS", key.c_str());
-            if (length == sizeof(v) && tmp == v) {
-              return ESP_OK;
+            esp_err_t err = nvs_get_blob(things_attr_nvs_handle, key.c_str(),
+                                         &tmp, &length);
+            if (err != ESP_ERR_NVS_NOT_FOUND) {
+              ESP_RETURN_ON_ERROR(err, RADIO_TAG,
+                                  "Failed to get attribute %s from NVS",
+                                  key.c_str());
+              if (length == sizeof(v) && tmp == v) {
+                return ESP_OK;
+              }
             }
 
             return nvs_set_blob(things_attr_nvs_handle, key.c_str(), &v,
@@ -160,11 +168,15 @@ static void update_attr_nvs(std::string key,
           [&](long long &v) {
             // Check to make sure this is a new value
             long long tmp;
-            ESP_RETURN_ON_ERROR(
-                nvs_get_i64(things_attr_nvs_handle, key.c_str(), &tmp),
-                RADIO_TAG, "Failed to get attribute %s from NVS", key.c_str());
-            if (tmp == v) {
-              return ESP_OK;
+            esp_err_t err =
+                nvs_get_i64(things_attr_nvs_handle, key.c_str(), &tmp);
+            if (err != ESP_ERR_NVS_NOT_FOUND) {
+              ESP_RETURN_ON_ERROR(err, RADIO_TAG,
+                                  "Failed to get attribute %s from NVS",
+                                  key.c_str());
+              if (tmp == v) {
+                return ESP_OK;
+              }
             }
 
             return nvs_set_i64(things_attr_nvs_handle, key.c_str(), v);
@@ -172,11 +184,15 @@ static void update_attr_nvs(std::string key,
           [&](bool &v) {
             // Check to make sure this is a new value
             uint8_t tmp;
-            ESP_RETURN_ON_ERROR(
-                nvs_get_u8(things_attr_nvs_handle, key.c_str(), &tmp),
-                RADIO_TAG, "Failed to get attribute %s from NVS", key.c_str());
-            if (tmp == v) {
-              return ESP_OK;
+            esp_err_t err =
+                nvs_get_u8(things_attr_nvs_handle, key.c_str(), &tmp);
+            if (err != ESP_ERR_NVS_NOT_FOUND) {
+              ESP_RETURN_ON_ERROR(err, RADIO_TAG,
+                                  "Failed to get attribute %s from NVS",
+                                  key.c_str());
+              if (tmp == v) {
+                return ESP_OK;
+              }
             }
 
             return nvs_set_u8(things_attr_nvs_handle, key.c_str(), v);
@@ -580,6 +596,54 @@ static bool things_healthcheck(std::shared_ptr<RadioThingsBoard> conn) {
   return pdTRUE == xTaskNotifyWait(0, ULONG_MAX, NULL, HEALTHCHECK_TIMEOUT);
 }
 
+static void things_main_loop(std::shared_ptr<RadioThingsBoard> &conn) {
+  while (things_healthcheck(conn)) {
+    {
+      std::lock_guard<std::mutex> lock(things_telemetry_mutex);
+      for (auto const &generator : things_telemetry_generators) {
+        generator.second();
+      }
+    }
+
+    // If the wifi disconnect bit remains unset after 30 seconds, send
+    // telemetry again
+    int64_t wait = 27500 + esp_random() % 5000;
+    TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(wait);
+    while (xTaskGetTickCount() < deadline) {
+      EventBits_t bits =
+          xEventGroupWaitBits(radio_event_group,
+                              RADIO_EVENT_GROUP_WIFI_DISCONNECTED |
+                                  RADIO_EVENT_GROUP_THINGS_FORCE_TELEMETRY,
+                              pdFALSE, pdFALSE, deadline - xTaskGetTickCount());
+
+      if (bits & RADIO_EVENT_GROUP_WIFI_DISCONNECTED) {
+        return;
+      }
+
+      if (bits & RADIO_EVENT_GROUP_THINGS_FORCE_TELEMETRY) {
+        // Wait a brief period to prevent spamming telemetry
+        vTaskDelay(pdMS_TO_TICKS(90 + esp_random() % 20));
+
+        xEventGroupClearBits(radio_event_group,
+                             RADIO_EVENT_GROUP_THINGS_FORCE_TELEMETRY);
+        EventBits_t force_bits = xEventGroupWaitBits(
+            things_force_telemetry_event_group,
+            BIT(things_force_telemetry_next_bit) - 1, pdTRUE, pdFALSE, 0);
+        if (force_bits == 0) {
+          continue;
+        }
+
+        std::lock_guard<std::mutex> lock(things_telemetry_mutex);
+        for (size_t i = 0; i < sizeof(EventBits_t) * 8; i++) {
+          if (force_bits & BIT(i)) {
+            things_force_telemetry_generators[i]();
+          }
+        }
+      }
+    }
+  }
+}
+
 static void things_task(void *arg) {
   // First, try to pre-populate attributes from NVS - this doesn't require
   // provisioning
@@ -598,7 +662,6 @@ static void things_task(void *arg) {
   // TODO: count how many times we loop without successfully connecting, and at
   // some point force a wifi reconnect
   while (true) {
-  loop:
     uint32_t wait = 4000 + esp_random() % 2000;
     xEventGroupWaitBits(radio_event_group, RADIO_EVENT_GROUP_WIFI_CONNECTED,
                         pdFALSE, pdTRUE, portMAX_DELAY);
@@ -607,6 +670,7 @@ static void things_task(void *arg) {
     Espressif_MQTT_Client mqtt_client;
     mqtt_client.set_connect_callback([&self]() { xTaskNotifyGive(self); });
     mqtt_client.set_server_crt_bundle_attach(esp_crt_bundle_attach);
+    mqtt_client.set_disable_auto_reconnect(true);
     std::shared_ptr<RadioThingsBoard> conn =
         std::make_shared<RadioThingsBoard>(mqtt_client, MAX_MESSAGE_SIZE);
     tb = conn;
@@ -708,6 +772,31 @@ static void things_task(void *arg) {
       continue;
     }
 
+    {
+      std::lock_guard<std::mutex> lock(things_attribute_mutex);
+      if (!things_attribute_subscribers.empty()) {
+        auto attributes = std::views::keys(things_attribute_subscribers);
+        std::vector<const char *> attribute_names;
+        attribute_names.reserve(attributes.size());
+        for (auto const &attr : attributes) {
+          attribute_names.push_back(attr.c_str());
+        }
+        const Attribute_Request_Callback attr_req_callback(
+            [](JsonObjectConst const &attrs) {
+              ESP_LOGI(RADIO_TAG, "Got shared attributes from ThingsBoard");
+              things_attribute_callback(attrs, true);
+            },
+            attribute_names.cbegin(), attribute_names.cend());
+        success = conn->Shared_Attributes_Request(attr_req_callback);
+        if (!success) {
+          ESP_LOGE(RADIO_TAG, "Failed to request shared attributes from "
+                              "ThingsBoard. Waiting and trying again...");
+          vTaskDelay(pdMS_TO_TICKS(wait));
+          continue;
+        }
+      }
+    }
+
     // Subscribe to incoming RPCs
     {
       std::lock_guard<std::mutex> lock(things_rpc_mutex);
@@ -732,75 +821,9 @@ static void things_task(void *arg) {
       }
     }
 
-    {
-      std::lock_guard<std::mutex> lock(things_attribute_mutex);
-      if (!things_attribute_subscribers.empty()) {
-        auto attributes = std::views::keys(things_attribute_subscribers);
-        std::vector<const char *> attribute_names;
-        attribute_names.reserve(attributes.size());
-        for (auto const &attr : attributes) {
-          attribute_names.push_back(attr.c_str());
-        }
-        const Attribute_Request_Callback attr_req_callback(
-            [](JsonObjectConst const &attrs) {
-              things_attribute_callback(attrs, true);
-            },
-            attribute_names.cbegin(), attribute_names.cend());
-        success = conn->Shared_Attributes_Request(attr_req_callback);
-        if (!success) {
-          ESP_LOGE(RADIO_TAG, "Failed to request shared attributes from "
-                              "ThingsBoard. Waiting and trying again...");
-          vTaskDelay(pdMS_TO_TICKS(wait));
-          continue;
-        }
-      }
-    }
+    things_main_loop(conn);
 
-    while (things_healthcheck(conn)) {
-      {
-        std::lock_guard<std::mutex> lock(things_telemetry_mutex);
-        for (auto const &generator : things_telemetry_generators) {
-          generator.second();
-        }
-      }
-
-      // If the wifi disconnect bit remains unset after 30 seconds, send
-      // telemetry again
-      int64_t wait = 27500 + esp_random() % 5000;
-      TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(wait);
-      while (xTaskGetTickCount() < deadline) {
-        EventBits_t bits = xEventGroupWaitBits(
-            radio_event_group,
-            RADIO_EVENT_GROUP_WIFI_DISCONNECTED |
-                RADIO_EVENT_GROUP_THINGS_FORCE_TELEMETRY,
-            pdFALSE, pdFALSE, deadline - xTaskGetTickCount());
-
-        if (bits & RADIO_EVENT_GROUP_WIFI_DISCONNECTED) {
-          goto loop;
-        }
-
-        if (bits & RADIO_EVENT_GROUP_THINGS_FORCE_TELEMETRY) {
-          // Wait a brief period to prevent spamming telemetry
-          vTaskDelay(pdMS_TO_TICKS(90 + esp_random() % 20));
-
-          xEventGroupClearBits(radio_event_group,
-                               RADIO_EVENT_GROUP_THINGS_FORCE_TELEMETRY);
-          EventBits_t force_bits = xEventGroupWaitBits(
-              things_force_telemetry_event_group,
-              BIT(things_force_telemetry_next_bit) - 1, pdTRUE, pdFALSE, 0);
-          if (force_bits == 0) {
-            continue;
-          }
-
-          std::lock_guard<std::mutex> lock(things_telemetry_mutex);
-          for (size_t i = 0; i < sizeof(EventBits_t) * 8; i++) {
-            if (force_bits & BIT(i)) {
-              things_force_telemetry_generators[i]();
-            }
-          }
-        }
-      }
-    }
+    ESP_LOGW(RADIO_TAG, "ThingsBoard healthcheck failed. Reconnecting...");
   }
 
   // (Unreachable)
