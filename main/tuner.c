@@ -172,6 +172,7 @@ static void tuner_task(void *ctx) {
     // Moving to a new frequency, so need to detune the old one
     if (current_frequency && current_frequency->detune) {
       current_frequency->detune(current_frequency->ctx);
+      things_force_telemetry(telemetry_index);
     }
 
     // If we're moving to a different mode, we need to detune the old one and
