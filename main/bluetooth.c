@@ -145,8 +145,8 @@ static int gap_event(struct ble_gap_event *event, void *arg) {
     if (!beacon) {
       ESP_LOGD(RADIO_TAG,
                "Found radio beacon: major=%" PRIu16 ", minor=%" PRIu16
-               " (rssi=%d)",
-               major, minor, event->disc.rssi);
+               " (rssi=%d, txPower=%d)",
+               major, minor, event->disc.rssi, tx_power);
 
       beacon = calloc(1, sizeof(struct bt_beacon));
       if (!beacon) {
