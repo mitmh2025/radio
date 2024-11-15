@@ -64,6 +64,11 @@ static inline bool gpio_to_tuner_mode(bool state) {
 }
 
 static void telemetry_generator() {
+  uint16_t raw_frequency = atomic_load(&current_raw_frequency);
+  float position =
+      ((float)raw_frequency - tuner_calibration->frequency_min) /
+      (tuner_calibration->frequency_max - tuner_calibration->frequency_min);
+
   const struct frequency_handle *frequency = current_frequency;
   things_send_telemetry_string(
       "tuner_mode", current_radio_mode == TUNER_MODE_PM ? "PM" : "FM");
@@ -71,7 +76,8 @@ static void telemetry_generator() {
                               frequency ? frequency->frequency : 0.0f);
   things_send_telemetry_int("tuner_min", tuner_calibration->frequency_min);
   things_send_telemetry_int("tuner_max", tuner_calibration->frequency_max);
-  things_send_telemetry_int("tuner_raw", atomic_load(&current_raw_frequency));
+  things_send_telemetry_int("tuner_raw", raw_frequency);
+  things_send_telemetry_float("tuner_position", position);
   things_send_telemetry_bool("tuner_entuned", frequency != NULL);
   things_send_telemetry_bool("tuner_suspended", atomic_load(&tuner_suspended));
 }
