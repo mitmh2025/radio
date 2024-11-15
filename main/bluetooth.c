@@ -55,6 +55,57 @@ static uint16_t adv_minor = UINT16_MAX;
 
 static uint8_t mac[6] = {0};
 
+static void telemetry_generator() {
+  // TODO: implement
+
+  // Generate a JSON string with all beacons that we can currently see in the
+  // form:
+  // [{"major": 1, "minor": 2, "rssi": -50, "txPower": -60, "lastSeen":
+  // 1234567890}, ...]
+
+  size_t beacon_count = 0;
+  xSemaphoreTake(beacon_mutex, portMAX_DELAY);
+  struct bt_beacon *beacon;
+  TAILQ_FOREACH(beacon, &beacons, entries) { beacon_count++; }
+
+  size_t json_len =
+      2 /* [] */ +
+      beacon_count *
+          (strlen("{\"major\": 65535, \"minor\": 65535, \"rssi\": -128, "
+                  "\"txPower\": -128, \"lastSeen\": 9223372036854775808},")) +
+      1;
+  char *json = malloc(json_len);
+  if (!json) {
+    ESP_LOGE(RADIO_TAG, "Failed to allocate memory for telemetry JSON");
+    xSemaphoreGive(beacon_mutex);
+    return;
+  }
+
+  char *json_ptr = json;
+  size_t json_remaining = json_len;
+  json_ptr += snprintf(json_ptr, json_remaining, "[");
+  json_remaining -= 1;
+  TAILQ_FOREACH(beacon, &beacons, entries) {
+    json_ptr +=
+        snprintf(json_ptr, json_remaining,
+                 "{\"major\": %" PRIu16 ", \"minor\": %" PRIu16
+                 ", \"rssi\": %d, \"txPower\": %d, \"lastSeen\": %" PRId64 "}",
+                 beacon->major, beacon->minor, beacon->rssi, beacon->tx_power,
+                 beacon->last_seen);
+    json_remaining -= strlen(json_ptr);
+    if (TAILQ_NEXT(beacon, entries)) {
+      json_ptr += snprintf(json_ptr, json_remaining, ",");
+      json_remaining -= 1;
+    }
+  }
+  json_ptr += snprintf(json_ptr, json_remaining, "]");
+  xSemaphoreGive(beacon_mutex);
+
+  things_send_telemetry_string("bluetooth_beacons", json);
+
+  free(json);
+}
+
 static void beacon_cleanup(void *arg) {
   // Remove any beacon we haven't seen in the last minute
   int64_t now = esp_timer_get_time();
@@ -184,7 +235,7 @@ static esp_err_t scan() {
 
   // Cancel any scan that is currently running
   int rc = ble_gap_disc_cancel();
-  ESP_RETURN_ON_FALSE(rc == 0 || rc == BLE_HS_EDISABLED, ESP_FAIL, RADIO_TAG,
+  ESP_RETURN_ON_FALSE(rc == 0 || rc == BLE_HS_EALREADY, ESP_FAIL, RADIO_TAG,
                       "Unable to stop existing BlueTooth scan: %d", rc);
 
   uint8_t own_addr_type;
@@ -320,6 +371,8 @@ esp_err_t bluetooth_init(void) {
   nimble_port_freertos_init(bluetooth_task);
 
   things_subscribe_attribute("beacon_identity", things_attr_cb);
+
+  things_register_telemetry_generator(telemetry_generator, "bluetooth", NULL);
 
   return ESP_OK;
 }
