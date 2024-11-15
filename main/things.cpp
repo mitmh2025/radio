@@ -783,7 +783,6 @@ static void things_task(void *arg) {
         }
         const Attribute_Request_Callback attr_req_callback(
             [](JsonObjectConst const &attrs) {
-              ESP_LOGI(RADIO_TAG, "Got shared attributes from ThingsBoard");
               things_attribute_callback(attrs, true);
             },
             attribute_names.cbegin(), attribute_names.cend());
