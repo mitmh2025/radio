@@ -55,7 +55,7 @@ static uint16_t adv_minor = UINT16_MAX;
 
 static uint8_t mac[6] = {0};
 
-void beacon_cleanup(void *arg) {
+static void beacon_cleanup(void *arg) {
   // Remove any beacon we haven't seen in the last minute
   int64_t now = esp_timer_get_time();
   xSemaphoreTake(beacon_mutex, portMAX_DELAY);
