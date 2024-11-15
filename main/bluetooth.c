@@ -40,6 +40,10 @@ static const ble_uuid128_t radio_uuid =
 
 static bool synced = false;
 
+static SemaphoreHandle_t scan_mutex = NULL;
+static uint16_t scan_interval = 0;
+static uint16_t scan_window = 0;
+
 static SemaphoreHandle_t beacon_mutex = NULL;
 static struct bt_beacon_list beacons = TAILQ_HEAD_INITIALIZER(beacons);
 
@@ -57,7 +61,7 @@ void beacon_cleanup(void *arg) {
   xSemaphoreTake(beacon_mutex, portMAX_DELAY);
   struct bt_beacon *beacon, *tmp;
   TAILQ_FOREACH_SAFE(beacon, &beacons, entries, tmp) {
-    if (now - beacon->last_seen > 60 * 1000 * 1000) {
+    if (now - beacon->last_seen > 30 * 1000 * 1000) {
       TAILQ_REMOVE(&beacons, beacon, entries);
       free(beacon);
     }
@@ -168,29 +172,41 @@ static int gap_event(struct ble_gap_event *event, void *arg) {
   return 0;
 };
 
-static void scan() {
+static esp_err_t scan() {
+  uint16_t interval = scan_interval;
+  if (interval == 0) {
+    interval = BLE_GAP_SCAN_SLOW_INTERVAL1;
+  }
+  uint16_t window = scan_window;
+  if (window == 0) {
+    window = BLE_GAP_SCAN_FAST_WINDOW;
+  }
+
+  // Cancel any scan that is currently running
+  int rc = ble_gap_disc_cancel();
+  ESP_RETURN_ON_FALSE(rc == 0 || rc == BLE_HS_EDISABLED, ESP_FAIL, RADIO_TAG,
+                      "Unable to stop existing BlueTooth scan: %d", rc);
+
   uint8_t own_addr_type;
 
-  int rc = ble_hs_id_infer_auto(0, &own_addr_type);
-  if (rc != 0) {
-    ESP_LOGE(RADIO_TAG, "Failed to infer own address type: %d", rc);
-    return;
-  }
+  rc = ble_hs_id_infer_auto(0, &own_addr_type);
+  ESP_RETURN_ON_FALSE(rc == 0, ESP_FAIL, RADIO_TAG,
+                      "Failed to infer own address type: %d", rc);
 
   struct ble_gap_disc_params disc_params = {
       .filter_policy = BLE_HCI_SCAN_FILT_NO_WL,
       .filter_duplicates = 0,
       .passive = 1,
-      .itvl = BLE_GAP_SCAN_SLOW_INTERVAL1,
-      .window = BLE_GAP_SCAN_FAST_WINDOW,
+      .itvl = interval,
+      .window = window,
   };
 
   rc = ble_gap_disc(own_addr_type, BLE_HS_FOREVER, &disc_params, gap_event,
                     NULL);
-  if (rc != 0) {
-    ESP_LOGE(RADIO_TAG, "Error initiating GAP discovery procedure; rc=%d\n",
-             rc);
-  }
+  ESP_RETURN_ON_FALSE(rc == 0, ESP_FAIL, RADIO_TAG,
+                      "Error initiating GAP discovery procedure; rc=%d\n", rc);
+
+  return ESP_OK;
 };
 
 static void on_sync() {
@@ -204,7 +220,9 @@ static void on_sync() {
 
   synced = true;
 
-  scan();
+  xSemaphoreTake(scan_mutex, portMAX_DELAY);
+  ESP_ERROR_CHECK_WITHOUT_ABORT(scan(0, 0));
+  xSemaphoreGive(scan_mutex);
   advertise();
 }
 
@@ -258,6 +276,10 @@ cleanup:
 }
 
 esp_err_t bluetooth_init(void) {
+  scan_mutex = xSemaphoreCreateMutex();
+  ESP_RETURN_ON_FALSE(scan_mutex != NULL, ESP_ERR_NO_MEM, RADIO_TAG,
+                      "Failed to create scan mutex");
+
   beacon_mutex = xSemaphoreCreateMutex();
   ESP_RETURN_ON_FALSE(beacon_mutex != NULL, ESP_ERR_NO_MEM, RADIO_TAG,
                       "Failed to create beacon mutex");
@@ -300,4 +322,18 @@ esp_err_t bluetooth_init(void) {
   things_subscribe_attribute("beacon_identity", things_attr_cb);
 
   return ESP_OK;
+}
+
+esp_err_t bluetooth_set_scan_frequency(uint16_t interval, uint16_t window) {
+  esp_err_t ret = ESP_OK;
+
+  xSemaphoreTake(scan_mutex, portMAX_DELAY);
+  scan_interval = interval;
+  scan_window = window;
+  if (synced) {
+    ret = scan();
+  }
+  xSemaphoreGive(scan_mutex);
+
+  return ret;
 }
