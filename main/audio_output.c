@@ -16,8 +16,8 @@ static TaskHandle_t output_task_handle = NULL;
 static void output_task(void *arg) {
   bool suspended = false;
   while (1) {
-    TickType_t wait =
-        suspended ? portMAX_DELAY : pdMS_TO_TICKS(100 + esp_random() % 100);
+    TickType_t wait = pdMS_TO_TICKS(suspended ? 10000 + esp_random() % 1000
+                                              : 100 + esp_random() % 100);
     uint32_t notification = 0;
     xTaskNotifyWait(0, 0, &notification, wait);
     if (notification & NOTIFY_SUSPENDED) {
