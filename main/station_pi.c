@@ -336,6 +336,10 @@ static void idle_timer_cb(void *arg) {
 }
 
 static void start_play_tracking() {
+  if (!entuned) {
+    return;
+  }
+
   xSemaphoreTake(play_time_mutex, portMAX_DELAY);
   if (!currently_playing) {
     esp_timer_stop(idle_timer);
@@ -866,6 +870,7 @@ static void entune(void *ctx) {
 
   play_on_entune(current_stage);
   entuned = true;
+  start_play_tracking();
   xTaskNotify(pi_task, 0, eNoAction);
   update_led();
 }
