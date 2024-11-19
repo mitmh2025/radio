@@ -38,7 +38,7 @@ static struct color charged_color = {
     .blue = 0,
 };
 
-static struct color charging_discharding_color = {
+static struct color charging_color = {
     .red = 64,
     .green = 25,
     .blue = 0,
@@ -46,6 +46,12 @@ static struct color charging_discharding_color = {
 
 static struct color low_color = {
     .red = 64,
+    .green = 0,
+    .blue = 0,
+};
+
+static struct color discharging_color = {
+    .red = 0,
     .green = 0,
     .blue = 0,
 };
@@ -72,10 +78,12 @@ static void battery_update_led() {
                     charged_color.blue);
       break;
     case BATTERY_CHARGING:
+      led_set_pixel(0, charging_color.red, charging_color.green,
+                    charging_color.blue);
+      break;
     case BATTERY_DISCHARGING:
-      led_set_pixel(0, charging_discharding_color.red,
-                    charging_discharding_color.green,
-                    charging_discharding_color.blue);
+      led_set_pixel(0, discharging_color.red, discharging_color.green,
+                    discharging_color.blue);
       break;
     default:
       break;
