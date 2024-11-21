@@ -13,7 +13,7 @@
 #include "esp_random.h"
 
 #define DISCHARGE_LOW_BATTERY_THRESHOLD_MV                                     \
-  (2500) // 3.7V is roughly 20% of an 18650 * our 2/3 voltage divider
+  (2333) // 3.5V is roughly 20% of an 18650 * our 2/3 voltage divider
 #define CHARGE_LOW_BATTERY_THRESHOLD                                           \
   (2667) // 4V * 2/3 is roughly 50% charged, but we want to encourage leaving
          // the radio plugged in
