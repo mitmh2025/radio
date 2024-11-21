@@ -691,12 +691,12 @@ float webrtc_get_ice_rtt_ms(webrtc_connection_t connection) {
     ret = -1;
     goto cleanup;
   }
-  if (stats->rtcStatsObject.iceServerStats.totalRequestsSent == 0) {
+  if (stats->rtcStatsObject.iceServerStats.totalResponsesReceived == 0) {
     ret = -1;
     goto cleanup;
   }
   ret = (float)stats->rtcStatsObject.iceServerStats.totalRoundTripTime /
-        stats->rtcStatsObject.iceServerStats.totalRequestsSent;
+        stats->rtcStatsObject.iceServerStats.totalResponsesReceived;
   ret /= HUNDREDS_OF_NANOS_IN_A_MILLISECOND;
 cleanup:
   free(stats);
