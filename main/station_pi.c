@@ -729,15 +729,61 @@ static void station_pi_task(void *ctx) {
         accel_z_smoothed =
             accel_z_smoothed - (accel_z_smoothed >> 3) + (accel_z >> 3);
 
-        float roll = atan2f(
-            accel_y, (accel_x < 0 ? 1 : -1) *
-                         sqrtf(accel_x * accel_x + 0.001 * accel_z * accel_z));
-        // To turn this into a pitch bend, take the absolute value, scale it
-        // from [0, pi] to [-2, 2], and then compute 2^(x/12). (This means the
-        // range goes from 2^(-2/12) to 2^(2/12) which is the ratio of a full
-        // step in either direction)
-        float new_pitch_bend =
-            powf(2.0f, -((4.0f * fabsf(roll) / M_PI) - 2.0f) / 12.0f);
+        float roll_degrees =
+            fabsf(atan2f(accel_y, (accel_x < 0 ? 1 : -1) *
+                                      sqrtf(accel_x * accel_x +
+                                            0.001 * accel_z * accel_z))) *
+            180.0f / M_PI;
+        // roll_degrees is in the range [0, 180]. We want to scale using a
+        // piecewise function:
+        // * If roll_degrees is <5º, pitch bend is 2^(2/12) (i.e. a whole step
+        //   up)
+        // * If roll_degrees is between 5º and 40º, pitch bend ranges from
+        //   2^(2/12) to 2^(1/12) with the exponent scaling linearly (i.e.
+        //   between a whole step and a half step up)
+        // * If roll_degrees is between 40º and 50º, pitch bend is 2^(1/12)
+        // * If roll_degrees is between 50º and 85º, pitch bend ranges from
+        //   2^(1/12) to 2^(0/12) with the exponent scaling linearly (i.e.
+        //   between a half step up and no pitch bend)
+        // * If roll_degrees is between 85º and 95º, pitch bend is 1.0 (no pitch
+        //   bend)
+        // * If roll_degrees is between 95º and 130º, pitch bend ranges from
+        //   2^(0/12) to 2^(-1/12) with the exponent scaling linearly (i.e.
+        //   between no pitch bend and a half step down)
+        // * If roll_degrees is between 130º and 140º, pitch bend is 2^(-1/12)
+        //   (i.e. a half step down)
+        // * If roll_degrees is between 140º and 175º, pitch bend ranges from
+        //   2^(-1/12) to 2^(-2/12) with the exponent scaling linearly (i.e.
+        //   between a half step and a whole step down)
+        // * If roll_degrees is >175º, pitch bend is 2^(-2/12) (i.e. a whole
+        // step
+        //   down)
+        float new_pitch_bend_exponent = 0.0f;
+        if (roll_degrees < 5.0f) {
+          new_pitch_bend_exponent = 2.0f;
+        } else if (roll_degrees < 40.0f) {
+          new_pitch_bend_exponent =
+              2.0f - (1.0f / 35.0f) * (roll_degrees - 5.0f);
+        } else if (roll_degrees < 50.0f) {
+          new_pitch_bend_exponent = 1.0f;
+        } else if (roll_degrees < 85.0f) {
+          new_pitch_bend_exponent =
+              1.0f - (1.0f / 35.0f) * (roll_degrees - 50.0f);
+        } else if (roll_degrees < 95.0f) {
+          new_pitch_bend_exponent = 0.0f;
+        } else if (roll_degrees < 130.0f) {
+          new_pitch_bend_exponent =
+              0.0f - (1.0f / 35.0f) * (roll_degrees - 95.0f);
+        } else if (roll_degrees < 140.0f) {
+          new_pitch_bend_exponent = -1.0f;
+        } else if (roll_degrees < 175.0f) {
+          new_pitch_bend_exponent =
+              -1.0f - (1.0f / 35.0f) * (roll_degrees - 140.0f);
+        } else {
+          new_pitch_bend_exponent = -2.0f;
+        }
+
+        float new_pitch_bend = powf(2.0f, new_pitch_bend_exponent / 12.0f);
         pitch_bend = pitch_bend * 0.25f + new_pitch_bend * 0.75f;
       }
     } else {
