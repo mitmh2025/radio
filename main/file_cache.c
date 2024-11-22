@@ -109,6 +109,15 @@ static esp_err_t event_handler(esp_http_client_event_t *evt) {
   struct http_data *data = evt->user_data;
   if (evt->event_id == HTTP_EVENT_ON_DATA) {
     if (data->contents != NULL && *data->contents == NULL) {
+      int status = esp_http_client_get_status_code(evt->client);
+      if (status != 200) {
+        ESP_LOGE(RADIO_TAG, "Received HTTP status code while fetching file: %d",
+                 status);
+        esp_http_client_close(evt->client);
+        data->failed = true;
+        return ESP_FAIL;
+      }
+
       int64_t length = esp_http_client_get_content_length(evt->client);
       if (length < 0) {
         ESP_LOGE(RADIO_TAG,
@@ -179,6 +188,7 @@ static esp_err_t fetch_file(const char *url, const char *path, char **contents,
       .crt_bundle_attach = esp_crt_bundle_attach,
       .user_data = &data,
       .event_handler = event_handler,
+      .disable_auto_redirect = true,
   };
   http_client = esp_http_client_init(&cfg);
   if (!http_client) {
