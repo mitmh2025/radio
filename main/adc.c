@@ -107,6 +107,10 @@ static void adc_task(void *context) {
       xSemaphoreGive(adc_mutex);
     }
 
+    if (!adc_running) {
+      continue;
+    }
+
     // Continue reading as long as there is data to read
     while (true) {
       uint8_t result[SOC_ADC_DIGI_DATA_BYTES_PER_CONV *
