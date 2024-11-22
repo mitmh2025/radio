@@ -196,6 +196,7 @@ cleanup:
 
   if (connection) {
     webrtc_free_connection(connection);
+    atomic_store(&webrtc_buffer_duration, 0);
   }
   free(url);
 
