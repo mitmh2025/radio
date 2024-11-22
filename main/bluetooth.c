@@ -41,8 +41,8 @@ static const ble_uuid128_t radio_uuid =
 static bool synced = false;
 
 static SemaphoreHandle_t scan_mutex = NULL;
-static uint16_t scan_interval = 0;
-static uint16_t scan_window = 0;
+static int16_t scan_interval = 0;
+static int16_t scan_window = 0;
 
 static SemaphoreHandle_t beacon_mutex = NULL;
 static struct bt_beacon_list beacons = TAILQ_HEAD_INITIALIZER(beacons);
@@ -224,6 +224,15 @@ static int gap_event(struct ble_gap_event *event, void *arg) {
 };
 
 static esp_err_t scan() {
+  // Cancel any scan that is currently running
+  int rc = ble_gap_disc_cancel();
+  ESP_RETURN_ON_FALSE(rc == 0 || rc == BLE_HS_EALREADY, ESP_FAIL, RADIO_TAG,
+                      "Unable to stop existing BlueTooth scan: %d", rc);
+
+  if (scan_interval < 0 || scan_window < 0) {
+    return ESP_OK;
+  }
+
   uint16_t interval = scan_interval;
   if (interval == 0) {
     interval = BLE_GAP_SCAN_SLOW_INTERVAL1;
@@ -232,11 +241,6 @@ static esp_err_t scan() {
   if (window == 0) {
     window = BLE_GAP_SCAN_FAST_WINDOW;
   }
-
-  // Cancel any scan that is currently running
-  int rc = ble_gap_disc_cancel();
-  ESP_RETURN_ON_FALSE(rc == 0 || rc == BLE_HS_EALREADY, ESP_FAIL, RADIO_TAG,
-                      "Unable to stop existing BlueTooth scan: %d", rc);
 
   uint8_t own_addr_type;
 
@@ -377,7 +381,10 @@ esp_err_t bluetooth_init(void) {
   return ESP_OK;
 }
 
-esp_err_t bluetooth_set_scan_frequency(uint16_t interval, uint16_t window) {
+esp_err_t bluetooth_set_scan_frequency(int16_t interval, int16_t window) {
+  ESP_RETURN_ON_FALSE(scan_mutex != NULL, ESP_ERR_INVALID_STATE, RADIO_TAG,
+                      "Bluetooth not initialized");
+
   esp_err_t ret = ESP_OK;
 
   xSemaphoreTake(scan_mutex, portMAX_DELAY);
