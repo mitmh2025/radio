@@ -1,4 +1,5 @@
 #include "station_2pi.h"
+#include "bluetooth.h"
 #include "main.h"
 #include "mixer.h"
 #include "tuner.h"
@@ -10,6 +11,7 @@
 #include "esp_log.h"
 
 static void entune_two_pi(void *ctx) {
+  bluetooth_set_mode(BLUETOOTH_MODE_DISABLED);
   webrtc_manager_entune();
   ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_default_static(false));
 }
@@ -17,6 +19,7 @@ static void entune_two_pi(void *ctx) {
 static void detune_two_pi(void *ctx) {
   ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_default_static(true));
   webrtc_manager_detune();
+  bluetooth_set_mode(BLUETOOTH_MODE_DEFAULT);
 }
 
 esp_err_t station_2pi_init() {

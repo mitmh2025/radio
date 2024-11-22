@@ -40,18 +40,15 @@ static const ble_uuid128_t radio_uuid =
 
 static bool synced = false;
 
-static SemaphoreHandle_t scan_mutex = NULL;
-static int16_t scan_interval = 0;
-static int16_t scan_window = 0;
+static SemaphoreHandle_t mutex = NULL;
+static bluetooth_mode_t mode = BLUETOOTH_MODE_DEFAULT;
+static uint16_t adv_major = UINT16_MAX;
+static uint16_t adv_minor = UINT16_MAX;
 
 static SemaphoreHandle_t beacon_mutex = NULL;
 static struct bt_beacon_list beacons = TAILQ_HEAD_INITIALIZER(beacons);
 
 static esp_timer_handle_t beacon_cleanup_timer = NULL;
-
-static SemaphoreHandle_t adv_mutex = NULL;
-static uint16_t adv_major = UINT16_MAX;
-static uint16_t adv_minor = UINT16_MAX;
 
 static uint8_t mac[6] = {0};
 
@@ -121,19 +118,22 @@ static void beacon_cleanup(void *arg) {
 }
 
 static void advertise() {
-  xSemaphoreTake(adv_mutex, portMAX_DELAY);
   if (!synced) {
-    goto cleanup;
+    return;
   }
 
   int rc = ble_gap_adv_stop();
   if (rc != 0 && rc != BLE_HS_EALREADY) {
     ESP_LOGE(RADIO_TAG, "Failed to stop advertising: %d", rc);
-    goto cleanup;
+    return;
+  }
+
+  if (mode == BLUETOOTH_MODE_DISABLED) {
+    return;
   }
 
   if (adv_major == UINT16_MAX && adv_minor == UINT16_MAX) {
-    goto cleanup;
+    return;
   }
 
   // TODO: figure out how to set the tx power
@@ -141,7 +141,7 @@ static void advertise() {
                                 0);
   if (rc != 0) {
     ESP_LOGE(RADIO_TAG, "Failed to set iBeacon advertisement data: %d", rc);
-    goto cleanup;
+    return;
   }
 
   struct ble_gap_adv_params adv_params = {};
@@ -150,9 +150,6 @@ static void advertise() {
   if (rc != 0) {
     ESP_LOGE(RADIO_TAG, "Failed to start advertising: %d", rc);
   }
-
-cleanup:
-  xSemaphoreGive(adv_mutex);
 }
 
 static int gap_event(struct ble_gap_event *event, void *arg) {
@@ -229,18 +226,14 @@ static esp_err_t scan() {
   ESP_RETURN_ON_FALSE(rc == 0 || rc == BLE_HS_EALREADY, ESP_FAIL, RADIO_TAG,
                       "Unable to stop existing BlueTooth scan: %d", rc);
 
-  if (scan_interval < 0 || scan_window < 0) {
+  if (mode == BLUETOOTH_MODE_DISABLED) {
     return ESP_OK;
   }
 
-  uint16_t interval = scan_interval;
-  if (interval == 0) {
-    interval = BLE_GAP_SCAN_SLOW_INTERVAL1;
-  }
-  uint16_t window = scan_window;
-  if (window == 0) {
-    window = BLE_GAP_SCAN_FAST_WINDOW;
-  }
+  uint16_t interval = mode == BLUETOOTH_MODE_AGGRESSIVE
+                          ? BLE_GAP_SCAN_ITVL_MS(60)
+                          : BLE_GAP_SCAN_SLOW_INTERVAL1;
+  uint16_t window = BLE_GAP_SCAN_FAST_WINDOW;
 
   uint8_t own_addr_type;
 
@@ -275,10 +268,10 @@ static void on_sync() {
 
   synced = true;
 
-  xSemaphoreTake(scan_mutex, portMAX_DELAY);
+  xSemaphoreTake(mutex, portMAX_DELAY);
   ESP_ERROR_CHECK_WITHOUT_ABORT(scan(0, 0));
-  xSemaphoreGive(scan_mutex);
   advertise();
+  xSemaphoreGive(mutex);
 }
 
 static void bluetooth_task(void *param) {
@@ -289,7 +282,7 @@ static void bluetooth_task(void *param) {
 }
 
 static void things_attr_cb(const char *key, const things_attribute_t *attr) {
-  xSemaphoreTake(adv_mutex, portMAX_DELAY);
+  xSemaphoreTake(mutex, portMAX_DELAY);
 
   // Default to resetting to unset
   adv_major = UINT16_MAX;
@@ -326,21 +319,18 @@ static void things_attr_cb(const char *key, const things_attribute_t *attr) {
   }
 
 cleanup:
-  xSemaphoreGive(adv_mutex);
   advertise();
+  xSemaphoreGive(mutex);
 }
 
 esp_err_t bluetooth_init(void) {
-  scan_mutex = xSemaphoreCreateMutex();
-  ESP_RETURN_ON_FALSE(scan_mutex != NULL, ESP_ERR_NO_MEM, RADIO_TAG,
-                      "Failed to create scan mutex");
+  mutex = xSemaphoreCreateMutex();
+  ESP_RETURN_ON_FALSE(mutex != NULL, ESP_ERR_NO_MEM, RADIO_TAG,
+                      "Failed to create mutex");
 
   beacon_mutex = xSemaphoreCreateMutex();
   ESP_RETURN_ON_FALSE(beacon_mutex != NULL, ESP_ERR_NO_MEM, RADIO_TAG,
                       "Failed to create beacon mutex");
-  adv_mutex = xSemaphoreCreateMutex();
-  ESP_RETURN_ON_FALSE(adv_mutex != NULL, ESP_ERR_NO_MEM, RADIO_TAG,
-                      "Failed to create advertisement mutex");
 
   ESP_RETURN_ON_ERROR(esp_timer_create(
                           &(esp_timer_create_args_t){
@@ -381,19 +371,20 @@ esp_err_t bluetooth_init(void) {
   return ESP_OK;
 }
 
-esp_err_t bluetooth_set_scan_frequency(int16_t interval, int16_t window) {
-  ESP_RETURN_ON_FALSE(scan_mutex != NULL, ESP_ERR_INVALID_STATE, RADIO_TAG,
+esp_err_t bluetooth_set_mode(bluetooth_mode_t mode) {
+  ESP_RETURN_ON_FALSE(mode < BLUETOOTH_MODE_MAX, ESP_ERR_INVALID_ARG, RADIO_TAG,
+                      "Invalid Bluetooth mode: %d", mode);
+  ESP_RETURN_ON_FALSE(mutex != NULL, ESP_ERR_INVALID_STATE, RADIO_TAG,
                       "Bluetooth not initialized");
 
-  esp_err_t ret = ESP_OK;
-
-  xSemaphoreTake(scan_mutex, portMAX_DELAY);
-  scan_interval = interval;
-  scan_window = window;
-  if (synced) {
-    ret = scan();
+  xSemaphoreTake(mutex, portMAX_DELAY);
+  bluetooth_mode_t old_mode = mode;
+  mode = mode;
+  if (old_mode != mode) {
+    ESP_ERROR_CHECK_WITHOUT_ABORT(scan());
+    advertise();
   }
-  xSemaphoreGive(scan_mutex);
+  xSemaphoreGive(mutex);
 
-  return ret;
+  return ESP_OK;
 }
