@@ -139,6 +139,9 @@ static void webrtc_loop() {
       case WEBRTC_CONNECTION_STATE_CONNECTED: {
         float rtt = webrtc_get_ice_rtt_ms(connection);
         target_buffer_duration = rtt * 4 * /* scale from ms to 48000 hz */ 48;
+        if (target_buffer_duration < 48000) {
+          target_buffer_duration = 48000;
+        }
         ESP_LOGI(RADIO_TAG,
                  "Setting target buffer duration of %" PRIu32
                  " samples (4 * %.2fms RTT)",
