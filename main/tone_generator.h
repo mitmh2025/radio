@@ -113,12 +113,21 @@
 #define FREQUENCY_A_SHARP_8 (7458.6201171875f)
 #define FREQUENCY_B_8 (7902.1328125f)
 
+typedef enum {
+  TONE_GENERATOR_SINE = 0,
+  TONE_GENERATOR_SQUARE,
+  TONE_GENERATOR_TRIANGLE,
+  TONE_GENERATOR_SAWTOOTH,
+  TONE_GENERATOR_WAVEFORM_MAX,
+} tone_generator_waveform_t;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 typedef struct {
   bool entuned;
+  tone_generator_waveform_t waveform;
   float frequency;
   uint16_t volume;
   int64_t attack_time;    // in microseconds

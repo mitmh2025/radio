@@ -45,9 +45,47 @@ static const int16_t sin_lookup[256] = {
     -3212,  -2410,  -1608,  -804,
 };
 
+// Technically, this is INT16_MAX * sin(2 * pi * x / UINT32_MAX)
+static int16_t fixed_sin(uint32_t phase) {
+  // Use the first 8 (integer) bits of the phase for the index into the sin
+  // table
+  uint8_t index = (phase >> 24) & 0xff;
+
+  // Extend the sample before and after our current position to 32-bits so we
+  // can scale it up by up to 256 without overflowing (16 bits * 8 bits = 24
+  // bits)
+  int32_t current_sample = sin_lookup[index];
+  int32_t next_sample = sin_lookup[(index + 1) & 0xff]; // wrap around
+
+  // Use the next 8 bits of the phase to interpolate between the two samples
+  uint8_t offset = (phase >> 16) & 0xff;
+
+  current_sample *= (256 - offset);
+  next_sample *= offset;
+
+  return (current_sample + next_sample) >> 8;
+}
+
+static int16_t fixed_square(uint32_t phase) {
+  return (phase & (1 << 31)) ? INT16_MAX : INT16_MIN;
+}
+
+static int16_t fixed_sawtooth(uint32_t phase) {
+  return (phase >> 16) - INT16_MAX;
+}
+
+static int16_t fixed_triangle(uint32_t phase) {
+  if (phase & (1 << 31)) {
+    phase = ~phase;
+  }
+
+  return (phase >> 15) - INT16_MAX;
+}
+
 struct tone_generator {
   mixer_channel_t channel;
 
+  tone_generator_waveform_t waveform;
   float frequency;
   int64_t start_time;
   int64_t release_start_time;
@@ -86,23 +124,24 @@ static int tone_generator_play(void *ctx, char *data, int len,
   int64_t now = esp_timer_get_time();
 
   for (size_t i = 0; i < sample_count; i++) {
-    // Use the first 8 (integer) bits of the phase for the index into the sin
-    // table
-    uint8_t index = (generator->phase >> 24) & 0xff;
-
-    // Extend the sample before and after our current position to 32-bits so we
-    // can scale it up by up to 256 without overflowing (16 bits * 8 bits = 24
-    // bits)
-    int32_t current_sample = sin_lookup[index];
-    int32_t next_sample = sin_lookup[(index + 1) & 0xff]; // wrap around
-
-    // Use the next 8 bits of the phase to interpolate between the two samples
-    uint8_t offset = (generator->phase >> 16) & 0xff;
-
-    current_sample *= (256 - offset);
-    next_sample *= offset;
-
-    int32_t sample = (current_sample + next_sample) >> 8;
+    int32_t sample;
+    switch (generator->waveform) {
+    case TONE_GENERATOR_SINE:
+      sample = fixed_sin(generator->phase);
+      break;
+    case TONE_GENERATOR_SQUARE:
+      sample = fixed_square(generator->phase);
+      break;
+    case TONE_GENERATOR_TRIANGLE:
+      sample = fixed_triangle(generator->phase);
+      break;
+    case TONE_GENERATOR_SAWTOOTH:
+      sample = fixed_sawtooth(generator->phase);
+      break;
+    default:
+      sample = 0;
+      break;
+    }
 
     int64_t time_since_start =
         now - generator->start_time + i * 1000000 / 48000;
@@ -157,12 +196,16 @@ esp_err_t tone_generator_init(const tone_generator_config_t *config,
                       "generator is NULL");
   ESP_RETURN_ON_FALSE(config->frequency > 0, ESP_ERR_INVALID_ARG, RADIO_TAG,
                       "frequency must be greater than 0");
+  ESP_RETURN_ON_FALSE(config->waveform < TONE_GENERATOR_WAVEFORM_MAX,
+                      ESP_ERR_INVALID_ARG, RADIO_TAG,
+                      "waveform must be less than TONE_GENERATOR_WAVEFORM_MAX");
 
   *generator = calloc(1, sizeof(struct tone_generator));
   if (*generator == NULL) {
     return ESP_ERR_NO_MEM;
   }
 
+  (*generator)->waveform = config->waveform;
   (*generator)->volume = config->volume;
   (*generator)->attack_time = config->attack_time;
   (*generator)->decay_time = config->decay_time;
