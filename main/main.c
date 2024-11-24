@@ -34,6 +34,7 @@
 #include "freertos/task.h"
 
 #include "driver/usb_serial_jtag.h"
+#include "esp_check.h"
 #include "esp_crt_bundle.h"
 #include "esp_event.h"
 #include "esp_log.h"
@@ -44,6 +45,97 @@
 const char *RADIO_TAG = "radio";
 
 EventGroupHandle_t radio_event_group;
+
+#ifdef RADIO_GIANT_SWITCH
+
+static SemaphoreHandle_t giant_switch_file_mutex = NULL;
+static TaskHandle_t giant_switch_task = NULL;
+static char *giant_switch_file = NULL;
+
+static void giant_switch_attr_cb(const char *key,
+                                 const things_attribute_t *value) {
+  xSemaphoreTake(giant_switch_file_mutex, portMAX_DELAY);
+  if (giant_switch_file) {
+    free(giant_switch_file);
+  }
+  if (value->type != THINGS_ATTRIBUTE_TYPE_STRING) {
+    giant_switch_file = NULL;
+  } else {
+    giant_switch_file = strdup(value->value.string);
+  }
+  xSemaphoreGive(giant_switch_file_mutex);
+  xTaskNotifyGive(giant_switch_task);
+}
+
+static void giant_switch_main() {
+  giant_switch_file_mutex = xSemaphoreCreateMutex();
+  giant_switch_task = xTaskGetCurrentTaskHandle();
+
+  ESP_ERROR_CHECK_WITHOUT_ABORT(tas2505_set_volume(127));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(tas2505_set_output(TAS2505_OUTPUT_HEADPHONE));
+
+  ESP_ERROR_CHECK_WITHOUT_ABORT(
+      things_subscribe_attribute("audio_file", giant_switch_attr_cb));
+
+  while (true) {
+    xSemaphoreTake(giant_switch_file_mutex, portMAX_DELAY);
+    char *file = giant_switch_file;
+    if (!file) {
+      xSemaphoreGive(giant_switch_file_mutex);
+      ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1000));
+      continue;
+    }
+
+    playback_handle_t playback = NULL;
+    esp_err_t ret = playback_file(
+        &(playback_cfg_t){
+            .path = file,
+            .tuned = true,
+        },
+        &playback);
+    xSemaphoreGive(giant_switch_file_mutex);
+    if (ret != ESP_OK) {
+      ESP_LOGE(RADIO_TAG, "Failed to play file: %d", ret);
+      vTaskDelay(pdMS_TO_TICKS(1000));
+      continue;
+    }
+
+    ret = playback_wait_for_completion(playback);
+    playback_free(playback);
+    if (ret != ESP_OK) {
+      ESP_LOGE(RADIO_TAG, "Failed to wait for completion: %d", ret);
+    }
+  }
+}
+
+#else // RADIO_GIANT_SWITCH
+
+static void radio_main() {
+  radio_calibration_t calibration;
+  esp_err_t err = calibration_load(&calibration);
+  if (err == ESP_ERR_NVS_NOT_FOUND) {
+    err = calibration_calibrate(&calibration);
+  }
+  ESP_ERROR_CHECK(err);
+
+  ESP_ERROR_CHECK_WITHOUT_ABORT(audio_volume_init(&calibration));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(audio_output_init());
+  ESP_ERROR_CHECK_WITHOUT_ABORT(webrtc_init());
+  ESP_ERROR_CHECK_WITHOUT_ABORT(webrtc_manager_init());
+
+  ESP_ERROR_CHECK_WITHOUT_ABORT(station_pi_activation_init());
+  ESP_ERROR_CHECK_WITHOUT_ABORT(station_pi_init());
+  ESP_ERROR_CHECK_WITHOUT_ABORT(station_2pi_init());
+  ESP_ERROR_CHECK_WITHOUT_ABORT(tuner_init(&calibration));
+
+  // Prevent the main task from exiting because we have stack-allocated
+  // variables that we want to keep around
+  while (true) {
+    vTaskDelay(portMAX_DELAY);
+  }
+}
+
+#endif
 
 void app_main(void) {
   esp_log_set_level_master(ESP_LOG_DEBUG);
@@ -80,11 +172,14 @@ void app_main(void) {
   ESP_ERROR_CHECK(battery_init());
   ESP_ERROR_CHECK(tas2505_init());
   ESP_ERROR_CHECK(storage_init());
+  ESP_ERROR_CHECK(mixer_init());
+  ESP_ERROR_CHECK(console_init());
+
+#ifndef RADIO_GIANT_SWITCH
   ESP_ERROR_CHECK(fm_init());
   ESP_ERROR_CHECK(accelerometer_init());
   ESP_ERROR_CHECK(magnet_init());
-  ESP_ERROR_CHECK(mixer_init());
-  ESP_ERROR_CHECK(console_init());
+#endif
 
   // We want to mark the firmware as good fast enough that we're not likely to
   // run into spurious reboots, but not so fast that we haven't validated
@@ -92,24 +187,8 @@ void app_main(void) {
   // so we're in a good place to mark the firmware as good.
   ESP_ERROR_CHECK_WITHOUT_ABORT(esp_ota_mark_app_valid_cancel_rollback());
 
-  radio_calibration_t calibration;
-  err = calibration_load(&calibration);
-  if (err == ESP_ERR_NVS_NOT_FOUND) {
-    err = calibration_calibrate(&calibration);
-  }
-  ESP_ERROR_CHECK(err);
-
-  ESP_ERROR_CHECK_WITHOUT_ABORT(audio_volume_init(&calibration));
-  ESP_ERROR_CHECK_WITHOUT_ABORT(audio_output_init());
-  ESP_ERROR_CHECK_WITHOUT_ABORT(webrtc_init());
   ESP_ERROR_CHECK_WITHOUT_ABORT(things_init());
   ESP_ERROR_CHECK_WITHOUT_ABORT(file_cache_init());
-  ESP_ERROR_CHECK_WITHOUT_ABORT(webrtc_manager_init());
-
-  ESP_ERROR_CHECK_WITHOUT_ABORT(station_pi_activation_init());
-  ESP_ERROR_CHECK_WITHOUT_ABORT(station_pi_init());
-  ESP_ERROR_CHECK_WITHOUT_ABORT(station_2pi_init());
-  ESP_ERROR_CHECK_WITHOUT_ABORT(tuner_init(&calibration));
 
   if (!(xEventGroupGetBits(radio_event_group) &
         RADIO_EVENT_GROUP_THINGS_PROVISIONED)) {
@@ -124,9 +203,9 @@ void app_main(void) {
              RADIO_THINGSBOARD_SERVER, macstr);
   }
 
-  // Prevent the main task from exiting because we have stack-allocated
-  // variables that we want to keep around
-  while (true) {
-    vTaskDelay(portMAX_DELAY);
-  }
+#ifdef RADIO_GIANT_SWITCH
+  giant_switch_main();
+#else
+  radio_main();
+#endif
 }
