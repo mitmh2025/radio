@@ -15,13 +15,13 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 
-// Configuration also used in station_pi; should probably be kept in sync
 static const accelerometer_pulse_cfg_t pulse_cfg = {
+    .threshold_x = 0,
     // This threshold (1g) was chosen to be fairly generous to avoid false
-    // negatives
-    .threshold_x = 16,
+    // negatives. Only listen on the y axis because that gives us better
+    // polarity detection for knock vs. setting down the radio
     .threshold_y = 16,
-    .threshold_z = 16,
+    .threshold_z = 0,
     .timelimit = 24, // 30ms
     // The pulse latency setting doesn't apply if you're reading and clearing
     // the interrupt status. Once that's done, new pulses seem to come in, so we
@@ -143,6 +143,13 @@ static void pulse_callback(accelerometer_pulse_axis_t axis, void *arg) {
   // Debounce the pulse
   if (now - last_pulse < PULSE_DEBOUNCE_US) {
     ESP_LOGD(RADIO_TAG, "Pulse on axis %s (debounced)",
+             accelerometer_pulse_axis_to_string(axis));
+    last_pulse = now;
+    return;
+  }
+
+  if (axis == ACCELEROMETER_PULSE_AXIS_Y_NEG) {
+    ESP_LOGD(RADIO_TAG, "Pulse on axis %s (ignored)",
              accelerometer_pulse_axis_to_string(axis));
     last_pulse = now;
     return;

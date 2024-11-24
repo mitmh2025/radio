@@ -345,7 +345,7 @@ esp_err_t accelerometer_init() {
   mma8451q_ctrl_reg1_t ctrl_reg1 = {};
   ESP_RETURN_ON_ERROR(read_register(MMA8451Q_REG_CTRL_REG1, &ctrl_reg1.raw),
                       TAG, "Failed to read CTRL_REG1 register");
-  ctrl_reg1.refined.dr = ACCELEROMETER_DR_400HZ;
+  ctrl_reg1.refined.dr = ACCELEROMETER_DR_800HZ;
   ESP_RETURN_ON_ERROR(write_register(MMA8451Q_REG_CTRL_REG1, ctrl_reg1.raw),
                       TAG, "Failed to write CTRL_REG1 register");
 
@@ -413,9 +413,9 @@ esp_err_t accelerometer_subscribe_pulse(const accelerometer_pulse_cfg_t *cfg,
   mma8451q_pulse_cfg_t pulse_cfg = {
       .refined =
           {
-              .xspefe = 1,
-              .yspefe = 1,
-              .zspefe = 1,
+              .xspefe = cfg->threshold_x > 0 ? 1 : 0,
+              .yspefe = cfg->threshold_y > 0 ? 1 : 0,
+              .zspefe = cfg->threshold_z > 0 ? 1 : 0,
               .ele = 1,
           },
   };
