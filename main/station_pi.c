@@ -326,6 +326,10 @@ static void flush_total_play_time() {
 }
 
 static void idle_timer_cb(void *arg) {
+  if (!entuned) {
+    return;
+  }
+
   int64_t now = esp_timer_get_time();
   xSemaphoreTake(play_time_mutex, portMAX_DELAY);
   total_play_time += now - last_play_time_check;
