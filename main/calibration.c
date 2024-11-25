@@ -173,6 +173,9 @@ esp_err_t calibration_calibrate(radio_calibration_t *calibration) {
   // to measure 180º of difference, so we want to move the dial until the value
   // decreases by 5º, or 2.5% (plus some margin of error)
   uint32_t frequency_max_target = 0.96 * frequency_physical_max;
+  // Our tolerance for error is 1/2 of the difference between the target and
+  // the physical max
+  uint32_t tolerance = (frequency_physical_max - frequency_max_target) >> 1;
   ESP_LOGW(RADIO_TAG,
            "Frequency physical max: %" PRIu32 " (0x%" PRIx32 "), "
            "target: %" PRIu32 " (0x%" PRIx32 ")",
@@ -190,9 +193,6 @@ esp_err_t calibration_calibrate(radio_calibration_t *calibration) {
     xTaskNotifyWaitIndexed(ADC_NOTIFY_INDEX, ULONG_MAX, ULONG_MAX, &frequency,
                            portMAX_DELAY);
     uint32_t error = imaxabs((int32_t)(frequency - frequency_max_target));
-    // Our tolerance for error is 1/2 of the difference between the target and
-    // the physical max
-    uint32_t tolerance = (frequency_physical_max - frequency_max_target) >> 1;
     if (error < tolerance) {
       led_set_pixel(1, 0, 255, 0);
     } else {
@@ -227,6 +227,34 @@ esp_err_t calibration_calibrate(radio_calibration_t *calibration) {
   ESP_GOTO_ON_FALSE(calibration->frequency_min > 0, ESP_FAIL, cleanup,
                     RADIO_TAG,
                     "Minimum frequency reads as 0, calibration failed");
+
+  ESP_LOGW(RADIO_TAG, "Turn frequency dial to 98MHz and confirm that LED is "
+                      "green, then press the circle button");
+  xTaskNotifyStateClearIndexed(NULL, BUTTON_NOTIFY_INDEX);
+  uint32_t frequency_mid_target =
+      (calibration->frequency_max + calibration->frequency_min) >> 1;
+  // Our total tolerance for error is 3% of the range
+  tolerance =
+      0.015f * (calibration->frequency_max - calibration->frequency_min);
+  while (xTaskNotifyWaitIndexed(BUTTON_NOTIFY_INDEX, 0, ULONG_MAX, NULL, 0) ==
+         pdFALSE) {
+    // Take a reading, adjust the LED
+    xTaskNotifyWaitIndexed(ADC_NOTIFY_INDEX, ULONG_MAX, ULONG_MAX, &frequency,
+                           portMAX_DELAY);
+    uint32_t error = imaxabs((int32_t)(frequency - frequency_mid_target));
+    if (error < tolerance) {
+      led_set_pixel(1, 0, 255, 0);
+    } else {
+      led_set_pixel(1, 255, 0, 0);
+    }
+  }
+
+  ESP_LOGW(RADIO_TAG, "Set the frequency dial to 108MHz and press the circle "
+                      "button");
+  // We don't need this reading, it's just our final position
+  xTaskNotifyWaitIndexed(BUTTON_NOTIFY_INDEX, ULONG_MAX, ULONG_MAX, NULL,
+                         portMAX_DELAY);
+
   ESP_GOTO_ON_ERROR(adc_unsubscribe(FREQUENCY_ADC_CHANNEL), cleanup, RADIO_TAG,
                     "Failed to unsubscribe from frequency ADC");
   frequency_registered = false;
