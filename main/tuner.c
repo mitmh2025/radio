@@ -359,7 +359,7 @@ esp_err_t tuner_init(radio_calibration_t *calibration) {
   handle->frequency_high = 0xfff;
 
   gpio_config_t config = {
-      .pin_bit_mask = 1ULL << TOGGLE_PIN,
+      .pin_bit_mask = BIT64(TOGGLE_PIN),
       .mode = GPIO_MODE_INPUT,
       .pull_up_en = GPIO_PULLUP_ENABLE,
       .intr_type = GPIO_INTR_ANYEDGE,

@@ -376,7 +376,7 @@ esp_err_t accelerometer_init() {
       ESP_FAIL, TAG, "Failed to create task");
 
   gpio_config_t cfg = {
-      .pin_bit_mask = 1ULL << MMA8451Q_INT1_GPIO,
+      .pin_bit_mask = BIT64(MMA8451Q_INT1_GPIO),
       .mode = GPIO_MODE_INPUT,
       .pull_up_en = GPIO_PULLUP_DISABLE,
       .pull_down_en = GPIO_PULLDOWN_DISABLE,

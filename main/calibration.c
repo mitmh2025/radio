@@ -1,9 +1,13 @@
 #include "calibration.h"
+#include "accelerometer.h"
 #include "adc.h"
 #include "board.h"
 #include "debounce.h"
 #include "led.h"
+#include "magnet.h"
 #include "main.h"
+
+#include <math.h>
 
 #include "esp_check.h"
 #include "esp_err.h"
@@ -75,11 +79,12 @@ esp_err_t calibration_calibrate(radio_calibration_t *calibration) {
   esp_err_t ret = ESP_OK;
 
   gpio_config_t button_config = {
-      .pin_bit_mask = 1ULL << BUTTON_CIRCLE_PIN,
+      .pin_bit_mask = BIT64(BUTTON_CIRCLE_PIN) | BIT64(BUTTON_TRIANGLE_PIN) |
+                      BIT64(TOGGLE_PIN),
       .mode = GPIO_MODE_INPUT,
       .pull_up_en = GPIO_PULLUP_ENABLE,
       .pull_down_en = GPIO_PULLDOWN_DISABLE,
-      .intr_type = GPIO_INTR_NEGEDGE,
+      .intr_type = GPIO_INTR_ANYEDGE,
   };
   ESP_GOTO_ON_ERROR(gpio_config(&button_config), cleanup, RADIO_TAG,
                     "Failed to configure button");
@@ -207,6 +212,56 @@ esp_err_t calibration_calibrate(radio_calibration_t *calibration) {
   ESP_GOTO_ON_FALSE(calibration->frequency_min > 0, ESP_FAIL, cleanup,
                     RADIO_TAG,
                     "Minimum frequency reads as 0, calibration failed");
+  ESP_GOTO_ON_ERROR(adc_unsubscribe(FREQUENCY_ADC_CHANNEL), cleanup, RADIO_TAG,
+                    "Failed to unsubscribe from frequency ADC");
+  frequency_registered = false;
+
+  debounce_handler_remove(BUTTON_CIRCLE_PIN);
+  debounce_registered = false;
+
+  // We are done with calibration; time for verification
+  ESP_GOTO_ON_ERROR(debounce_handler_add(
+                        BUTTON_TRIANGLE_PIN, GPIO_INTR_NEGEDGE, button_callback,
+                        xTaskGetCurrentTaskHandle(), pdMS_TO_TICKS(10)),
+                    cleanup, RADIO_TAG, "Failed to add debounce handler");
+  ESP_LOGW(RADIO_TAG, "Press the triangle button");
+  xTaskNotifyWaitIndexed(BUTTON_NOTIFY_INDEX, ULONG_MAX, ULONG_MAX, NULL,
+                         portMAX_DELAY);
+  debounce_handler_remove(BUTTON_TRIANGLE_PIN);
+
+  ESP_GOTO_ON_ERROR(
+      debounce_handler_add(TOGGLE_PIN, GPIO_INTR_NEGEDGE, button_callback,
+                           xTaskGetCurrentTaskHandle(), pdMS_TO_TICKS(10)),
+      cleanup, RADIO_TAG, "Failed to add debounce handler");
+  ESP_LOGW(RADIO_TAG, "Set modulation switch to FM");
+  xTaskNotifyWaitIndexed(BUTTON_NOTIFY_INDEX, ULONG_MAX, ULONG_MAX, NULL,
+                         portMAX_DELAY);
+  debounce_handler_remove(TOGGLE_PIN);
+  ESP_GOTO_ON_ERROR(
+      debounce_handler_add(TOGGLE_PIN, GPIO_INTR_POSEDGE, button_callback,
+                           xTaskGetCurrentTaskHandle(), pdMS_TO_TICKS(10)),
+      cleanup, RADIO_TAG, "Failed to add debounce handler");
+  ESP_LOGW(RADIO_TAG, "Set modulation switch to PM");
+  xTaskNotifyWaitIndexed(BUTTON_NOTIFY_INDEX, ULONG_MAX, ULONG_MAX, NULL,
+                         portMAX_DELAY);
+  debounce_handler_remove(TOGGLE_PIN);
+
+  ESP_LOGW(RADIO_TAG, "Hold magnet to the ground symbol");
+  while (true) {
+    int16_t x, y, z;
+    ESP_GOTO_ON_ERROR(magnet_read(&x, &y, &z), cleanup, RADIO_TAG,
+                      "Failed to read accelerometer");
+    uint32_t magnitude = sqrtf(x * x + y * y + z * z);
+    bool sensed = magnitude > 2400;
+    led_set_pixel(1, 0, sensed ? 255 : 0, sensed ? 0 : magnitude >> 4);
+    if (sensed) {
+      break;
+    }
+  }
+  vTaskDelay(pdMS_TO_TICKS(1000));
+  led_set_pixel(1, 0, 0, 0);
+
+  // TODO: verify foot, accelerometer, light
 
   // Finally write calibration to NVS
   ESP_GOTO_ON_ERROR(nvs_set_u32(handle, "vol_min", calibration->volume_min),
@@ -221,6 +276,8 @@ esp_err_t calibration_calibrate(radio_calibration_t *calibration) {
   ESP_GOTO_ON_ERROR(nvs_set_u32(handle, "freq_max", calibration->frequency_max),
                     cleanup, RADIO_TAG,
                     "Failed to set frequency max in NVS: %d", err_rc_);
+  ESP_GOTO_ON_ERROR(nvs_commit(handle), cleanup, RADIO_TAG,
+                    "Failed to commit calibration to NVS");
 
 cleanup:
   if (debounce_registered) {
