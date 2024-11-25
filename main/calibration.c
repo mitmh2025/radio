@@ -313,7 +313,7 @@ esp_err_t calibration_calibrate(radio_calibration_t *calibration) {
   while (true) {
     int16_t x, y, z;
     ESP_GOTO_ON_ERROR(magnet_read(&x, &y, &z), cleanup, RADIO_TAG,
-                      "Failed to read accelerometer");
+                      "Failed to read magnet");
     uint32_t magnitude = sqrtf(x * x + y * y + z * z);
     bool sensed = magnitude > 2400;
     led_set_pixel(1, 0, sensed ? 255 : 0, sensed ? 0 : magnitude >> 4);
