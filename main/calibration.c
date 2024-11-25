@@ -6,6 +6,9 @@
 #include "led.h"
 #include "magnet.h"
 #include "main.h"
+#include "mixer.h"
+#include "tas2505.h"
+#include "tone_generator.h"
 #include "touch.h"
 
 #include <math.h>
@@ -82,6 +85,7 @@ esp_err_t calibration_calibrate(radio_calibration_t *calibration) {
 
   bool debounce_registered = false, volume_registered = false,
        frequency_registered = false, touch_registered = false;
+  tone_generator_t tone = NULL;
   nvs_handle_t handle;
   ESP_RETURN_ON_ERROR(
       nvs_open(CALIBRATION_NVS_NAMESPACE, NVS_READWRITE, &handle), RADIO_TAG,
@@ -227,10 +231,43 @@ esp_err_t calibration_calibrate(radio_calibration_t *calibration) {
                     "Failed to unsubscribe from frequency ADC");
   frequency_registered = false;
 
+  // We are done with calibration; time for verification
+
+  ESP_GOTO_ON_ERROR(tas2505_set_output(TAS2505_OUTPUT_SPEAKER), cleanup,
+                    RADIO_TAG, "Failed to set TAS2505 output to speaker");
+  ESP_GOTO_ON_ERROR(tas2505_set_volume(255), cleanup, RADIO_TAG,
+                    "Failed to set TAS2505 volume");
+  ESP_GOTO_ON_ERROR(tone_generator_init(
+                        &(tone_generator_config_t){
+                            .waveform = TONE_GENERATOR_SINE,
+                            .frequency = 440,
+                            .volume = 0x4000,
+                            .attack_time = 0,
+                            .decay_time = 0,
+                            .sustain_level = 0xffff,
+                            .release_time = 0,
+                            .entuned = true,
+                        },
+                        &tone),
+                    cleanup, RADIO_TAG, "Failed to initialize tone generator");
+  ESP_LOGW(RADIO_TAG,
+           "Press the circle button if you can hear a tone from the speaker");
+  xTaskNotifyWaitIndexed(BUTTON_NOTIFY_INDEX, ULONG_MAX, ULONG_MAX, NULL,
+                         portMAX_DELAY);
+
+  ESP_GOTO_ON_ERROR(tas2505_set_output(TAS2505_OUTPUT_HEADPHONE), cleanup,
+                    RADIO_TAG, "Failed to set TAS2505 output to headphone");
+  ESP_LOGW(RADIO_TAG, "Press the circle button if you can hear a tone through "
+                      "the headphone jack");
+  xTaskNotifyWaitIndexed(BUTTON_NOTIFY_INDEX, ULONG_MAX, ULONG_MAX, NULL,
+                         portMAX_DELAY);
+
+  tone_generator_release(tone);
+  tone = NULL;
+
   debounce_handler_remove(BUTTON_CIRCLE_PIN);
   debounce_registered = false;
 
-  // We are done with calibration; time for verification
   ESP_GOTO_ON_ERROR(debounce_handler_add(
                         BUTTON_TRIANGLE_PIN, GPIO_INTR_NEGEDGE, button_callback,
                         xTaskGetCurrentTaskHandle(), pdMS_TO_TICKS(10)),
@@ -287,7 +324,7 @@ esp_err_t calibration_calibrate(radio_calibration_t *calibration) {
   vTaskDelay(pdMS_TO_TICKS(1000));
   led_set_pixel(1, 0, 0, 0);
 
-  // TODO: verify accelerometer, light, headphone, speaker
+  // TODO: verify accelerometer, light
 
   // Finally write calibration to NVS
   ESP_GOTO_ON_ERROR(nvs_set_u32(handle, "vol_min", calibration->volume_min),
@@ -306,6 +343,10 @@ esp_err_t calibration_calibrate(radio_calibration_t *calibration) {
                     "Failed to commit calibration to NVS");
 
 cleanup:
+  if (tone) {
+    tone_generator_release(tone);
+  }
+
   if (touch_registered) {
     touch_deregister_isr(touch_callback, xTaskGetCurrentTaskHandle());
   }
