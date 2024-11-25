@@ -25,6 +25,7 @@ idf_component_register(
   tas2505.c
   things.cpp
   tone_generator.c
+  touch.c
   tuner.c
   webrtc.c
   webrtc_manager.c

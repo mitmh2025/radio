@@ -22,6 +22,7 @@
 #include "storage.h"
 #include "tas2505.h"
 #include "things.h"
+#include "touch.h"
 #include "tuner.h"
 #include "webrtc.h"
 #include "webrtc_manager.h"
@@ -165,6 +166,7 @@ void app_main(void) {
 
   ESP_ERROR_CHECK(debounce_init());
   ESP_ERROR_CHECK(adc_init());
+  ESP_ERROR_CHECK(touch_init());
   ESP_ERROR_CHECK(led_init());
   ESP_ERROR_CHECK(wifi_init());
   ESP_ERROR_CHECK(bluetooth_init());

@@ -15,6 +15,7 @@
 #include "tas2505.h"
 #include "things.h"
 #include "tone_generator.h"
+#include "touch.h"
 #include "tuner.h"
 
 #include "board.h"
@@ -22,7 +23,6 @@
 #include <math.h>
 #include <string.h>
 
-#include "driver/touch_sensor.h"
 #include "esp_check.h"
 #include "esp_log.h"
 #include "esp_random.h"
@@ -95,7 +95,6 @@ static const float light_frequencies[] = {
 static bool light_triggered = false;
 static tone_generator_t light_tone = NULL;
 
-static uint32_t touch_threshold = 6000;
 static const float touch_frequencies[] = {
     [0] = FREQUENCY_A_4,
     [SHIFT_MAGNET] = FREQUENCY_E_4,
@@ -917,6 +916,7 @@ static void entune(void *ctx) {
   ESP_ERROR_CHECK_WITHOUT_ABORT(
       debounce_handler_add(BUTTON_CIRCLE_PIN, GPIO_INTR_POSEDGE,
                            circle_button_intr, pi_task, pdMS_TO_TICKS(10)));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(touch_register_isr(touch_intr, pi_task));
 
   play_on_entune(current_stage);
   entuned = true;
@@ -933,6 +933,7 @@ static void detune(void *ctx) {
     playback_stop(playback);
   }
   xSemaphoreGive(playback_mutex);
+  ESP_ERROR_CHECK_WITHOUT_ABORT(touch_deregister_isr(touch_intr, pi_task));
   ESP_ERROR_CHECK_WITHOUT_ABORT(debounce_handler_remove(BUTTON_CIRCLE_PIN));
   ESP_ERROR_CHECK_WITHOUT_ABORT(debounce_handler_remove(BUTTON_TRIANGLE_PIN));
   ESP_ERROR_CHECK_WITHOUT_ABORT(accelerometer_unsubscribe_pulse());
@@ -1028,38 +1029,6 @@ esp_err_t station_pi_init() {
                           },
                           &knock_start_timer),
                       RADIO_TAG, "Failed to initialize knock timer");
-
-  ESP_RETURN_ON_ERROR(touch_pad_init(), RADIO_TAG,
-                      "Failed to initialize touch");
-  ESP_RETURN_ON_ERROR(touch_pad_config(TOUCH_PAD_CHANNEL), RADIO_TAG,
-                      "Failed to initialize touch");
-  ESP_RETURN_ON_ERROR(touch_pad_filter_set_config(&(touch_filter_config_t){
-                          .smh_lvl = TOUCH_PAD_SMOOTH_IIR_2,
-                          .mode = TOUCH_PAD_FILTER_IIR_64,
-                      }),
-                      RADIO_TAG, "Failed to initialize touch");
-  ESP_RETURN_ON_ERROR(touch_pad_filter_enable(), RADIO_TAG,
-                      "Failed to initialize touch");
-  ESP_RETURN_ON_ERROR(touch_pad_denoise_set_config(&(touch_pad_denoise_t){
-                          .cap_level = TOUCH_PAD_DENOISE_CAP_L4,
-                          .grade = TOUCH_PAD_DENOISE_BIT4,
-                      }),
-                      RADIO_TAG, "Failed to initialize touch");
-  ESP_RETURN_ON_ERROR(touch_pad_denoise_enable(), RADIO_TAG,
-                      "Failed to initialize touch");
-  ESP_RETURN_ON_ERROR(touch_pad_set_thresh(TOUCH_PAD_CHANNEL, touch_threshold),
-                      RADIO_TAG, "Failed to initialize touch");
-  ESP_RETURN_ON_ERROR(touch_pad_isr_register(touch_intr, pi_task,
-                                             TOUCH_PAD_INTR_MASK_ACTIVE |
-                                                 TOUCH_PAD_INTR_MASK_INACTIVE),
-                      RADIO_TAG, "Failed to initialize touch");
-  ESP_RETURN_ON_ERROR(touch_pad_intr_enable(TOUCH_PAD_INTR_MASK_ACTIVE |
-                                            TOUCH_PAD_INTR_MASK_INACTIVE),
-                      RADIO_TAG, "Failed to initialize touch");
-  ESP_RETURN_ON_ERROR(touch_pad_set_fsm_mode(TOUCH_FSM_MODE_TIMER), RADIO_TAG,
-                      "Failed to initialize touch");
-  ESP_RETURN_ON_ERROR(touch_pad_fsm_start(), RADIO_TAG,
-                      "Failed to initialize touch");
 
   ESP_RETURN_ON_ERROR(esp_timer_create(
                           &(esp_timer_create_args_t){

@@ -6,6 +6,7 @@
 #include "led.h"
 #include "magnet.h"
 #include "main.h"
+#include "touch.h"
 
 #include <math.h>
 
@@ -65,12 +66,22 @@ static void adc_callback(void *user_data, adc_digi_output_data_t *result) {
   xTaskNotifyIndexed(task, ADC_NOTIFY_INDEX, adc_value, eSetValueWithOverwrite);
 }
 
+static void IRAM_ATTR touch_callback(void *user_data) {
+  uint32_t touch_status = touch_pad_read_intr_status_mask();
+  if (!(touch_status & TOUCH_PAD_INTR_MASK_ACTIVE)) {
+    return;
+  }
+
+  TaskHandle_t task = (TaskHandle_t)user_data;
+  vTaskNotifyGiveIndexedFromISR(task, BUTTON_NOTIFY_INDEX, NULL);
+}
+
 esp_err_t calibration_calibrate(radio_calibration_t *calibration) {
   ESP_RETURN_ON_FALSE(calibration != NULL, ESP_ERR_INVALID_ARG, RADIO_TAG,
                       "Calibration is NULL");
 
   bool debounce_registered = false, volume_registered = false,
-       frequency_registered = false;
+       frequency_registered = false, touch_registered = false;
   nvs_handle_t handle;
   ESP_RETURN_ON_ERROR(
       nvs_open(CALIBRATION_NVS_NAMESPACE, NVS_READWRITE, &handle), RADIO_TAG,
@@ -230,6 +241,21 @@ esp_err_t calibration_calibrate(radio_calibration_t *calibration) {
   debounce_handler_remove(BUTTON_TRIANGLE_PIN);
 
   ESP_GOTO_ON_ERROR(
+      touch_register_isr(touch_callback, xTaskGetCurrentTaskHandle()), cleanup,
+      RADIO_TAG, "Failed to register touch ISR");
+  touch_registered = true;
+  ESP_LOGW(RADIO_TAG, "Touch each foot once");
+  for (int i = 0; i < 4; i++) {
+    xTaskNotifyWaitIndexed(BUTTON_NOTIFY_INDEX, ULONG_MAX, ULONG_MAX, NULL,
+                           portMAX_DELAY);
+    ESP_LOGW(RADIO_TAG, "Touch detected");
+  }
+  ESP_GOTO_ON_ERROR(
+      touch_deregister_isr(touch_callback, xTaskGetCurrentTaskHandle()),
+      cleanup, RADIO_TAG, "Failed to deregister touch ISR");
+  touch_registered = false;
+
+  ESP_GOTO_ON_ERROR(
       debounce_handler_add(TOGGLE_PIN, GPIO_INTR_NEGEDGE, button_callback,
                            xTaskGetCurrentTaskHandle(), pdMS_TO_TICKS(10)),
       cleanup, RADIO_TAG, "Failed to add debounce handler");
@@ -261,7 +287,7 @@ esp_err_t calibration_calibrate(radio_calibration_t *calibration) {
   vTaskDelay(pdMS_TO_TICKS(1000));
   led_set_pixel(1, 0, 0, 0);
 
-  // TODO: verify foot, accelerometer, light
+  // TODO: verify accelerometer, light, headphone, speaker
 
   // Finally write calibration to NVS
   ESP_GOTO_ON_ERROR(nvs_set_u32(handle, "vol_min", calibration->volume_min),
@@ -280,6 +306,10 @@ esp_err_t calibration_calibrate(radio_calibration_t *calibration) {
                     "Failed to commit calibration to NVS");
 
 cleanup:
+  if (touch_registered) {
+    touch_deregister_isr(touch_callback, xTaskGetCurrentTaskHandle());
+  }
+
   if (debounce_registered) {
     debounce_handler_remove(BUTTON_CIRCLE_PIN);
   }
