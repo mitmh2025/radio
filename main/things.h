@@ -33,7 +33,7 @@ typedef void (*things_telemetry_generator_t)(void);
 typedef esp_err_t (*things_rpc_handler_t)(const things_attribute_t *param);
 
 esp_err_t things_init();
-esp_err_t things_provision(const char *token);
+esp_err_t things_provision(const char *hostname, const char *token);
 bool things_send_telemetry_string(char const *const key,
                                   char const *const value);
 bool things_send_telemetry_float(char const *const key, float value);

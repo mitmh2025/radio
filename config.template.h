@@ -4,5 +4,3 @@
 
 #define RADIO_WIFI_SSID ""
 #define RADIO_WIFI_PASSWORD ""
-
-#define RADIO_THINGSBOARD_SERVER ""

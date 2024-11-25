@@ -34,14 +34,6 @@
 #include <Espressif_Updater.h>
 #include <ThingsBoard.h>
 
-#ifndef RADIO_THINGSBOARD_SERVER
-#error "RADIO_THINGSBOARD_SERVER is not defined"
-#else
-static_assert(strlen(RADIO_THINGSBOARD_SERVER) > 0,
-              "RADIO_THINGSBOARD_SERVER is empty (make sure config.h exists "
-              "and is populated)");
-#endif
-
 class ESPLogger {
 public:
   template <typename... Args>
@@ -64,15 +56,16 @@ static constexpr uint8_t FIRMWARE_FAILURE_RETRIES = 12U;
 static constexpr uint16_t FIRMWARE_PACKET_SIZE = 4096U;
 static constexpr uint16_t MAX_MESSAGE_SIZE = 1024U;
 
-static constexpr char THINGSBOARD_SERVER[] = RADIO_THINGSBOARD_SERVER;
 static constexpr uint16_t THINGSBOARD_PORT = 8883U;
 
 static std::weak_ptr<RadioThingsBoard> tb;
 
 static constexpr char THINGS_NVS_NAMESPACE[] = "radio:things";
+static constexpr char THINGS_NVS_HOSTNAME_KEY[] = "hostname";
 static constexpr char THINGS_NVS_TOKEN_KEY[] = "devicetoken";
 static nvs_handle_t things_nvs_handle;
 
+static std::string things_hostname;
 static std::string things_token;
 static std::mutex things_telemetry_mutex;
 static std::map<std::string, things_telemetry_generator_t>
@@ -675,7 +668,7 @@ static void things_task(void *arg) {
         std::make_shared<RadioThingsBoard>(mqtt_client, MAX_MESSAGE_SIZE);
     tb = conn;
 
-    bool success = conn->connect(THINGSBOARD_SERVER, things_token.c_str(),
+    bool success = conn->connect(things_hostname.c_str(), things_token.c_str(),
                                  THINGSBOARD_PORT);
     if (!success) {
       ESP_LOGE(RADIO_TAG,
@@ -848,16 +841,31 @@ esp_err_t things_init() {
       ESP_ERR_NO_MEM, RADIO_TAG, "Failed to create ThingsBoard task");
 
   size_t length;
+  err = nvs_get_str(things_nvs_handle, THINGS_NVS_HOSTNAME_KEY, NULL, &length);
+  if (err == ESP_OK) {
+    things_hostname.resize(length);
+    err = nvs_get_str(things_nvs_handle, THINGS_NVS_HOSTNAME_KEY,
+                      things_hostname.data(), &length);
+    ESP_RETURN_ON_ERROR(err, RADIO_TAG,
+                        "Failed to get ThingsBoard hostname: %d", err);
+  } else if (err != ESP_ERR_NVS_NOT_FOUND) {
+    ESP_LOGE(RADIO_TAG, "Failed to check ThingsBoard hostname: %d", err);
+    return err;
+  }
+
   err = nvs_get_str(things_nvs_handle, THINGS_NVS_TOKEN_KEY, NULL, &length);
   if (err == ESP_OK) {
     things_token.resize(length);
     err = nvs_get_str(things_nvs_handle, THINGS_NVS_TOKEN_KEY,
                       things_token.data(), &length);
     ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to get device token: %d", err);
-    xEventGroupSetBits(radio_event_group, RADIO_EVENT_GROUP_THINGS_PROVISIONED);
   } else if (err != ESP_ERR_NVS_NOT_FOUND) {
     ESP_LOGE(RADIO_TAG, "Failed to check device token: %d", err);
     return err;
+  }
+
+  if (!things_hostname.empty() && !things_token.empty()) {
+    xEventGroupSetBits(radio_event_group, RADIO_EVENT_GROUP_THINGS_PROVISIONED);
   }
 
   things_register_telemetry_generator(things_telemetry_generator, "things",
@@ -866,12 +874,18 @@ esp_err_t things_init() {
   return ESP_OK;
 }
 
-esp_err_t things_provision(const char *token) {
+esp_err_t things_provision(const char *hostname, const char *token) {
   if (things_nvs_handle == 0) {
     return ESP_ERR_INVALID_STATE;
   }
 
-  esp_err_t err = nvs_set_str(things_nvs_handle, THINGS_NVS_TOKEN_KEY, token);
+  esp_err_t err =
+      nvs_set_str(things_nvs_handle, THINGS_NVS_HOSTNAME_KEY, hostname);
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to set ThingsBoard hostname: %d",
+                      err);
+  things_hostname = hostname;
+
+  err = nvs_set_str(things_nvs_handle, THINGS_NVS_TOKEN_KEY, token);
   ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to set device token: %d", err);
   things_token = token;
   xEventGroupSetBits(radio_event_group, RADIO_EVENT_GROUP_THINGS_PROVISIONED);

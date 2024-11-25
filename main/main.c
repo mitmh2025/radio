@@ -198,9 +198,9 @@ void app_main(void) {
     snprintf(macstr, sizeof(macstr), MACSTR, MAC2STR(mac));
 
     ESP_LOGE(RADIO_TAG,
-             "Device not provisioned. Provision at https://%s/entities/devices "
-             "with MAC address %s and use `provision` console command to store",
-             RADIO_THINGSBOARD_SERVER, macstr);
+             "Device not provisioned. Provision with MAC address %s and use "
+             "`provision` console command to store",
+             macstr);
   }
 
 #ifdef RADIO_GIANT_SWITCH

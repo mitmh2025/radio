@@ -147,6 +147,7 @@ static int timers_func(int argc, char **argv) {
 }
 
 static struct {
+  struct arg_str *hostname;
   struct arg_str *token;
   struct arg_end *end;
 } provision_args;
@@ -159,12 +160,13 @@ static int provision_func(int argc, char **argv) {
     return 1;
   }
 
-  if (provision_args.token->count == 0) {
+  if (provision_args.hostname->count == 0 || provision_args.token->count == 0) {
     arg_print_syntax(stderr, (void **)&provision_args, argv[0]);
     return 1;
   }
 
-  esp_err_t err = things_provision(provision_args.token->sval[0]);
+  esp_err_t err = things_provision(provision_args.hostname->sval[0],
+                                   provision_args.token->sval[0]);
   if (err != ESP_OK) {
     printf("Failed to provision device: %d\n", err);
     return 1;
@@ -771,6 +773,8 @@ esp_err_t console_init() {
   ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register timer command: %d",
                       err);
 
+  provision_args.hostname =
+      arg_str1(NULL, NULL, "<hostname>", "ThingsBoard hostname");
   provision_args.token =
       arg_str1(NULL, NULL, "<token>", "ThingsBoard device token");
   provision_args.end = arg_end(1);

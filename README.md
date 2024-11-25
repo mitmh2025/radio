@@ -42,7 +42,7 @@ update --init --recursive` to fetch all dependencies.
 Copy the `config.template.h` file to `config.h`. Set `RADIO_WIFI_SSID` and
 `RADIO_WIFI_PASSWORD` as appropriate for your local network. (Note: the ESP32-S3
 can not connect to 5GHz networks and our firmware can not navigate any captive
-portals). `RADIO_THINGSBOARD_SERVER` should be set to `"things.mitmh2025.com"`
+portals).
 
 Finally, run `idf.py build` to generate the firmware.
 
@@ -80,7 +80,7 @@ is enumerated here as well for convenience:
 * ThingsBoard provisioning: Go to the [ThingsBoard devices page][] and add a new
   device. Use the MAC address as the device name and set Device profile to
   "radio". Copy the "Access token" from the credentials page, then use the
-  `provision` command in the radio serial console to store the access token.
+  `provision` command in the radio serial console to store the access token. (It takes two arguments: the ThingsBoard hostname and the access token.)
 * WHEP (WebRTC) URL: In ThingsBoard, open the device, go to Attributes, choose
   Shared Attributes, and create a key called `whep_url`. You can use
   `https://radio.mitmh2025.com/music/whep` as the value for testing.
@@ -89,4 +89,4 @@ is enumerated here as well for convenience:
 [ESP-ADF]: https://docs.espressif.com/projects/esp-adf/en/latest/
 [ESP-IDF install]: https://docs.espressif.com/projects/esp-idf/en/v5.3.1/esp32/get-started/linux-macos-setup.html
 [ESP-IDF monitor]: https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-guides/tools/idf-monitor.html
-[ThingsBoard devices page]: https://things.mitmh2025.com/entities/devices
+[ThingsBoard devices page]: https://things.staging.mitmh2025.com/entities/devices
