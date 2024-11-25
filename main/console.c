@@ -36,6 +36,8 @@ static void console_task(void *arg) {
 
   const char *prompt = LOG_COLOR_I "radio> " LOG_RESET_COLOR;
   while (true) {
+    linenoiseSetDumbMode(linenoiseProbe() < 0);
+
     char *line = linenoise(prompt);
     if (line == NULL) {
       continue;
@@ -658,10 +660,6 @@ static int pi_reset_play_time(int argc, char **argv) {
 }
 
 esp_err_t console_init() {
-  // Block on stdin and stdout
-  fcntl(fileno(stdout), F_SETFL, 0);
-  fcntl(fileno(stdin), F_SETFL, 0);
-
   usb_serial_jtag_driver_config_t usb_serial_jtag_config =
       USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
   esp_err_t err = usb_serial_jtag_driver_install(&usb_serial_jtag_config);
@@ -669,6 +667,10 @@ esp_err_t console_init() {
                       "Failed to install USB serial JTAG driver: %d", err);
 
   usb_serial_jtag_vfs_use_driver();
+
+  // Block on stdin and stdout
+  fcntl(fileno(stdout), F_SETFL, 0);
+  fcntl(fileno(stdin), F_SETFL, 0);
 
   esp_console_config_t cfg = ESP_CONSOLE_CONFIG_DEFAULT();
   cfg.hint_color = atoi(LOG_COLOR_CYAN);
