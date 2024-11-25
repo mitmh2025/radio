@@ -84,7 +84,8 @@ esp_err_t calibration_calibrate(radio_calibration_t *calibration) {
                       "Calibration is NULL");
 
   bool debounce_registered = false, volume_registered = false,
-       frequency_registered = false, touch_registered = false;
+       frequency_registered = false, touch_registered = false,
+       light_registered = false;
   tone_generator_t tone = NULL;
   nvs_handle_t handle;
   ESP_RETURN_ON_ERROR(
@@ -248,6 +249,7 @@ esp_err_t calibration_calibrate(radio_calibration_t *calibration) {
       led_set_pixel(1, 255, 0, 0);
     }
   }
+  led_set_pixel(1, 0, 0, 0);
 
   ESP_LOGW(RADIO_TAG, "Set the frequency dial to 108MHz and press the circle "
                       "button");
@@ -263,7 +265,7 @@ esp_err_t calibration_calibrate(radio_calibration_t *calibration) {
 
   ESP_GOTO_ON_ERROR(tas2505_set_output(TAS2505_OUTPUT_SPEAKER), cleanup,
                     RADIO_TAG, "Failed to set TAS2505 output to speaker");
-  ESP_GOTO_ON_ERROR(tas2505_set_volume(255), cleanup, RADIO_TAG,
+  ESP_GOTO_ON_ERROR(tas2505_set_volume(127), cleanup, RADIO_TAG,
                     "Failed to set TAS2505 volume");
   ESP_GOTO_ON_ERROR(tone_generator_init(
                         &(tone_generator_config_t){
@@ -337,6 +339,51 @@ esp_err_t calibration_calibrate(radio_calibration_t *calibration) {
                          portMAX_DELAY);
   debounce_handler_remove(TOGGLE_PIN);
 
+  ESP_GOTO_ON_ERROR(debounce_handler_add(
+                        BUTTON_CIRCLE_PIN, GPIO_INTR_NEGEDGE, button_callback,
+                        xTaskGetCurrentTaskHandle(), pdMS_TO_TICKS(10)),
+                    cleanup, RADIO_TAG, "Failed to add debounce handler");
+  debounce_registered = true;
+
+  ESP_LOGW(RADIO_TAG, "Ensure that status LED gets brighter in response to "
+                      "light sensor, then press the circle button");
+  adc_value = UINT32_MAX;
+  ESP_GOTO_ON_ERROR(adc_subscribe(
+                        &(adc_digi_pattern_config_t){
+                            .atten = ADC_ATTEN_DB_12,
+                            .channel = LIGHT_ADC_CHANNEL,
+                            .unit = ADC_UNIT_1,
+                            .bit_width = 12,
+                        },
+                        adc_callback, xTaskGetCurrentTaskHandle()),
+                    cleanup, RADIO_TAG, "Failed to subscribe to light ADC");
+  light_registered = true;
+  uint32_t light_baseline;
+  xTaskNotifyWaitIndexed(ADC_NOTIFY_INDEX, ULONG_MAX, ULONG_MAX,
+                         &light_baseline, portMAX_DELAY);
+  xTaskNotifyStateClearIndexed(NULL, BUTTON_NOTIFY_INDEX);
+  while (xTaskNotifyWaitIndexed(BUTTON_NOTIFY_INDEX, 0, ULONG_MAX, NULL, 0) ==
+         pdFALSE) {
+    uint32_t light_value;
+    xTaskNotifyWaitIndexed(ADC_NOTIFY_INDEX, ULONG_MAX, ULONG_MAX, &light_value,
+                           portMAX_DELAY);
+    int32_t light_diff = light_baseline - light_value;
+    if (light_diff < 0) {
+      light_diff = 0;
+    }
+    if (light_diff > 1024) {
+      light_diff = 1024;
+    }
+    led_set_pixel(1, 0, light_diff >> 2, 0);
+  }
+  led_set_pixel(1, 0, 0, 0);
+  ESP_GOTO_ON_ERROR(adc_unsubscribe(LIGHT_ADC_CHANNEL), cleanup, RADIO_TAG,
+                    "Failed to unsubscribe from light ADC");
+  light_registered = false;
+  ESP_GOTO_ON_ERROR(debounce_handler_remove(BUTTON_CIRCLE_PIN), cleanup,
+                    RADIO_TAG, "Failed to remove debounce handler");
+  debounce_registered = false;
+
   ESP_LOGW(RADIO_TAG, "Hold magnet to the ground symbol");
   while (true) {
     int16_t x, y, z;
@@ -352,7 +399,7 @@ esp_err_t calibration_calibrate(radio_calibration_t *calibration) {
   vTaskDelay(pdMS_TO_TICKS(1000));
   led_set_pixel(1, 0, 0, 0);
 
-  // TODO: verify accelerometer, light
+  // TODO: verify accelerometer
 
   // Finally write calibration to NVS
   ESP_GOTO_ON_ERROR(nvs_set_u32(handle, "vol_min", calibration->volume_min),
@@ -381,6 +428,10 @@ cleanup:
 
   if (debounce_registered) {
     debounce_handler_remove(BUTTON_CIRCLE_PIN);
+  }
+
+  if (light_registered) {
+    adc_unsubscribe(LIGHT_ADC_CHANNEL);
   }
 
   if (volume_registered) {
