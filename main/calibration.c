@@ -79,6 +79,11 @@ static void IRAM_ATTR touch_callback(void *user_data) {
   vTaskNotifyGiveIndexedFromISR(task, BUTTON_NOTIFY_INDEX, NULL);
 }
 
+static void accelerometer_callback(accelerometer_pulse_axis_t axis, void *arg) {
+  TaskHandle_t task = (TaskHandle_t)arg;
+  xTaskNotifyGiveIndexed(task, BUTTON_NOTIFY_INDEX);
+}
+
 esp_err_t calibration_calibrate(radio_calibration_t *calibration) {
   ESP_RETURN_ON_FALSE(calibration != NULL, ESP_ERR_INVALID_ARG, RADIO_TAG,
                       "Calibration is NULL");
@@ -399,7 +404,22 @@ esp_err_t calibration_calibrate(radio_calibration_t *calibration) {
   vTaskDelay(pdMS_TO_TICKS(1000));
   led_set_pixel(1, 0, 0, 0);
 
-  // TODO: verify accelerometer
+  ESP_LOGW(RADIO_TAG, "Knock on the radio");
+  accelerometer_pulse_cfg_t pulse_cfg = {
+      .threshold_x = 34,
+      .threshold_y = 34,
+      .threshold_z = 34,
+      .timelimit = 6,
+      .latency = 1,
+  };
+  ESP_GOTO_ON_ERROR(accelerometer_subscribe_pulse(&pulse_cfg,
+                                                  accelerometer_callback,
+                                                  xTaskGetCurrentTaskHandle()),
+                    cleanup, RADIO_TAG, "Failed to subscribe to accelerometer");
+  xTaskNotifyWaitIndexed(BUTTON_NOTIFY_INDEX, ULONG_MAX, ULONG_MAX, NULL,
+                         portMAX_DELAY);
+  ESP_GOTO_ON_ERROR(accelerometer_unsubscribe_pulse(), cleanup, RADIO_TAG,
+                    "Failed to unsubscribe from accelerometer");
 
   // Finally write calibration to NVS
   ESP_GOTO_ON_ERROR(nvs_set_u32(handle, "vol_min", calibration->volume_min),
