@@ -43,6 +43,7 @@ static esp_timer_handle_t idle_timer = NULL;
 static esp_timer_handle_t play_flush_timer = NULL;
 
 static frequency_handle_t freq_handle;
+static bool frequency_enabled = false;
 static bool entuned = false;
 static bool instrument_enabled = true;
 
@@ -224,6 +225,7 @@ static const float note_sequence_4[] = {
 };
 
 static void telemetry_generator() {
+  things_send_telemetry_bool("pi_enabled", frequency_enabled);
   things_send_telemetry_int("pi_stage", current_stage);
   things_send_telemetry_int("pi_total_play_time",
                             total_play_time / (1000 * 1000));
@@ -1044,6 +1046,7 @@ esp_err_t station_pi_init() {
   if (ret != ESP_ERR_NVS_NOT_FOUND) {
     ESP_RETURN_ON_ERROR(ret, RADIO_TAG, "Failed to get enabled from NVS");
   }
+  frequency_enabled = enabled != 0;
 
   ret = nvs_get_u8(pi_nvs_handle, "stage", &current_stage);
   if (ret != ESP_ERR_NVS_NOT_FOUND) {
@@ -1052,7 +1055,7 @@ esp_err_t station_pi_init() {
 
   frequency_config_t config = {
       .frequency = M_PI,
-      .enabled = enabled != 0,
+      .enabled = frequency_enabled,
       .entune = entune,
       .detune = detune,
   };
@@ -1064,11 +1067,14 @@ esp_err_t station_pi_init() {
 }
 
 esp_err_t station_pi_enable() {
+  frequency_enabled = true;
   ESP_RETURN_ON_ERROR(nvs_set_u8(pi_nvs_handle, "enabled", 1), RADIO_TAG,
                       "Failed to set enabled in NVS");
 
   ESP_RETURN_ON_ERROR(tuner_enable_pm_frequency(freq_handle), RADIO_TAG,
                       "Failed to enable pi frequency");
+
+  force_telemetry();
 
   return ESP_OK;
 }
