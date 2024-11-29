@@ -56,6 +56,7 @@ static playback_handle_t playback = NULL;
 
 uint8_t previous_shift_state = 0;
 uint8_t shift_state = 0;
+bool last_headphone_state = false;
 int64_t last_headphone_change = 0;
 float pitch_bend = 1.0f;
 
@@ -677,7 +678,6 @@ static void station_pi_task(void *ctx) {
       }
     }
 
-    bool old_gpio = !(shift_state & SHIFT_HEADPHONE);
     bool gpio;
     esp_err_t err = tas2505_read_gpio(&gpio);
     if (err != ESP_OK) {
@@ -686,7 +686,8 @@ static void station_pi_task(void *ctx) {
       gpio = true;
     }
 
-    if (old_gpio != gpio) {
+    if (last_headphone_state != gpio) {
+      last_headphone_state = gpio;
       last_headphone_change = esp_timer_get_time();
     }
     if (gpio || current_stage < 2) {
