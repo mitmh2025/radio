@@ -30,6 +30,12 @@ static_assert(strlen(RADIO_WIFI_PASSWORD) > 0,
               "populated)");
 #endif
 
+static bool already_scanned = false;
+
+static nvs_handle_t wifi_nvs = 0;
+static char *wifi_alt_ssid = NULL;
+static char *wifi_alt_password = NULL;
+
 static esp_netif_t *wifi_netif = NULL;
 
 static void wifi_clock_synced(struct timeval *tv) {
@@ -85,18 +91,98 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
                event->ssid_len, event->ssid, event->channel);
       break;
     }
-    case WIFI_EVENT_STA_DISCONNECTED:
+    case WIFI_EVENT_STA_DISCONNECTED: {
       xEventGroupClearBits(radio_event_group, RADIO_EVENT_GROUP_WIFI_CONNECTED);
       xEventGroupSetBits(radio_event_group,
                          RADIO_EVENT_GROUP_WIFI_DISCONNECTED);
-      // Try again
-      // TODO: handle error
-      esp_wifi_connect();
+
+      if (already_scanned) {
+        // TODO: handle failure
+        break;
+      }
+
+      // We couldn't connect to the network we wanted to connect to, so try
+      // scanning
+      ESP_LOGI(RADIO_TAG,
+               "Unabled to connect to previously configured network, scanning");
+      esp_wifi_scan_start(NULL, false);
+      already_scanned = true;
       break;
+    }
+
+    case WIFI_EVENT_SCAN_DONE: {
+      // TODO: look for either of the two networks we know about and try to
+      // connect if we can find one
+      int8_t strongest_rssi = INT8_MIN;
+      char strongest_ssid[33] = {0};
+      uint8_t strongest_channel = 0;
+
+      wifi_ap_record_t ap_info;
+      while (true) {
+        esp_err_t err = esp_wifi_scan_get_ap_record(&ap_info);
+        if (err == ESP_FAIL) {
+          break;
+        }
+        if (err != ESP_OK) {
+          ESP_LOGE(RADIO_TAG, "Failed to get AP record: %d", err);
+          break;
+        }
+
+        if (strcmp((const char *)ap_info.ssid, RADIO_WIFI_SSID) != 0 &&
+            (wifi_alt_ssid == NULL ||
+             strcmp((const char *)ap_info.ssid, wifi_alt_ssid) != 0)) {
+          continue;
+        }
+
+        if (ap_info.rssi > strongest_rssi) {
+          strongest_rssi = ap_info.rssi;
+          strncpy(strongest_ssid, (const char *)ap_info.ssid,
+                  sizeof(strongest_ssid));
+          strongest_channel = ap_info.primary;
+        }
+      }
+
+      if (strongest_rssi == INT8_MIN) {
+        // TODO: handle failure
+        ESP_LOGI(RADIO_TAG, "No known networks found");
+        break;
+      }
+
+      ESP_LOGI(RADIO_TAG,
+               "Strongest network is '%s' on channel %" PRIu8 " (RSSI %" PRId8
+               ")",
+               strongest_ssid, strongest_channel, strongest_rssi);
+
+      const char *password = NULL;
+      if (strcmp(strongest_ssid, RADIO_WIFI_SSID) == 0) {
+        password = RADIO_WIFI_PASSWORD;
+      } else {
+        password = wifi_alt_password;
+      }
+
+      wifi_config_t config = {};
+      strcpy((char *)config.sta.ssid, (const char *)strongest_ssid);
+      strcpy((char *)config.sta.password, password);
+      config.sta.channel = strongest_channel;
+      config.sta.ft_enabled = true;
+      esp_err_t err = esp_wifi_set_config(WIFI_IF_STA, &config);
+      if (err != ESP_OK) {
+        ESP_LOGE(RADIO_TAG, "Failed to set wifi config: %d", err);
+        break;
+      }
+      err = esp_wifi_connect();
+      if (err != ESP_OK) {
+        ESP_LOGE(RADIO_TAG, "Failed to connect to wifi: %d", err);
+      }
+
+      break;
+    }
     }
   } else if (event_base == IP_EVENT) {
     switch (event_id) {
     case IP_EVENT_STA_GOT_IP: {
+      already_scanned = false;
+
       ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
       ESP_LOGI(RADIO_TAG, "Got IP address ip=" IPSTR,
                IP2STR(&event->ip_info.ip));
@@ -124,21 +210,42 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
 esp_err_t wifi_init() {
   ESP_LOGD(RADIO_TAG, "Setting up wifi");
 
+  ESP_RETURN_ON_ERROR(nvs_open("radio:wifi", NVS_READWRITE, &wifi_nvs),
+                      RADIO_TAG, "Failed to open wifi NVS storage: %d",
+                      err_rc_);
+  size_t len;
+  esp_err_t err = nvs_get_str(wifi_nvs, "alt_ssid", NULL, &len);
+  if (err == ESP_OK) {
+    wifi_alt_ssid = calloc(1, len);
+    ESP_RETURN_ON_FALSE(wifi_alt_ssid, ESP_ERR_NO_MEM, RADIO_TAG,
+                        "Failed to allocate memory for alt_ssid");
+    err = nvs_get_str(wifi_nvs, "alt_ssid", wifi_alt_ssid, &len);
+    ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to get alt_ssid: %d", err);
+  } else if (err != ESP_ERR_NVS_NOT_FOUND) {
+    ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to get alt_ssid: %d", err);
+  }
+
+  err = nvs_get_str(wifi_nvs, "alt_password", NULL, &len);
+  if (err == ESP_OK) {
+    wifi_alt_password = calloc(1, len);
+    ESP_RETURN_ON_FALSE(wifi_alt_password, ESP_ERR_NO_MEM, RADIO_TAG,
+                        "Failed to allocate memory for alt_password");
+    err = nvs_get_str(wifi_nvs, "alt_password", wifi_alt_password, &len);
+    ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to get alt_password: %d", err);
+  } else if (err != ESP_ERR_NVS_NOT_FOUND) {
+    ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to get alt_password: %d", err);
+  }
+
   xEventGroupSetBits(radio_event_group, RADIO_EVENT_GROUP_WIFI_DISCONNECTED);
 
   wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-  esp_err_t err = esp_wifi_init(&cfg);
+  err = esp_wifi_init(&cfg);
   ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to initialize wifi: %d", err);
-
-  // TODO: reevaluate if this is what we actually want (or if, e.g., we only
-  // want it while streaming audio)
-  err = esp_wifi_set_ps(WIFI_PS_NONE);
-  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to set wifi power save mode: %d",
-                      err);
 
   err = esp_netif_init();
   ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to initialize netif: %d", err);
   wifi_netif = esp_netif_create_default_wifi_sta();
+  esp_netif_create_default_wifi_ap();
 
   err = esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID,
                                             &wifi_event_handler, NULL, NULL);
@@ -149,23 +256,6 @@ esp_err_t wifi_init() {
   ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register ip event handler: %d",
                       err);
 
-  wifi_config_t wifi_config = {
-      .sta =
-          {
-              .ssid = RADIO_WIFI_SSID,
-              .password = RADIO_WIFI_PASSWORD,
-              .ft_enabled = true,
-          },
-  };
-
-  // TODO: AP/captive portal mode, retries, etc.
-  err = esp_wifi_set_mode(WIFI_MODE_STA);
-  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to set wifi mode: %d", err);
-  err = esp_wifi_set_config(WIFI_IF_STA, &wifi_config);
-  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to set wifi config: %d", err);
-  err = esp_wifi_start();
-  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to start wifi: %d", err);
-
   // Setup NTP
   esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
   config.start = false;
@@ -173,12 +263,76 @@ esp_err_t wifi_init() {
   err = esp_netif_sntp_init(&config);
   ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to initialize SNTP: %d", err);
 
+  wifi_config_t wifi_config = {};
+  err = esp_wifi_get_config(WIFI_IF_STA, &wifi_config);
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to get wifi config: %d", err);
+
+  // Configuration (including last connected network) gets stored in NVS, so if
+  // we are able to read any config back, we have something we can try
+  // re-connecting to. If not, we'll seed the config with the default network
+  if (strlen((char *)wifi_config.sta.ssid) == 0) {
+    ESP_LOGI(RADIO_TAG, "Seeding initial wifi config");
+    // Wifi has not been configured previously, so populate defaults
+    strcpy((char *)wifi_config.sta.ssid, RADIO_WIFI_SSID);
+    strcpy((char *)wifi_config.sta.password, RADIO_WIFI_PASSWORD);
+    wifi_config.sta.ft_enabled = true;
+
+    err = esp_wifi_set_mode(WIFI_MODE_STA);
+    ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to set wifi mode: %d", err);
+    err = esp_wifi_set_config(WIFI_IF_STA, &wifi_config);
+    ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to set wifi config: %d", err);
+    // TODO: reevaluate if this is what we actually want (or if, e.g., we only
+    // want it while streaming audio)
+    err = esp_wifi_set_ps(WIFI_PS_NONE);
+    ESP_RETURN_ON_ERROR(err, RADIO_TAG,
+                        "Failed to set wifi power save mode: %d", err);
+  }
+
+  err = esp_wifi_start();
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to start wifi: %d", err);
+
   things_register_telemetry_generator(&wifi_report_telemetry, "wifi", NULL);
 
   return ESP_OK;
 }
 
-esp_err_t wifi_force_reconnect() {
-  // TODO: implement
-  return ESP_OK;
+esp_err_t wifi_force_reconnect() { return esp_wifi_disconnect(); }
+
+esp_err_t wifi_set_alt_network(const char *ssid, const char *password) {
+  ESP_RETURN_ON_FALSE(wifi_nvs != 0, ESP_ERR_INVALID_STATE, RADIO_TAG,
+                      "Wifi is not initialized");
+
+  ESP_RETURN_ON_FALSE(ssid != NULL || password == NULL, ESP_ERR_INVALID_ARG,
+                      RADIO_TAG, "Password cannot be set without SSID");
+
+  if (wifi_alt_ssid) {
+    free(wifi_alt_ssid);
+    wifi_alt_ssid = NULL;
+  }
+
+  if (wifi_alt_password) {
+    free(wifi_alt_password);
+    wifi_alt_password = NULL;
+  }
+
+  if (ssid) {
+    esp_err_t err = nvs_set_str(wifi_nvs, "alt_ssid", ssid);
+    ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to set alt_ssid: %d", err);
+    wifi_alt_ssid = strdup(ssid);
+  } else {
+    esp_err_t err = nvs_erase_key(wifi_nvs, "alt_ssid");
+    ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to erase alt_ssid: %d", err);
+  }
+
+  if (password) {
+    esp_err_t err = nvs_set_str(wifi_nvs, "alt_password", password);
+    ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to set alt_password: %d", err);
+    wifi_alt_password = strdup(password);
+  } else {
+    esp_err_t err = nvs_erase_key(wifi_nvs, "alt_password");
+    ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to erase alt_password: %d",
+                        err);
+  }
+
+  return wifi_force_reconnect();
 }

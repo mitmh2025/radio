@@ -8,6 +8,7 @@
 #include "station_pi.h"
 #include "storage.h"
 #include "things.h"
+#include "wifi.h"
 
 #include <fcntl.h>
 
@@ -661,6 +662,36 @@ static int pi_reset_play_time(int argc, char **argv) {
   return 0;
 }
 
+static struct {
+  struct arg_str *ssid;
+  struct arg_str *password;
+  struct arg_end *end;
+} wifi_set_alt_network_args;
+
+static int wifi_set_alt_network_cmd(int argc, char **argv) {
+  int nerrors = arg_parse(argc, argv, (void **)&wifi_set_alt_network_args);
+
+  if (nerrors != 0) {
+    arg_print_errors(stderr, wifi_set_alt_network_args.end, argv[0]);
+    return 1;
+  }
+
+  if (wifi_set_alt_network_args.ssid->count == 0) {
+    arg_print_syntax(stderr, (void **)&wifi_set_alt_network_args, argv[0]);
+    return 1;
+  }
+
+  esp_err_t err =
+      wifi_set_alt_network(wifi_set_alt_network_args.ssid->sval[0],
+                           wifi_set_alt_network_args.password->sval[0]);
+  if (err != ESP_OK) {
+    printf("Failed to set alt network: %d\n", err);
+    return 1;
+  }
+
+  return 0;
+}
+
 esp_err_t console_init() {
   usb_serial_jtag_driver_config_t usb_serial_jtag_config =
       USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
@@ -912,6 +943,23 @@ esp_err_t console_init() {
   err = esp_console_cmd_register(&cmd_pi_reset_play_time);
   ESP_RETURN_ON_ERROR(err, RADIO_TAG,
                       "Failed to register pi-reset-play-time command: %d", err);
+
+  wifi_set_alt_network_args.ssid =
+      arg_str1(NULL, NULL, "<ssid>", "SSID of the network");
+  wifi_set_alt_network_args.password =
+      arg_str0(NULL, NULL, "<password>", "Password of the network");
+  wifi_set_alt_network_args.end = arg_end(2);
+  esp_console_cmd_t cmd_wifi_set_alt_network = {
+      .command = "wifi-set-alt-network",
+      .help = "Set an alternate network for the device to connect to",
+      .hint = NULL,
+      .func = &wifi_set_alt_network_cmd,
+      .argtable = &wifi_set_alt_network_args,
+  };
+  err = esp_console_cmd_register(&cmd_wifi_set_alt_network);
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG,
+                      "Failed to register wifi-set-alt-network command: %d",
+                      err);
 
   ESP_RETURN_ON_FALSE(
       pdPASS == xTaskCreate(console_task, "console", 4096, NULL, 21, NULL),
