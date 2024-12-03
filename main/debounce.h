@@ -3,7 +3,7 @@
 #include "driver/gpio.h"
 #include "esp_err.h"
 
-#include "FreeRTOS/FreeRTOS.h"
+#include "freertos/FreeRTOS.h"
 
 #ifdef __cplusplus
 extern "C" {

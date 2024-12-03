@@ -13,3 +13,4 @@ idf_component_register(
 )
 
 target_compile_definitions(${COMPONENT_LIB} PRIVATE -DOP_DISABLE_FLOAT_API -DOP_FIXED_POINT)
+target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-error=maybe-uninitialized)
