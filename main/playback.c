@@ -61,6 +61,7 @@ esp_err_t playback_file(const playback_cfg_t *cfg,
 
   file_stream_cfg_t file_cfg = FILE_STREAM_CFG_DEFAULT();
   file_cfg.fd = handle->fd;
+  file_cfg.task_prio = 9;
   audio_element_handle_t file_stream = file_stream_init(&file_cfg);
   ESP_GOTO_ON_FALSE(file_stream, ESP_FAIL, cleanup, RADIO_TAG,
                     "Failed to create file stream");
@@ -72,6 +73,7 @@ esp_err_t playback_file(const playback_cfg_t *cfg,
   if (ext != NULL && strcasecmp(ext, ".opus") == 0) {
     opus_decoder_cfg_t opus_cfg = DEFAULT_OPUS_DECODER_CONFIG();
     opus_cfg.task_core = 0;
+    opus_cfg.task_prio = 10;
     handle->decoder = decoder_opus_init(&opus_cfg);
     ESP_GOTO_ON_FALSE(handle->decoder, ESP_FAIL, cleanup, RADIO_TAG,
                       "Failed to create Opus decoder");

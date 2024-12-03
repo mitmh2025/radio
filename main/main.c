@@ -47,7 +47,7 @@ const char *RADIO_TAG = "radio";
 
 EventGroupHandle_t radio_event_group;
 
-#ifdef RADIO_GIANT_SWITCH
+#ifdef CONFIG_RADIO_GIANT_SWITCH
 
 static SemaphoreHandle_t giant_switch_file_mutex = NULL;
 static TaskHandle_t giant_switch_task = NULL;
@@ -72,7 +72,7 @@ static void giant_switch_main() {
   giant_switch_file_mutex = xSemaphoreCreateMutex();
   giant_switch_task = xTaskGetCurrentTaskHandle();
 
-  ESP_ERROR_CHECK_WITHOUT_ABORT(tas2505_set_volume(127));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(tas2505_set_volume(255));
   ESP_ERROR_CHECK_WITHOUT_ABORT(tas2505_set_output(TAS2505_OUTPUT_HEADPHONE));
 
   ESP_ERROR_CHECK_WITHOUT_ABORT(
@@ -109,7 +109,7 @@ static void giant_switch_main() {
   }
 }
 
-#else // RADIO_GIANT_SWITCH
+#else // CONFIG_RADIO_GIANT_SWITCH
 
 static void radio_main() {
   radio_calibration_t calibration;
@@ -177,7 +177,7 @@ void app_main(void) {
   ESP_ERROR_CHECK(mixer_init());
   ESP_ERROR_CHECK(console_init());
 
-#ifndef RADIO_GIANT_SWITCH
+#ifndef CONFIG_RADIO_GIANT_SWITCH
   ESP_ERROR_CHECK(fm_init());
   ESP_ERROR_CHECK(accelerometer_init());
   ESP_ERROR_CHECK(magnet_init());
@@ -205,7 +205,7 @@ void app_main(void) {
              macstr);
   }
 
-#ifdef RADIO_GIANT_SWITCH
+#ifdef CONFIG_RADIO_GIANT_SWITCH
   giant_switch_main();
 #else
   radio_main();

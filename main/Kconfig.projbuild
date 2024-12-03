@@ -1,0 +1,5 @@
+menu "Hunt"
+config RADIO_GIANT_SWITCH
+    bool "Enable giant-switch"
+    default 0
+endmenu
