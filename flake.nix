@@ -2,11 +2,19 @@
   description = "Hunt 2025 Radio";
 
   inputs.flake-utils.url = "github:numtide/flake-utils";
-  inputs.nixpkgs-esp-dev.url = "github:mirrexagon/nixpkgs-esp-dev";
+  inputs.nixpkgs-esp-dev.url = "github:quentinmit/nixpkgs-esp-dev/tools";
 
   outputs = { self, nixpkgs, flake-utils, nixpkgs-esp-dev }: let
     overlay = (final: prev: {
       radio-esp-idf = (prev.esp-idf-esp32s3.override {
+        toolsToInclude = [
+          "xtensa-esp-elf-gdb"
+          "xtensa-esp-elf"
+          "esp-clang"
+          "esp32ulp-elf"
+          "openocd-esp32"
+          "esp-rom-elfs"
+        ];
         pkg-config = final.pkg-config-unwrapped;
       }).overrideAttrs (old: {
         patches = (old.patches or []) ++ [
