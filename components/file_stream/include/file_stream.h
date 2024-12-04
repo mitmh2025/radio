@@ -6,11 +6,11 @@
 extern "C" {
 #endif
 
-#define FILE_STREAM_BUF_SIZE (4096 * 16)
+#define FILE_STREAM_BUF_SIZE (4096)
 #define FILE_STREAM_TASK_STACK (8192)
 #define FILE_STREAM_TASK_CORE (0)
 #define FILE_STREAM_TASK_PRIO (4)
-#define FILE_STREAM_RINGBUFFER_SIZE (8 * 1024)
+#define FILE_STREAM_RINGBUFFER_SIZE (32 * 1024)
 
 typedef struct {
   int fd;          /*!< File descriptor */
