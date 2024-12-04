@@ -1,0 +1,161 @@
+:root {
+  --true-white: #fff;
+  --gray-000: #f8f8f6;
+  --gray-100: #edede6;
+  --gray-200: #c7c7bb;
+  --gray-300: #b4b4a7;
+  --gray-400: #98988e;
+  --gray-700: #575652;
+  --gray-900: #1b1a18;
+  --black: var(--gray-900);
+  --gold-400: #d9c066;
+  --gold-500: #e1be41;
+  --gold-700: #a08730;
+}
+
+* {
+  box-sizing: border-box
+}
+
+html {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0
+}
+
+body {
+  background-color: var(--gray-000);
+  color: var(--black);
+  font-size: 16px;
+  line-height: 1.5;
+  font-family: Helvetica, Arial, sans-serif;
+  font-optical-sizing: auto;
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+  font-style: normal;
+}
+
+#root {
+  flex-direction: column;
+  display: flex
+}
+
+h1 {
+  color: #000;
+  font-size: 2rem;
+  font-weight: 400;
+  text-align: center;
+  padding: 1.51rem 0;
+  margin: 1rem 0 0
+}
+
+.sparkle {
+  font-size: 7rem;
+}
+
+a {
+  color: var(#396a64)
+}
+
+a:hover {
+  color: #5a8a85
+}
+
+.container {
+  width: 532px;
+  max-width: 100%;
+  margin: 0 auto
+}
+
+.header-container {
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  display: flex
+}
+
+.header-text {
+  padding: 0 1rem
+}
+
+.hidden {
+  display: none
+}
+
+main {
+  flex: auto;
+  padding: 1rem
+}
+
+.label-row {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center
+}
+
+.error {
+  color: #ab371d;
+}
+
+button {
+  background-color: var(--gold-400);
+  border: 1px solid var(--black);
+  box-shadow: 0 0 0 1px var(--gold-400), 0px 1px 3px hsl(from var(--black)h s l/.3);
+  color: var(--black);
+  font-size: 1rem;
+  cursor: pointer;
+  border-radius: .5em;
+  margin: 4px;
+  padding: .5em;
+  display: inline-block
+}
+
+button:hover {
+  background-color: var(--gold-500);
+  box-shadow: 0 0 0 1px var(--gold-500), 0px 2px 8px hsl(from var(--black)h s l/.5);
+  color: #000
+}
+
+button:focus-visible {
+  box-shadow: 0 0 0 .25rem var(--black)
+}
+
+button:disabled {
+  background-color: var(--gray-100);
+  box-shadow: 0 0 0 1px var(--gray-300);
+  border-color: var(--gray-400);
+  color: var(--gray-300);
+  cursor: not-allowed
+}
+
+input[type=text],
+input[type=password],
+select {
+  border-radius: 0.5rem;
+  border: 1px solid var(--black);
+  box-shadow: 0 0 0 2px var(--gold-700);
+  padding: 0.5rem;
+  color: var(--black);
+  font-size: 1rem;
+  margin: 0.5rem;
+  background: var(--gray-000);
+  width: calc(100% - 1rem);
+}
+
+input[type=text]:focus,
+input[type=password]:focus,
+select:focus {
+  box-shadow: 0 0 0 0.25rem var(--black);
+}
+
+input:readonly {
+  background-color: var(--gray-200);
+  cursor: not-allowed
+}
+
+:focus-visible {
+  outline: .25rem double var(--gold-500)
+}

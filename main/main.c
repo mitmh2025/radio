@@ -8,6 +8,7 @@
 #include "bluetooth.h"
 #include "board.h"
 #include "calibration.h"
+#include "captive_http_server.h"
 #include "console.h"
 #include "debounce.h"
 #include "file_cache.h"
@@ -19,6 +20,7 @@
 #include "station_2pi.h"
 #include "station_pi.h"
 #include "station_pi_activation.h"
+#include "station_wifi.h"
 #include "storage.h"
 #include "tas2505.h"
 #include "things.h"
@@ -119,6 +121,7 @@ static void radio_main() {
   }
   ESP_ERROR_CHECK(err);
 
+  ESP_ERROR_CHECK_WITHOUT_ABORT(captive_http_server_init());
   ESP_ERROR_CHECK_WITHOUT_ABORT(audio_volume_init(&calibration));
   ESP_ERROR_CHECK_WITHOUT_ABORT(audio_output_init());
   ESP_ERROR_CHECK_WITHOUT_ABORT(webrtc_init());
@@ -127,6 +130,7 @@ static void radio_main() {
   ESP_ERROR_CHECK_WITHOUT_ABORT(station_pi_activation_init());
   ESP_ERROR_CHECK_WITHOUT_ABORT(station_pi_init());
   ESP_ERROR_CHECK_WITHOUT_ABORT(station_2pi_init());
+  ESP_ERROR_CHECK_WITHOUT_ABORT(station_wifi_init());
   ESP_ERROR_CHECK_WITHOUT_ABORT(tuner_init(&calibration));
 
   // Prevent the main task from exiting because we have stack-allocated

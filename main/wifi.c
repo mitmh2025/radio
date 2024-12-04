@@ -1,5 +1,7 @@
 #include "wifi.h"
 #include "../config.h"
+#include "captive_dns_server.h"
+#include "captive_http_server.h"
 #include "main.h"
 #include "things.h"
 
@@ -31,12 +33,14 @@ static_assert(strlen(RADIO_WIFI_PASSWORD) > 0,
 #endif
 
 static bool already_scanned = false;
+static bool ignore_scan_results = false;
+
+static SemaphoreHandle_t test_connection_mutex = NULL;
+static TaskHandle_t test_connection_task = NULL;
 
 static nvs_handle_t wifi_nvs = 0;
 static char *wifi_alt_ssid = NULL;
 static char *wifi_alt_password = NULL;
-
-static esp_netif_t *wifi_netif = NULL;
 
 static void wifi_clock_synced(struct timeval *tv) {
   // Format time as iso8601 string
@@ -65,9 +69,7 @@ static void wifi_report_telemetry() {
 }
 
 esp_err_t wifi_get_mac(uint8_t *mac) {
-  ESP_RETURN_ON_FALSE(wifi_netif != NULL, ESP_ERR_INVALID_STATE, RADIO_TAG,
-                      "Wifi is not initialized");
-  return esp_netif_get_mac(wifi_netif, mac);
+  return esp_read_mac(mac, ESP_MAC_WIFI_STA);
 }
 
 static void wifi_event_handler(void *arg, esp_event_base_t event_base,
@@ -89,6 +91,14 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
           (wifi_event_sta_connected_t *)event_data;
       ESP_LOGI(RADIO_TAG, "Wifi connected ssid='%.*s' channel=%u",
                event->ssid_len, event->ssid, event->channel);
+
+      xSemaphoreTake(test_connection_mutex, portMAX_DELAY);
+      if (test_connection_task) {
+        ESP_LOGI(RADIO_TAG, "Successfully made test connection to network");
+        xTaskNotify(test_connection_task, 1, eSetValueWithOverwrite);
+        test_connection_task = NULL;
+      }
+      xSemaphoreGive(test_connection_mutex);
       break;
     }
     case WIFI_EVENT_STA_DISCONNECTED: {
@@ -96,8 +106,24 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
       xEventGroupSetBits(radio_event_group,
                          RADIO_EVENT_GROUP_WIFI_DISCONNECTED);
 
+      bool skip_scan = false;
+
+      xSemaphoreTake(test_connection_mutex, portMAX_DELAY);
+      if (test_connection_task) {
+        ESP_LOGI(RADIO_TAG,
+                 "Disconnected from (or failed to connect to) network");
+        xTaskNotify(test_connection_task, 0, eSetValueWithOverwrite);
+        test_connection_task = NULL;
+        skip_scan = true;
+      }
+      xSemaphoreGive(test_connection_mutex);
+
       if (already_scanned) {
         // TODO: handle failure
+        skip_scan = true;
+      }
+
+      if (skip_scan) {
         break;
       }
 
@@ -111,8 +137,11 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
     }
 
     case WIFI_EVENT_SCAN_DONE: {
-      // TODO: look for either of the two networks we know about and try to
-      // connect if we can find one
+      if (ignore_scan_results) {
+        ignore_scan_results = false;
+        break;
+      }
+
       int8_t strongest_rssi = INT8_MIN;
       char strongest_ssid[33] = {0};
       uint8_t strongest_channel = 0;
@@ -177,6 +206,27 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
 
       break;
     }
+    case WIFI_EVENT_AP_START: {
+      // TODO: start HTTP server
+      ESP_LOGI(RADIO_TAG, "AP started");
+      ESP_ERROR_CHECK_WITHOUT_ABORT(captive_dns_server_start());
+      ESP_ERROR_CHECK_WITHOUT_ABORT(captive_http_server_start());
+      break;
+    }
+    case WIFI_EVENT_AP_STOP: {
+      // TODO: stop HTTP server
+      ESP_LOGI(RADIO_TAG, "AP stopped");
+      ESP_ERROR_CHECK_WITHOUT_ABORT(captive_http_server_stop());
+      ESP_ERROR_CHECK_WITHOUT_ABORT(captive_dns_server_stop());
+      break;
+    }
+    case WIFI_EVENT_AP_STACONNECTED: {
+      wifi_event_ap_staconnected_t *event =
+          (wifi_event_ap_staconnected_t *)event_data;
+      ESP_LOGD(RADIO_TAG, "Station connected to AP MAC=" MACSTR,
+               MAC2STR(event->mac));
+      break;
+    }
     }
   } else if (event_base == IP_EVENT) {
     switch (event_id) {
@@ -209,6 +259,10 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
 
 esp_err_t wifi_init() {
   ESP_LOGD(RADIO_TAG, "Setting up wifi");
+
+  test_connection_mutex = xSemaphoreCreateMutex();
+  ESP_RETURN_ON_FALSE(test_connection_mutex, ESP_ERR_NO_MEM, RADIO_TAG,
+                      "Failed to create test connection mutex");
 
   ESP_RETURN_ON_ERROR(nvs_open("radio:wifi", NVS_READWRITE, &wifi_nvs),
                       RADIO_TAG, "Failed to open wifi NVS storage: %d",
@@ -244,7 +298,7 @@ esp_err_t wifi_init() {
 
   err = esp_netif_init();
   ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to initialize netif: %d", err);
-  wifi_netif = esp_netif_create_default_wifi_sta();
+  esp_netif_create_default_wifi_sta();
   esp_netif_create_default_wifi_ap();
 
   err = esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID,
@@ -262,6 +316,9 @@ esp_err_t wifi_init() {
   config.sync_cb = wifi_clock_synced;
   err = esp_netif_sntp_init(&config);
   ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to initialize SNTP: %d", err);
+
+  err = esp_wifi_set_mode(WIFI_MODE_STA);
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to set wifi mode: %d", err);
 
   wifi_config_t wifi_config = {};
   err = esp_wifi_get_config(WIFI_IF_STA, &wifi_config);
@@ -296,7 +353,75 @@ esp_err_t wifi_init() {
   return ESP_OK;
 }
 
-esp_err_t wifi_force_reconnect() { return esp_wifi_disconnect(); }
+esp_err_t wifi_force_reconnect() {
+  already_scanned = false;
+  esp_wifi_disconnect();
+  return ESP_OK;
+}
+
+esp_err_t wifi_test_connection(const char *ssid, const char *password) {
+  ESP_RETURN_ON_FALSE(ssid != NULL, ESP_ERR_INVALID_ARG, RADIO_TAG,
+                      "SSID cannot be NULL");
+
+  bool locked = false;
+  esp_err_t ret = ESP_OK;
+
+  // First disconnect and wait for the notification that we've disconnected
+  xSemaphoreTake(test_connection_mutex, portMAX_DELAY);
+  locked = true;
+  ESP_GOTO_ON_FALSE(test_connection_task == NULL, ESP_ERR_INVALID_STATE,
+                    cleanup, RADIO_TAG, "Test connection already in progress");
+  test_connection_task = xTaskGetCurrentTaskHandle();
+  ESP_GOTO_ON_ERROR(esp_wifi_disconnect(), cleanup, RADIO_TAG,
+                    "Failed to disconnect from wifi: %d", err_rc_);
+
+  ulTaskNotifyValueClear(NULL, UINT32_MAX);
+  xSemaphoreGive(test_connection_mutex);
+  locked = false;
+
+  xTaskNotifyWait(0, UINT32_MAX, NULL, pdMS_TO_TICKS(5000));
+
+  // Then configure and attempt to connect to the network
+  xSemaphoreTake(test_connection_mutex, portMAX_DELAY);
+  locked = true;
+  test_connection_task = xTaskGetCurrentTaskHandle();
+  wifi_config_t config = {.sta = {
+                              .ft_enabled = true,
+                          }};
+  strncpy((char *)config.sta.ssid, ssid, sizeof(config.sta.ssid) - 1);
+  if (password) {
+    strncpy((char *)config.sta.password, password,
+            sizeof(config.sta.password) - 1);
+  }
+  ESP_GOTO_ON_ERROR(esp_wifi_set_config(WIFI_IF_STA, &config), cleanup,
+                    RADIO_TAG, "Failed to set wifi config: %d", err_rc_);
+
+  ESP_GOTO_ON_ERROR(esp_wifi_connect(), cleanup, RADIO_TAG,
+                    "Failed to connect to wifi: %d", err_rc_);
+
+  ulTaskNotifyValueClear(NULL, UINT32_MAX);
+  xSemaphoreGive(test_connection_mutex);
+  locked = false;
+
+  uint32_t notif = 0;
+  xTaskNotifyWait(0, UINT32_MAX, &notif, pdMS_TO_TICKS(30000));
+  ESP_GOTO_ON_FALSE(notif == 1, ESP_FAIL, cleanup, RADIO_TAG,
+                    "Failed or timed out connecting to network");
+
+cleanup:
+  if (!locked) {
+    xSemaphoreTake(test_connection_mutex, portMAX_DELAY);
+    locked = true;
+  }
+
+  if (test_connection_task == xTaskGetCurrentTaskHandle()) {
+    test_connection_task = NULL;
+  }
+
+  xSemaphoreGive(test_connection_mutex);
+
+  return ret;
+}
 
 esp_err_t wifi_set_alt_network(const char *ssid, const char *password) {
   ESP_RETURN_ON_FALSE(wifi_nvs != 0, ESP_ERR_INVALID_STATE, RADIO_TAG,
@@ -334,5 +459,67 @@ esp_err_t wifi_set_alt_network(const char *ssid, const char *password) {
                         err);
   }
 
-  return wifi_force_reconnect();
+  return ESP_OK;
+}
+
+const char *wifi_get_alt_ssid() { return wifi_alt_ssid; }
+
+esp_err_t wifi_force_scan() {
+  ignore_scan_results = true;
+  return esp_wifi_scan_start(NULL, true);
+}
+
+esp_err_t wifi_enable_ap() {
+  uint8_t wifi_mac[6];
+  esp_err_t err = esp_read_mac(wifi_mac, ESP_MAC_WIFI_STA);
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to read wifi mac: %d", err);
+
+  wifi_mode_t mode;
+  err = esp_wifi_get_mode(&mode);
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to get wifi mode: %d", err);
+  if (mode == WIFI_MODE_APSTA) {
+    return ESP_OK;
+  }
+
+  err = esp_wifi_stop();
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to stop wifi: %d", err);
+
+  err = esp_wifi_set_mode(WIFI_MODE_APSTA);
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to set wifi mode: %d", err);
+
+  wifi_config_t ap_config = {
+      .ap =
+          {
+              .max_connection = CONFIG_LWIP_DHCPS_MAX_STATION_NUM,
+          },
+  };
+  snprintf((char *)ap_config.ap.ssid, sizeof(ap_config.ap.ssid),
+           "two-pi-radio-%02x%02x%02x", wifi_mac[3], wifi_mac[4], wifi_mac[5]);
+  err = esp_wifi_set_config(WIFI_IF_AP, &ap_config);
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to set AP config: %d", err);
+
+  err = esp_wifi_start();
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to start wifi: %d", err);
+
+  return ESP_OK;
+}
+
+esp_err_t wifi_disable_ap() {
+  wifi_mode_t mode;
+  esp_err_t err = esp_wifi_get_mode(&mode);
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to get wifi mode: %d", err);
+  if (mode == WIFI_MODE_STA) {
+    return ESP_OK;
+  }
+
+  err = esp_wifi_stop();
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to stop wifi: %d", err);
+
+  err = esp_wifi_set_mode(WIFI_MODE_STA);
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to set wifi mode: %d", err);
+
+  err = esp_wifi_start();
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to start wifi: %d", err);
+
+  return ESP_OK;
 }

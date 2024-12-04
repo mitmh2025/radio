@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>Two Pi Radio Wifi Configuration</title>
+  <link rel="stylesheet" type="text/css" href="style.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+
+<body>
+  <div id="root">
+    <header>
+      <div class="container header-container">
+        <div class="sparkle">✨</div>
+        <div class="header-text">
+          <h1>Two Pi Radio Wifi Configuration</h1>
+        </div>
+        <div class="sparkle">✨</div>
+      </div>
+    </header>
+
+    <main>
+      <div class="container">
+        <p>
+          Your radio can connect to MIT's WiFi plus one additional network,
+          which can be configured here.
+        </p>
+        <p id="status-fetching">Fetching currently configured network...</p>
+        <p id="status-error" class="hidden error">Error fetching currently configured network.</p>
+        <p id="status-unconfigured" class="hidden">No secondary network currently configured.</p>
+        <p id="status-configured" class="hidden">Currently configured network: <span id="configured-ssid"></span></p>
+        <form id="form">
+          <div>
+            <div class="label-row">
+              <label for="ssid">SSID:</label> <button type="button" id="scan" disabled>↻ Rescan</button>
+            </div>
+            <select id="ssid" name="ssid" disabled>
+              <option>Scanning...</option>
+            </select>
+          </div>
+          <div id="psk-section" class="hidden">
+            <div class="label-row">
+              <label for="password">Password:</label>
+            </div>
+            <input type="text" id="password" name="password" required>
+          </div>
+          <div>
+            <button id="submit" type="submit">Save</button>
+          </div>
+          <div id="save-error" class="hidden error">Error saving network configuration.</div>
+          <div id="save-success" class="hidden">Network configuration saved. You can now tune to a different station and disconnect your device from the radio.</div>
+        </form>
+      </div>
+    </main>
+  </div>
+  <script type="text/javascript">
+    function disable() {
+      document.querySelectorAll('button, input, select').forEach(el => el.disabled = true);
+    }
+
+    function enable() {
+      document.querySelectorAll('button, input, select').forEach(el => el.disabled = false);
+    }
+
+    async function fetchSSID() {
+      document.querySelectorAll('#status-unconfigured, #status-configured').forEach(el => el.classList.add('hidden'));
+      document.getElementById('status-fetching').classList.remove('hidden');
+      disable();
+
+      try {
+        const response = await fetch('/api/status');
+        const data = await response.json();
+
+        document.getElementById('status-fetching').classList.add('hidden');
+
+        if (data.ssid) {
+          document.getElementById('status-configured').classList.remove('hidden');
+          document.getElementById('configured-ssid').textContent = new TextDecoder().decode(new Uint8Array(data.ssid));
+        } else {
+          document.getElementById('status-unconfigured').classList.remove('hidden');
+        }
+      } catch (error) {
+        document.getElementById('status-fetching').classList.add('hidden');
+        document.getElementById('status-error').classList.remove('hidden');
+        throw error;
+      } finally {
+        enable();
+      }
+    }
+
+    async function onSelect() {
+      const ssidSelect = document.getElementById('ssid');
+      const pskSection = document.getElementById('psk-section');
+      const passwordField = document.getElementById('password');
+      const selectedOption = ssidSelect.options[ssidSelect.selectedIndex];
+      if (selectedOption.dataset.security == 'open') {
+        pskSection.classList.add('hidden');
+        passwordField.removeAttribute('required');
+      } else {
+        pskSection.classList.remove('hidden');
+        passwordField.setAttribute('required', '');
+      }
+    }
+    document.getElementById('ssid').addEventListener('change', onSelect);
+
+    async function scan() {
+      const ssidSelect = document.getElementById('ssid');
+      ssidSelect.innerHTML = '<option>Scanning...</option>';
+      disable();
+
+      const savedSsid = document.getElementById('configured-ssid').textContent;
+
+      try {
+        const response = await fetch('/api/scan');
+        if (!response.ok) {
+          throw new Error('Failed to fetch networks');
+        }
+        const data = await response.json();
+
+        const seenNetworks = new Set();
+
+        ssidSelect.innerHTML = '';
+        for (const network of data.networks) {
+          const ssid = new TextDecoder().decode(new Uint8Array(network.ssid));
+          if (seenNetworks.has(ssid)) {
+            continue;
+          }
+          seenNetworks.add(ssid);
+          const option = document.createElement('option');
+          option.textContent = ssid;
+          option.dataset.security = network.security;
+          if (ssid == savedSsid) {
+            option.selected = true;
+          }
+          ssidSelect.appendChild(option);
+        }
+
+        ssidSelect.disabled = false;
+        onSelect();
+      } catch (error) {
+        ssidSelect.innerHTML = '<option>Error fetching networks</option>';
+        throw error;
+      } finally {
+        enable();
+      }
+    }
+    document.getElementById('scan').addEventListener('click', scan);
+
+    async function save() {
+      const saveError = document.getElementById('save-error');
+      saveError.classList.add('hidden');
+      document.getElementById('save-success').classList.add('hidden');
+
+      const form = new URLSearchParams(new FormData(document.getElementById('form')));
+      const submit = document.getElementById('submit');
+      submit.innerHTML = 'Saving...';
+
+      disable();
+
+      try {
+        const response = await fetch('/api/save', {
+          method: 'POST',
+          body: form,
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+        });
+        if (!response.ok) {
+          throw new Error('Failed to save network configuration');
+        }
+
+        document.getElementById('save-success').classList.remove('hidden');
+      } catch (error) {
+        saveError.classList.remove('hidden');
+        throw error;
+      } finally {
+        enable();
+        submit.innerHTML = 'Save';
+      }
+
+      await fetchSSID();
+    }
+    document.querySelector('form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      await save();
+    });
+
+    fetchSSID().finally(scan);
+  </script>
+</body>
+
+</html>

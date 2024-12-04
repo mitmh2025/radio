@@ -661,7 +661,7 @@ esp_err_t storage_init(void) {
       .write = block_write,
       .erase = block_erase,
       .sync = block_sync,
-      .read_size = 1,
+      .read_size = 4,
       .write_size = 1,
       .block_size = BLOCK_FLASH_ERASE_SIZE,
       .block_count = BLOCK_FLASH_BLOCK_COUNT * BLOCK_FLASH_COUNT,

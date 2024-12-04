@@ -689,6 +689,12 @@ static int wifi_set_alt_network_cmd(int argc, char **argv) {
     return 1;
   }
 
+  err = wifi_force_reconnect();
+  if (err != ESP_OK) {
+    printf("Failed to force reconnect: %d\n", err);
+    return 1;
+  }
+
   return 0;
 }
 
