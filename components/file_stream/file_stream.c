@@ -73,6 +73,9 @@ static int _file_read(audio_element_handle_t self, char *buffer, int len,
 
   ESP_LOGD(TAG, "read len=%d, pos=%d/%d", len, (int)info.byte_pos,
            (int)info.total_bytes);
+  ringbuf_handle_t rb = audio_element_get_output_ringbuf(self);
+  ESP_LOGD(TAG, "ringbuf status %d/%d", rb_bytes_filled(rb), rb_get_size(rb));
+
   int rlen = read(file->fd, buffer, len);
   if (rlen == 0) {
     ESP_LOGD(TAG, "No more data, ret:%d", rlen);
