@@ -189,6 +189,7 @@ static esp_err_t fetch_file(const char *url, const char *path, char **contents,
       .user_data = &data,
       .event_handler = event_handler,
       .disable_auto_redirect = true,
+      .buffer_size = 4096,
   };
   http_client = esp_http_client_init(&cfg);
   if (!http_client) {
