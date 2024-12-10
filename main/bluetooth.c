@@ -53,7 +53,11 @@ static esp_timer_handle_t beacon_cleanup_timer = NULL;
 static uint8_t mac[6] = {0};
 
 static void telemetry_generator() {
-  // TODO: implement
+  things_send_telemetry_string("bluetooth_mode", (const char *[]){
+                                                     "default",
+                                                     "disabled",
+                                                     "aggressive",
+                                                 }[mode]);
 
   // Generate a JSON string with all beacons that we can currently see in the
   // form:
