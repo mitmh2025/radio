@@ -86,7 +86,6 @@ static void dns_server_task(void *arg) {
   int s = (int)arg;
 
   while (true) {
-    // TODO: implement DNS server
     char packet[512] = {};
     struct sockaddr_in addr;
     socklen_t addr_len = sizeof(addr);

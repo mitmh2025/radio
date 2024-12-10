@@ -207,14 +207,12 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
       break;
     }
     case WIFI_EVENT_AP_START: {
-      // TODO: start HTTP server
       ESP_LOGI(RADIO_TAG, "AP started");
       ESP_ERROR_CHECK_WITHOUT_ABORT(captive_dns_server_start());
       ESP_ERROR_CHECK_WITHOUT_ABORT(captive_http_server_start());
       break;
     }
     case WIFI_EVENT_AP_STOP: {
-      // TODO: stop HTTP server
       ESP_LOGI(RADIO_TAG, "AP stopped");
       ESP_ERROR_CHECK_WITHOUT_ABORT(captive_http_server_stop());
       ESP_ERROR_CHECK_WITHOUT_ABORT(captive_dns_server_stop());
@@ -338,8 +336,6 @@ esp_err_t wifi_init() {
     ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to set wifi mode: %d", err);
     err = esp_wifi_set_config(WIFI_IF_STA, &wifi_config);
     ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to set wifi config: %d", err);
-    // TODO: reevaluate if this is what we actually want (or if, e.g., we only
-    // want it while streaming audio)
     err = esp_wifi_set_ps(WIFI_PS_NONE);
     ESP_RETURN_ON_ERROR(err, RADIO_TAG,
                         "Failed to set wifi power save mode: %d", err);
