@@ -336,6 +336,10 @@ esp_err_t wifi_init() {
     ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to set wifi mode: %d", err);
     err = esp_wifi_set_config(WIFI_IF_STA, &wifi_config);
     ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to set wifi config: %d", err);
+    // It's possible that we should be using power saving, at least in cases
+    // (like funaround mode) where we don't care as much about a reliable wifi
+    // connection, but in practice our battery life seems to be good enough that
+    // it's not worth it.
     err = esp_wifi_set_ps(WIFI_PS_NONE);
     ESP_RETURN_ON_ERROR(err, RADIO_TAG,
                         "Failed to set wifi power save mode: %d", err);
