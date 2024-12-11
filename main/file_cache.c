@@ -84,7 +84,18 @@ static void free_file_cache_manifest(file_cache_manifest *manifest) {
 }
 
 static void url_callback(const char *key, const things_attribute_t *attr) {
+  bool changed = false;
+
   xSemaphoreTake(manifest_url_mutex, portMAX_DELAY);
+  if (manifest_url == NULL && attr->type != THINGS_ATTRIBUTE_TYPE_STRING) {
+    goto cleanup;
+  }
+
+  if (manifest_url != NULL && attr->type == THINGS_ATTRIBUTE_TYPE_STRING &&
+      strcmp(manifest_url, attr->value.string) == 0) {
+    goto cleanup;
+  }
+
   if (manifest_url != NULL) {
     free(manifest_url);
     manifest_url = NULL;
@@ -94,8 +105,11 @@ static void url_callback(const char *key, const things_attribute_t *attr) {
     manifest_url = strdup(attr->value.string);
   }
 
+cleanup:
   xSemaphoreGive(manifest_url_mutex);
-  xTaskNotifyGive(task_handle);
+  if (changed) {
+    xTaskNotifyGive(task_handle);
+  }
 }
 
 struct http_data {
