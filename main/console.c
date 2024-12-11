@@ -100,7 +100,7 @@ static int heap_func(int argc, char **argv) {
 }
 
 static int trace_func(int argc, char **argv) {
-  esp_err_t ret = esp_backtrace_print_all_tasks(4);
+  esp_err_t ret = esp_backtrace_print_all_tasks(10);
   if (ret != ESP_OK) {
     printf("Failed to print backtrace: %d\n", ret);
   }
@@ -968,7 +968,7 @@ esp_err_t console_init() {
                       err);
 
   ESP_RETURN_ON_FALSE(
-      pdPASS == xTaskCreate(console_task, "console", 4096, NULL, 21, NULL),
+      pdPASS == xTaskCreate(console_task, "console", 6144, NULL, 21, NULL),
       ESP_FAIL, RADIO_TAG, "Failed to create console task");
 
   return ESP_OK;
