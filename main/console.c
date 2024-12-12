@@ -311,6 +311,16 @@ static int df_func(int argc, char **argv) {
   return 0;
 }
 
+static int gc_func(int argc, char **argv) {
+  esp_err_t ret = esp_littlefs_gc_mountpoint(STORAGE_MOUNTPOINT);
+  if (ret != ESP_OK) {
+    printf("Failed to run GC: %d\n", ret);
+    return 1;
+  }
+
+  return 0;
+}
+
 static int nvs_stats_func(int argc, char **argv) {
   nvs_stats_t stats;
   esp_err_t err = nvs_get_stats(NULL, &stats);
@@ -880,6 +890,14 @@ esp_err_t console_init() {
   };
   err = esp_console_cmd_register(&cmd_df);
   ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register df command: %d", err);
+
+  esp_console_cmd_t cmd_gc = {
+      .command = "gc",
+      .help = "Run garbage collection on storage",
+      .func = &gc_func,
+  };
+  err = esp_console_cmd_register(&cmd_gc);
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register gc command: %d", err);
 
   esp_console_cmd_t cmd_nvs_stats = {
       .command = "nvs-stats",
