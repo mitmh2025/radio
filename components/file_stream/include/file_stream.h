@@ -10,7 +10,8 @@ extern "C" {
 #define FILE_STREAM_TASK_STACK (8192)
 #define FILE_STREAM_TASK_CORE (0)
 #define FILE_STREAM_TASK_PRIO (4)
-#define FILE_STREAM_RINGBUFFER_SIZE (32 * 1024)
+#define FILE_STREAM_RINGBUFFER_SIZE                                            \
+  (8 * 30 * 1024) // roughly 30 seconds of audio at 8kbps
 
 typedef struct {
   int fd;          /*!< File descriptor */
