@@ -837,7 +837,7 @@ esp_err_t things_init() {
   // TODO: Can we get log streaming to perform well enough?
 
   ESP_RETURN_ON_FALSE(
-      pdPASS == xTaskCreate(things_task, "things", 4096, NULL, 7, NULL),
+      pdPASS == xTaskCreate(things_task, "things", 6144, NULL, 7, NULL),
       ESP_ERR_NO_MEM, RADIO_TAG, "Failed to create ThingsBoard task");
 
   size_t length;
