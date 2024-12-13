@@ -98,14 +98,23 @@ def provision_device(server: str, auth_token: str, device_profile_id: str):
     )
 
     # Provision the device
-    with serial.Serial(port, 115200, timeout=5) as ser:
-        ser.dtr = False
-        ser.rts = False
-        ser.rts = True
-        ser.rts = False
-        child = pexpect.fdpexpect.fdspawn(ser, timeout=5)
-        child.expect("radio>")
-        child.sendline(f"provision {server} {token}")
+    while True:
+        try:
+            with serial.Serial(port, 115200, timeout=5) as ser:
+                ser.dtr = False
+                ser.rts = False
+                ser.rts = True
+                ser.rts = False
+                child = pexpect.fdpexpect.fdspawn(ser, timeout=5)
+                child.expect("radio>")
+                child.sendline(f"provision {server} {token}")
+                child.expect("radio>")
+            break
+        except (Exception, KeyboardInterrupt) as e:
+            print(f"Error: {e}")
+            retry = questionary.confirm("Retry storing token?").unsafe_ask()
+            if not retry:
+                raise
 
     print(
         "Device provisioned. Follow instructions for calibration. Press Ctrl-] to exit."
