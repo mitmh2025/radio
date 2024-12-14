@@ -1,0 +1,1 @@
+idf_component_register(SRCS opusfile_stream.c INCLUDE_DIRS include REQUIRES opusfile audio_pipeline)

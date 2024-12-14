@@ -9,7 +9,7 @@ extern "C" {
 #define FILE_STREAM_BUF_SIZE (4096)
 #define FILE_STREAM_TASK_STACK (8192)
 #define FILE_STREAM_TASK_CORE (0)
-#define FILE_STREAM_TASK_PRIO (4)
+#define FILE_STREAM_TASK_PRIO (11)
 #define FILE_STREAM_RINGBUFFER_SIZE                                            \
   (8 * 60 * 1024) // roughly 60 seconds of audio at 8kbps
 

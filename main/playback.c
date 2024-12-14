@@ -4,6 +4,7 @@
 #include "mixer.h"
 
 #include "file_stream.h"
+#include "opusfile_stream.h"
 
 #include "opusfile.h"
 
@@ -59,41 +60,49 @@ esp_err_t playback_file(const playback_cfg_t *cfg,
   ESP_GOTO_ON_ERROR(handle->output == NULL, cleanup, RADIO_TAG,
                     "Failed to create output ringbuf");
 
-  file_stream_cfg_t file_cfg = FILE_STREAM_CFG_DEFAULT();
-  file_cfg.fd = handle->fd;
-  file_cfg.task_prio = 9;
-  audio_element_handle_t file_stream = file_stream_init(&file_cfg);
-  ESP_GOTO_ON_FALSE(file_stream, ESP_FAIL, cleanup, RADIO_TAG,
-                    "Failed to create file stream");
-  ESP_GOTO_ON_ERROR(
-      audio_pipeline_register(handle->pipeline, file_stream, "file"), cleanup,
-      RADIO_TAG, "Failed to register file stream to pipeline");
-
-  const char *ext = strrchr(handle->path, '.');
+  const char *ext = strchr(handle->path, '.');
   if (ext != NULL && strcasecmp(ext, ".opus") == 0) {
-    opus_decoder_cfg_t opus_cfg = DEFAULT_OPUS_DECODER_CONFIG();
-    opus_cfg.task_core = 0;
-    opus_cfg.task_prio = 10;
-    handle->decoder = decoder_opus_init(&opus_cfg);
+    opusfile_stream_cfg_t opusfile_cfg = OPUSFILE_STREAM_CFG_DEFAULT();
+    opusfile_cfg.fd = handle->fd;
+    handle->decoder = opusfile_stream_init(&opusfile_cfg);
     ESP_GOTO_ON_FALSE(handle->decoder, ESP_FAIL, cleanup, RADIO_TAG,
                       "Failed to create Opus decoder");
+    ESP_GOTO_ON_ERROR(
+        audio_pipeline_register(handle->pipeline, handle->decoder, "decoder"),
+        cleanup, RADIO_TAG, "Failed to register decoder to pipeline");
+    ESP_GOTO_ON_ERROR(
+        audio_element_set_output_ringbuf(handle->decoder, handle->output),
+        cleanup, RADIO_TAG, "Failed to set output ringbuf for decoder");
+
+    ESP_GOTO_ON_ERROR(
+        audio_pipeline_link(handle->pipeline, (const char *[]){"decoder"}, 1),
+        cleanup, RADIO_TAG, "Failed to link decoder to pipeline");  
   } else {
+    file_stream_cfg_t file_cfg = FILE_STREAM_CFG_DEFAULT();
+    file_cfg.fd = handle->fd;
+    audio_element_handle_t file_stream = file_stream_init(&file_cfg);
+    ESP_GOTO_ON_FALSE(file_stream, ESP_FAIL, cleanup, RADIO_TAG,
+                      "Failed to create file stream");
+    ESP_GOTO_ON_ERROR(
+        audio_pipeline_register(handle->pipeline, file_stream, "file"), cleanup,
+        RADIO_TAG, "Failed to register file stream to pipeline");
+
     wav_decoder_cfg_t wav_cfg = DEFAULT_WAV_DECODER_CONFIG();
     handle->decoder = wav_decoder_init(&wav_cfg);
     ESP_GOTO_ON_FALSE(handle->decoder, ESP_FAIL, cleanup, RADIO_TAG,
                       "Failed to create WAV decoder");
-  }
-  ESP_GOTO_ON_ERROR(
-      audio_pipeline_register(handle->pipeline, handle->decoder, "decoder"),
-      cleanup, RADIO_TAG, "Failed to register decoder to pipeline");
-  ESP_GOTO_ON_ERROR(
-      audio_element_set_output_ringbuf(handle->decoder, handle->output),
-      cleanup, RADIO_TAG, "Failed to set output ringbuf for decoder");
+    ESP_GOTO_ON_ERROR(
+        audio_pipeline_register(handle->pipeline, handle->decoder, "decoder"),
+        cleanup, RADIO_TAG, "Failed to register decoder to pipeline");
+    ESP_GOTO_ON_ERROR(
+        audio_element_set_output_ringbuf(handle->decoder, handle->output),
+        cleanup, RADIO_TAG, "Failed to set output ringbuf for decoder");
 
-  ESP_GOTO_ON_ERROR(audio_pipeline_link(handle->pipeline,
-                                        (const char *[]){"file", "decoder"}, 2),
-                    cleanup, RADIO_TAG,
-                    "Failed to link file and decoder to pipeline");
+    ESP_GOTO_ON_ERROR(
+        audio_pipeline_link(handle->pipeline,
+                            (const char *[]){"file", "decoder"}, 2),
+        cleanup, RADIO_TAG, "Failed to link file and decoder to pipeline");
+  }
 
   audio_event_iface_cfg_t evt_cfg = AUDIO_EVENT_IFACE_DEFAULT_CFG();
   handle->evt = audio_event_iface_init(&evt_cfg);

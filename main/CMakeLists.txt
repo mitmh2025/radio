@@ -56,6 +56,7 @@ idf_component_register(
   kvswebrtcclient
   opus
   opusfile
+  opusfile_stream
   sdmmc)
 
 foreach(FILE IN ITEMS index.html style.css)
