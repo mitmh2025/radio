@@ -20,9 +20,10 @@ idf_component_register(
   mixer.c
   playback.c
   static.c
-  station_pi.c
-  station_pi_activation.c
   station_2pi.c
+  station_pi_activation.c
+  station_pi.c
+  station_rickroll.c
   station_wifi.c
   storage.c
   tas2505.c
@@ -58,12 +59,19 @@ idf_component_register(
   sdmmc)
 
 foreach(FILE IN ITEMS index.html style.css)
-  add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/captive/${FILE}.gz"
-                    COMMAND gzip -c -9 "${CMAKE_CURRENT_SOURCE_DIR}/captive/${FILE}" > "${CMAKE_CURRENT_BINARY_DIR}/captive/${FILE}.gz"
-                    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/captive/${FILE}"
-                    VERBATIM)
-  set_property(TARGET ${COMPONENT_LIB} APPEND PROPERTY ADDITIONAL_MAKE_CLEAN_FILES "${CMAKE_CURRENT_BINARY_DIR}/captive/${FILE}.gz")
-  target_add_binary_data(${COMPONENT_LIB} "${CMAKE_CURRENT_BINARY_DIR}/captive/${FILE}.gz" BINARY)
+  add_custom_command(
+    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/captive/${FILE}.gz"
+    COMMAND gzip -c -9 "${CMAKE_CURRENT_SOURCE_DIR}/captive/${FILE}" >
+            "${CMAKE_CURRENT_BINARY_DIR}/captive/${FILE}.gz"
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/captive/${FILE}"
+    VERBATIM)
+  set_property(
+    TARGET ${COMPONENT_LIB}
+    APPEND
+    PROPERTY ADDITIONAL_MAKE_CLEAN_FILES
+             "${CMAKE_CURRENT_BINARY_DIR}/captive/${FILE}.gz")
+  target_add_binary_data(
+    ${COMPONENT_LIB} "${CMAKE_CURRENT_BINARY_DIR}/captive/${FILE}.gz" BINARY)
 endforeach()
 
 target_compile_options(${COMPONENT_LIB} PRIVATE -Werror)

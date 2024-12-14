@@ -18,7 +18,7 @@
 #define MIXER_SAMPLE_SIZE (960)                   // 20ms of audio at 48kHz
 #define MIXER_BUFFER_SIZE (MIXER_SAMPLE_SIZE * 2) // 16-bit mono
 
-#define MIXER_DUCK_GAIN (-10) // dB
+#define MIXER_DUCK_GAIN (-15) // dB
 
 #define MIXER_MUTEX_LOCK()                                                     \
   do {                                                                         \
