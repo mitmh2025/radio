@@ -106,12 +106,17 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
       xEventGroupSetBits(radio_event_group,
                          RADIO_EVENT_GROUP_WIFI_DISCONNECTED);
 
+      wifi_event_sta_disconnected_t *event =
+          (wifi_event_sta_disconnected_t *)event_data;
+
       bool skip_scan = false;
 
       xSemaphoreTake(test_connection_mutex, portMAX_DELAY);
       if (test_connection_task) {
         ESP_LOGI(RADIO_TAG,
-                 "Disconnected from (or failed to connect to) network");
+                 "Disconnected from (or failed to connect to) network %.*s, "
+                 "reason %d",
+                 event->ssid_len, event->ssid, event->reason);
         xTaskNotify(test_connection_task, 0, eSetValueWithOverwrite);
         test_connection_task = NULL;
         skip_scan = true;

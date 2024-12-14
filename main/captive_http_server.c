@@ -206,6 +206,7 @@ static esp_err_t percent_decode(const char *src, size_t src_len, char *dst,
 
     char hex[3] = {src[i + 1], src[i + 2], 0};
     dst[pos++] = (char)strtol(hex, NULL, 16);
+    i += 2;
   }
 
   return ESP_OK;
