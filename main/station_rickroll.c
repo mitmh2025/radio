@@ -45,7 +45,7 @@ static void playback_task(void *arg) {
 
 static void rickroll_playback_task(void *arg) {
   while (true) {
-    if (!entuned) {
+    if (!entuned || !current_strongest_minor) {
       break;
     }
 
