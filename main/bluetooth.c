@@ -19,15 +19,20 @@
 #include "services/gap/ble_svc_gap.h"
 
 struct bt_beacon {
+  bluetooth_beacon_t beacon;
   TAILQ_ENTRY(bt_beacon) entries;
-  uint16_t major;
-  uint16_t minor;
-  int8_t rssi;
-  int8_t tx_power;
-  int64_t last_seen;
 };
 
 TAILQ_HEAD(bt_beacon_list, bt_beacon);
+
+struct bt_subscriber {
+  uint16_t major;
+  bluetooth_beacon_callback_t callback;
+  void *arg;
+  TAILQ_ENTRY(bt_subscriber) entries;
+};
+
+TAILQ_HEAD(bt_subscriber_list, bt_subscriber);
 
 // B7F8C378-248E-40E0-9157-8B517DA07783
 static const ble_uuid128_t radio_uuid =
@@ -47,6 +52,8 @@ static uint16_t adv_minor = UINT16_MAX;
 
 static SemaphoreHandle_t beacon_mutex = NULL;
 static struct bt_beacon_list beacons = TAILQ_HEAD_INITIALIZER(beacons);
+static struct bt_subscriber_list subscribers =
+    TAILQ_HEAD_INITIALIZER(subscribers);
 
 static esp_timer_handle_t beacon_cleanup_timer = NULL;
 
@@ -87,12 +94,12 @@ static void telemetry_generator() {
   json_ptr += snprintf(json_ptr, json_remaining, "[");
   json_remaining -= 1;
   TAILQ_FOREACH(beacon, &beacons, entries) {
-    json_ptr +=
-        snprintf(json_ptr, json_remaining,
-                 "{\"major\": %" PRIu16 ", \"minor\": %" PRIu16
-                 ", \"rssi\": %d, \"txPower\": %d, \"lastSeen\": %" PRId64 "}",
-                 beacon->major, beacon->minor, beacon->rssi, beacon->tx_power,
-                 beacon->last_seen);
+    json_ptr += snprintf(
+        json_ptr, json_remaining,
+        "{\"major\": %" PRIu16 ", \"minor\": %" PRIu16
+        ", \"rssi\": %d, \"txPower\": %d, \"lastSeen\": %" PRId64 "}",
+        beacon->beacon.major, beacon->beacon.minor, beacon->beacon.rssi,
+        beacon->beacon.tx_power, beacon->beacon.last_seen);
     json_remaining -= strlen(json_ptr);
     if (TAILQ_NEXT(beacon, entries)) {
       json_ptr += snprintf(json_ptr, json_remaining, ",");
@@ -107,13 +114,36 @@ static void telemetry_generator() {
   free(json);
 }
 
+// Must call while holding beacon_mutex
+static void notify_subscriber(struct bt_subscriber *sub) {
+  struct bt_beacon *newest = NULL, *strongest = NULL;
+  struct bt_beacon *beacon;
+  TAILQ_FOREACH(beacon, &beacons, entries) {
+    if (beacon->beacon.major == sub->major) {
+      if (!newest || beacon->beacon.last_seen > newest->beacon.last_seen) {
+        newest = beacon;
+      }
+      if (!strongest || beacon->beacon.rssi > strongest->beacon.rssi) {
+        strongest = beacon;
+      }
+    }
+  }
+  sub->callback(&newest->beacon, &strongest->beacon, sub->arg);
+}
+
+// Must call while holding beacon_mutex
+static void notify_subscribers() {
+  struct bt_subscriber *sub;
+  TAILQ_FOREACH(sub, &subscribers, entries) { notify_subscriber(sub); }
+}
+
 static void beacon_cleanup(void *arg) {
   // Remove any beacon we haven't seen in the last minute
   int64_t now = esp_timer_get_time();
   xSemaphoreTake(beacon_mutex, portMAX_DELAY);
   struct bt_beacon *beacon, *tmp;
   TAILQ_FOREACH_SAFE(beacon, &beacons, entries, tmp) {
-    if (now - beacon->last_seen > 30 * 1000 * 1000) {
+    if (now - beacon->beacon.last_seen > 30 * 1000 * 1000) {
       TAILQ_REMOVE(&beacons, beacon, entries);
       free(beacon);
     }
@@ -190,7 +220,7 @@ static int gap_event(struct ble_gap_event *event, void *arg) {
     xSemaphoreTake(beacon_mutex, portMAX_DELAY);
     struct bt_beacon *beacon = NULL;
     TAILQ_FOREACH(beacon, &beacons, entries) {
-      if (beacon->major == major && beacon->minor == minor) {
+      if (beacon->beacon.major == major && beacon->beacon.minor == minor) {
         break;
       }
     }
@@ -206,14 +236,24 @@ static int gap_event(struct ble_gap_event *event, void *arg) {
         xSemaphoreGive(beacon_mutex);
         return 0;
       }
-      beacon->major = major;
-      beacon->minor = minor;
+      beacon->beacon.major = major;
+      beacon->beacon.minor = minor;
+      beacon->beacon.rssi = event->disc.rssi;
       TAILQ_INSERT_TAIL(&beacons, beacon, entries);
     }
 
-    beacon->rssi = event->disc.rssi;
-    beacon->tx_power = tx_power;
-    beacon->last_seen = esp_timer_get_time();
+    beacon->beacon.rssi = (beacon->beacon.rssi + event->disc.rssi) / 2;
+    beacon->beacon.tx_power = tx_power;
+    int64_t now = esp_timer_get_time();
+    if (beacon->beacon.period == 0 && beacon->beacon.last_seen != 0) {
+      beacon->beacon.period = now - beacon->beacon.last_seen;
+    } else {
+      beacon->beacon.period =
+          (beacon->beacon.period + now - beacon->beacon.last_seen) / 2;
+    }
+    beacon->beacon.last_seen = now;
+
+    notify_subscribers();
     xSemaphoreGive(beacon_mutex);
     break;
   }
@@ -389,6 +429,44 @@ esp_err_t bluetooth_set_mode(bluetooth_mode_t mode) {
     advertise();
   }
   xSemaphoreGive(mutex);
+
+  xSemaphoreTake(beacon_mutex, portMAX_DELAY);
+  struct bt_beacon *beacon, *tmp;
+  TAILQ_FOREACH_SAFE(beacon, &beacons, entries, tmp) {
+    if (mode == BLUETOOTH_MODE_DISABLED) {
+      TAILQ_REMOVE(&beacons, beacon, entries);
+      free(beacon);
+    } else {
+      beacon->beacon.last_seen = 0;
+      beacon->beacon.period = 0;
+    }
+  }
+  xSemaphoreGive(beacon_mutex);
+
+  return ESP_OK;
+}
+
+esp_err_t bluetooth_subscribe_beacon(uint16_t major,
+                                     bluetooth_beacon_callback_t callback,
+                                     void *arg) {
+  ESP_RETURN_ON_FALSE(beacon_mutex != NULL, ESP_ERR_INVALID_STATE, RADIO_TAG,
+                      "Bluetooth not initialized");
+
+  xSemaphoreTake(beacon_mutex, portMAX_DELAY);
+  struct bt_subscriber *sub = calloc(1, sizeof(struct bt_subscriber));
+  if (!sub) {
+    ESP_LOGE(RADIO_TAG, "Failed to allocate memory for subscriber");
+    xSemaphoreGive(beacon_mutex);
+    return ESP_ERR_NO_MEM;
+  }
+
+  sub->major = major;
+  sub->callback = callback;
+  sub->arg = arg;
+  TAILQ_INSERT_TAIL(&subscribers, sub, entries);
+  notify_subscriber(sub);
+
+  xSemaphoreGive(beacon_mutex);
 
   return ESP_OK;
 }
