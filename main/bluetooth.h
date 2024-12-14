@@ -28,6 +28,10 @@ typedef void (*bluetooth_beacon_callback_t)(bluetooth_beacon_t *newest,
 extern "C" {
 #endif
 
+extern const uint16_t BLUETOOTH_MAJOR_RADIO;
+extern const uint16_t BLUETOOTH_MAJOR_RICKROLL;
+extern const uint16_t BLUETOOTH_MAJOR_FUNAROUND;
+
 esp_err_t bluetooth_init(void);
 esp_err_t bluetooth_set_mode(bluetooth_mode_t mode);
 esp_err_t bluetooth_subscribe_beacon(uint16_t major,

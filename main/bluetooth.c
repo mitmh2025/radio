@@ -39,9 +39,9 @@ static const ble_uuid128_t radio_uuid =
     BLE_UUID128_INIT(0xb7, 0xf8, 0xc3, 0x78, 0x24, 0x8e, 0x40, 0xe0, 0x91, 0x57,
                      0x8b, 0x51, 0x7d, 0xa0, 0x77, 0x83, );
 
-// static const uint16_t major_radio = 0x00001;
-// static const uint16_t major_giant_switch = 0x0002;
-// static const uint16_t major_dimpled_star = 0x0003;
+const uint16_t BLUETOOTH_MAJOR_RADIO = 0x00001;
+const uint16_t BLUETOOTH_MAJOR_RICKROLL = 0x0002;
+const uint16_t BLUETOOTH_MAJOR_FUNAROUND = 0x0003;
 
 static bool synced = false;
 
@@ -138,7 +138,7 @@ static void notify_subscribers() {
 }
 
 static void beacon_cleanup(void *arg) {
-  // Remove any beacon we haven't seen in the last minute
+  // Remove any beacon we haven't seen in the last 30 seconds
   int64_t now = esp_timer_get_time();
   xSemaphoreTake(beacon_mutex, portMAX_DELAY);
   struct bt_beacon *beacon, *tmp;
@@ -148,6 +148,7 @@ static void beacon_cleanup(void *arg) {
       free(beacon);
     }
   }
+  notify_subscribers();
   xSemaphoreGive(beacon_mutex);
 }
 
@@ -451,6 +452,8 @@ esp_err_t bluetooth_subscribe_beacon(uint16_t major,
                                      void *arg) {
   ESP_RETURN_ON_FALSE(beacon_mutex != NULL, ESP_ERR_INVALID_STATE, RADIO_TAG,
                       "Bluetooth not initialized");
+  ESP_RETURN_ON_FALSE(callback != NULL, ESP_ERR_INVALID_ARG, RADIO_TAG,
+                      "Callback must not be NULL");
 
   xSemaphoreTake(beacon_mutex, portMAX_DELAY);
   struct bt_subscriber *sub = calloc(1, sizeof(struct bt_subscriber));
