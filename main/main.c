@@ -17,6 +17,7 @@
 #include "magnet.h"
 #include "mixer.h"
 #include "playback.h"
+#include "playback_queue.h"
 #include "station_2pi.h"
 #include "station_pi.h"
 #include "station_pi_activation.h"
@@ -182,6 +183,7 @@ void app_main(void) {
   ESP_ERROR_CHECK(storage_init());
   ESP_ERROR_CHECK(mixer_init());
   ESP_ERROR_CHECK(console_init());
+  ESP_ERROR_CHECK(playback_queue_init());
 
 #ifndef CONFIG_RADIO_GIANT_SWITCH
   ESP_ERROR_CHECK(fm_init());

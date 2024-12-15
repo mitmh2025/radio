@@ -19,6 +19,7 @@ idf_component_register(
   main.c
   mixer.c
   playback.c
+  playback_queue.c
   static.c
   station_2pi.c
   station_pi_activation.c

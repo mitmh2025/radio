@@ -10,6 +10,7 @@
 #include "main.h"
 #include "mixer.h"
 #include "playback.h"
+#include "playback_queue.h"
 #include "station_pi.h"
 #include "station_pi_activation.h"
 #include "tas2505.h"
@@ -46,10 +47,6 @@ static frequency_handle_t freq_handle;
 static bool frequency_enabled = false;
 static bool entuned = false;
 static bool instrument_enabled = true;
-
-static QueueHandle_t playback_queue = NULL;
-static SemaphoreHandle_t playback_mutex = NULL;
-static playback_handle_t playback = NULL;
 
 #define SHIFT_MAGNET BIT(0)
 #define SHIFT_HEADPHONE BIT(1)
@@ -154,45 +151,6 @@ static const char *completions[STAGE_COUNT] = {
 
 static const char *final_completion = "practical-fighter/completion.opus";
 
-static void play_on_success(uint8_t stage) {
-  if (stage < STAGE_COUNT) {
-    const char *completion = completions[stage];
-    xQueueSend(playback_queue, &completion, portMAX_DELAY);
-  }
-
-  // intro and example are from the next stage
-  stage++;
-
-  if (stage < STAGE_COUNT) {
-    const char *intro = intros[stage];
-    xQueueSend(playback_queue, &intro, portMAX_DELAY);
-    const char *example = examples[stage];
-    xQueueSend(playback_queue, &example, portMAX_DELAY);
-  } else {
-    xQueueSend(playback_queue, &final_completion, portMAX_DELAY);
-  }
-}
-
-static void play_on_entune(uint8_t stage) {
-  if (stage < STAGE_COUNT) {
-    const char *intro = intros[stage];
-    xQueueSend(playback_queue, &intro, portMAX_DELAY);
-    const char *example = examples[stage];
-    xQueueSend(playback_queue, &example, portMAX_DELAY);
-  }
-}
-
-static void play_on_button(uint8_t stage) {
-  if (stage < STAGE_COUNT) {
-    const char *intro = intros[stage];
-    xQueueSend(playback_queue, &intro, portMAX_DELAY);
-    const char *example = examples[stage];
-    xQueueSend(playback_queue, &example, portMAX_DELAY);
-  } else {
-    xQueueSend(playback_queue, &final_completion, portMAX_DELAY);
-  }
-}
-
 // Mary Had a Little Lamb - 7 notes
 static const float note_sequence_0[] = {
     FREQUENCY_B_4, FREQUENCY_A_4, FREQUENCY_G_4, FREQUENCY_A_4,
@@ -247,6 +205,149 @@ static void telemetry_generator() {
 }
 
 static void force_telemetry() { things_force_telemetry(telemetry_index); }
+
+static void update_led() {
+  if (!entuned) {
+    return;
+  }
+
+  if (!instrument_enabled) {
+    ESP_ERROR_CHECK_WITHOUT_ABORT(led_set_pixel(1, 0, 0, 0));
+    return;
+  }
+
+  switch (shift_state) {
+  case 0:
+    ESP_ERROR_CHECK_WITHOUT_ABORT(led_set_pixel(1, 0, 0, 0));
+    break;
+  case SHIFT_MAGNET:
+    ESP_ERROR_CHECK_WITHOUT_ABORT(led_set_pixel(1, 255, 128, 0));
+    break;
+  case SHIFT_HEADPHONE:
+    ESP_ERROR_CHECK_WITHOUT_ABORT(led_set_pixel(1, 0, 255, 255));
+    break;
+  case SHIFT_MAGNET + SHIFT_HEADPHONE:
+    ESP_ERROR_CHECK_WITHOUT_ABORT(led_set_pixel(1, 255, 128, 255));
+    break;
+  default:
+    break;
+  }
+}
+
+static void flush_total_play_time() {
+  if (last_flushed_total_play_time == total_play_time) {
+    return;
+  }
+
+  ESP_ERROR_CHECK_WITHOUT_ABORT(
+      nvs_set_i64(pi_nvs_handle, "total_play_time", total_play_time));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(nvs_commit(pi_nvs_handle));
+  last_flushed_total_play_time = total_play_time;
+}
+
+static void idle_timer_cb(void *arg) {
+  if (!entuned) {
+    return;
+  }
+
+  int64_t now = esp_timer_get_time();
+  xSemaphoreTake(play_time_mutex, portMAX_DELAY);
+  total_play_time += now - last_play_time_check;
+  last_play_time_check = now;
+  currently_playing = false;
+  flush_total_play_time();
+  xSemaphoreGive(play_time_mutex);
+}
+
+static void start_play_tracking() {
+  if (!entuned) {
+    return;
+  }
+
+  xSemaphoreTake(play_time_mutex, portMAX_DELAY);
+  if (!currently_playing) {
+    esp_timer_stop(idle_timer);
+    last_play_time_check = esp_timer_get_time();
+    currently_playing = true;
+  }
+  xSemaphoreGive(play_time_mutex);
+}
+
+static void schedule_idle_timer() {
+  esp_timer_stop(idle_timer);
+  ESP_ERROR_CHECK_WITHOUT_ABORT(
+      esp_timer_start_once(idle_timer, play_time_idle_timeout));
+}
+
+static void play_flush_timer_cb(void *arg) {
+  xSemaphoreTake(play_time_mutex, portMAX_DELAY);
+  if (currently_playing) {
+    int64_t now = esp_timer_get_time();
+    total_play_time += now - last_play_time_check;
+    last_play_time_check = now;
+  }
+  flush_total_play_time();
+  xSemaphoreGive(play_time_mutex);
+}
+
+static void enqueue_playback(const char *path) {
+  start_play_tracking();
+  instrument_enabled = false;
+  xTaskNotify(pi_task, 0, eNoAction);
+  update_led();
+
+  playback_queue_add(&(playback_cfg_t){
+      .path = path,
+      .duck_others = true,
+      .tuned = true,
+  });
+}
+
+static void playback_empty_cb() {
+  instrument_enabled = true;
+  xTaskNotify(pi_task, 0, eNoAction);
+  update_led();
+  schedule_idle_timer();
+}
+
+static void play_on_success(uint8_t stage) {
+  if (stage < STAGE_COUNT) {
+    const char *completion = completions[stage];
+    enqueue_playback(completion);
+  }
+
+  // intro and example are from the next stage
+  stage++;
+
+  if (stage < STAGE_COUNT) {
+    const char *intro = intros[stage];
+    enqueue_playback(intro);
+    const char *example = examples[stage];
+    enqueue_playback(example);
+  } else {
+    enqueue_playback(final_completion);
+  }
+}
+
+static void play_on_entune(uint8_t stage) {
+  if (stage < STAGE_COUNT) {
+    const char *intro = intros[stage];
+    enqueue_playback(intro);
+    const char *example = examples[stage];
+    enqueue_playback(example);
+  }
+}
+
+static void play_on_button(uint8_t stage) {
+  if (stage < STAGE_COUNT) {
+    const char *intro = intros[stage];
+    enqueue_playback(intro);
+    const char *example = examples[stage];
+    enqueue_playback(example);
+  } else {
+    enqueue_playback(final_completion);
+  }
+}
 
 static void record_note(float frequency) {
   notes_played[notes_played_index] = (struct note_t){
@@ -314,62 +415,6 @@ static void schedule_sequence_check() {
   esp_timer_stop(sequence_check_timer);
   ESP_ERROR_CHECK_WITHOUT_ABORT(
       esp_timer_start_once(sequence_check_timer, sequence_check_timeout));
-}
-
-static void flush_total_play_time() {
-  if (last_flushed_total_play_time == total_play_time) {
-    return;
-  }
-
-  ESP_ERROR_CHECK_WITHOUT_ABORT(
-      nvs_set_i64(pi_nvs_handle, "total_play_time", total_play_time));
-  ESP_ERROR_CHECK_WITHOUT_ABORT(nvs_commit(pi_nvs_handle));
-  last_flushed_total_play_time = total_play_time;
-}
-
-static void idle_timer_cb(void *arg) {
-  if (!entuned) {
-    return;
-  }
-
-  int64_t now = esp_timer_get_time();
-  xSemaphoreTake(play_time_mutex, portMAX_DELAY);
-  total_play_time += now - last_play_time_check;
-  last_play_time_check = now;
-  currently_playing = false;
-  flush_total_play_time();
-  xSemaphoreGive(play_time_mutex);
-}
-
-static void start_play_tracking() {
-  if (!entuned) {
-    return;
-  }
-
-  xSemaphoreTake(play_time_mutex, portMAX_DELAY);
-  if (!currently_playing) {
-    esp_timer_stop(idle_timer);
-    last_play_time_check = esp_timer_get_time();
-    currently_playing = true;
-  }
-  xSemaphoreGive(play_time_mutex);
-}
-
-static void schedule_idle_timer() {
-  esp_timer_stop(idle_timer);
-  ESP_ERROR_CHECK_WITHOUT_ABORT(
-      esp_timer_start_once(idle_timer, play_time_idle_timeout));
-}
-
-static void play_flush_timer_cb(void *arg) {
-  xSemaphoreTake(play_time_mutex, portMAX_DELAY);
-  if (currently_playing) {
-    int64_t now = esp_timer_get_time();
-    total_play_time += now - last_play_time_check;
-    last_play_time_check = now;
-  }
-  flush_total_play_time();
-  xSemaphoreGive(play_time_mutex);
 }
 
 static void light_stop_tone() {
@@ -508,34 +553,6 @@ static void knock_start_tone(void *arg) {
   force_telemetry();
 }
 
-static void update_led() {
-  if (!entuned) {
-    return;
-  }
-
-  if (!instrument_enabled) {
-    ESP_ERROR_CHECK_WITHOUT_ABORT(led_set_pixel(1, 0, 0, 0));
-    return;
-  }
-
-  switch (shift_state) {
-  case 0:
-    ESP_ERROR_CHECK_WITHOUT_ABORT(led_set_pixel(1, 0, 0, 0));
-    break;
-  case SHIFT_MAGNET:
-    ESP_ERROR_CHECK_WITHOUT_ABORT(led_set_pixel(1, 255, 128, 0));
-    break;
-  case SHIFT_HEADPHONE:
-    ESP_ERROR_CHECK_WITHOUT_ABORT(led_set_pixel(1, 0, 255, 255));
-    break;
-  case SHIFT_MAGNET + SHIFT_HEADPHONE:
-    ESP_ERROR_CHECK_WITHOUT_ABORT(led_set_pixel(1, 255, 128, 255));
-    break;
-  default:
-    break;
-  }
-}
-
 static void update_state() {
   if (shift_state != previous_shift_state) {
     if (light_tone) {
@@ -647,13 +664,11 @@ static void station_pi_task(void *ctx) {
     xTaskNotifyWait(0, ULONG_MAX, &notification, wait_time);
 
     if (notification & NOTIFY_CIRCLE_BUTTON_TRIGGERED) {
-      xSemaphoreTake(playback_mutex, portMAX_DELAY);
-      if (playback) {
-        playback_stop(playback);
+      if (playback_queue_active()) {
+        playback_queue_skip();
       } else {
         play_on_button(current_stage);
       }
-      xSemaphoreGive(playback_mutex);
     }
 
     if (notification & NOTIFY_TOUCH_ACTIVE && !touch_tone) {
@@ -800,54 +815,6 @@ static void station_pi_task(void *ctx) {
   }
 }
 
-static void playback_task(void *ctx) {
-  while (true) {
-    const char *file;
-    xQueueReceive(playback_queue, &file, portMAX_DELAY);
-    if (!file || !entuned) {
-      continue;
-    }
-
-    start_play_tracking();
-    instrument_enabled = false;
-    xTaskNotify(pi_task, 0, eNoAction);
-    update_led();
-
-    xSemaphoreTake(playback_mutex, portMAX_DELAY);
-    esp_err_t err = playback_file(
-        &(playback_cfg_t){
-            .path = file,
-            .tuned = true,
-        },
-        &playback);
-    xSemaphoreGive(playback_mutex);
-    if (err != ESP_OK) {
-      ESP_LOGE(RADIO_TAG, "Failed to play queued file: %d", err);
-      continue;
-    }
-
-    err = playback_wait_for_completion(playback);
-    if (err != ESP_OK) {
-      ESP_LOGE(RADIO_TAG, "Failed to wait for completion: %d", err);
-    }
-
-    // If we're about to play another file, don't re-enable the instrument
-    if (uxQueueMessagesWaiting(playback_queue) == 0) {
-      memset(notes_played, 0, sizeof(notes_played));
-      instrument_enabled = true;
-      xTaskNotify(pi_task, 0, eNoAction);
-      update_led();
-      schedule_idle_timer();
-    }
-
-    xSemaphoreTake(playback_mutex, portMAX_DELAY);
-    playback_handle_t p = playback;
-    playback = NULL;
-    playback_free(p);
-    xSemaphoreGive(playback_mutex);
-  }
-}
-
 static void IRAM_ATTR touch_intr(void *ctx) {
   TaskHandle_t task_handle = (TaskHandle_t)ctx;
   uint32_t touch_status = touch_pad_read_intr_status_mask();
@@ -921,6 +888,8 @@ static void entune(void *ctx) {
                            circle_button_intr, pi_task, pdMS_TO_TICKS(10)));
   ESP_ERROR_CHECK_WITHOUT_ABORT(touch_register_isr(touch_intr, pi_task));
 
+  ESP_ERROR_CHECK_WITHOUT_ABORT(
+      playback_queue_subscribe_empty(playback_empty_cb));
   play_on_entune(current_stage);
   entuned = true;
   start_play_tracking();
@@ -931,11 +900,9 @@ static void entune(void *ctx) {
 static void detune(void *ctx) {
   entuned = false;
   xTaskNotify(pi_task, 0, eNoAction);
-  xSemaphoreTake(playback_mutex, portMAX_DELAY);
-  if (playback) {
-    playback_stop(playback);
-  }
-  xSemaphoreGive(playback_mutex);
+  ESP_ERROR_CHECK_WITHOUT_ABORT(
+      playback_queue_unsubscribe_empty(playback_empty_cb));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(playback_queue_drain());
   ESP_ERROR_CHECK_WITHOUT_ABORT(touch_deregister_isr(touch_intr, pi_task));
   ESP_ERROR_CHECK_WITHOUT_ABORT(debounce_handler_remove(BUTTON_CIRCLE_PIN));
   ESP_ERROR_CHECK_WITHOUT_ABORT(debounce_handler_remove(BUTTON_TRIANGLE_PIN));
@@ -984,15 +951,6 @@ esp_err_t station_pi_init() {
                           },
                           &idle_timer),
                       RADIO_TAG, "Failed to initialize idle timer");
-
-  playback_mutex = xSemaphoreCreateMutex();
-  ESP_RETURN_ON_FALSE(playback_mutex, ESP_ERR_NO_MEM, RADIO_TAG,
-                      "Failed to create playback mutex");
-  playback_queue = xQueueCreate(4, sizeof(const char *));
-  ESP_RETURN_ON_FALSE(pdPASS == xTaskCreatePinnedToCore(playback_task,
-                                                        "pi_playback", 4096,
-                                                        NULL, 11, NULL, 1),
-                      ESP_FAIL, RADIO_TAG, "Failed to create playback task");
 
   ESP_RETURN_ON_FALSE(pdPASS == xTaskCreatePinnedToCore(station_pi_task, "pi",
                                                         4096, NULL, 11,

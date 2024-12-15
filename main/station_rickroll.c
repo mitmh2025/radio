@@ -3,6 +3,7 @@
 #include "main.h"
 #include "mixer.h"
 #include "playback.h"
+#include "playback_queue.h"
 #include "things.h"
 #include "tuner.h"
 
@@ -19,82 +20,28 @@ static frequency_handle_t freq_handle;
 static bool entuned = false;
 static uint16_t current_strongest_minor = 0;
 
-static SemaphoreHandle_t playback_mutex = NULL;
-static playback_handle_t rickroll_playback = NULL;
+static SemaphoreHandle_t interrupt_mutex = NULL;
 static playback_handle_t interrupt_playback = NULL;
-
 static esp_timer_handle_t interrupt_timer = NULL;
 
 static int64_t rickroll_duration = 0;
 
-static void playback_task(void *arg) {
+static void interrupt_task(void *arg) {
   playback_handle_t *handle = arg;
 
-  xSemaphoreTake(playback_mutex, portMAX_DELAY);
+  xSemaphoreTake(interrupt_mutex, portMAX_DELAY);
   playback_handle_t current_handle = *handle;
-  xSemaphoreGive(playback_mutex);
+  xSemaphoreGive(interrupt_mutex);
 
   esp_err_t err = playback_wait_for_completion(current_handle);
   if (err != ESP_OK) {
     ESP_LOGE(RADIO_TAG, "Failed to wait for completion: %d", err);
   }
 
-  xSemaphoreTake(playback_mutex, portMAX_DELAY);
+  xSemaphoreTake(interrupt_mutex, portMAX_DELAY);
   playback_free(*handle);
   *handle = NULL;
-  xSemaphoreGive(playback_mutex);
-
-  vTaskDelete(NULL);
-}
-
-static void rickroll_playback_task(void *arg) {
-  bool first_playback = true;
-
-  while (true) {
-    if (!entuned || !current_strongest_minor) {
-      break;
-    }
-
-    xSemaphoreTake(playback_mutex, portMAX_DELAY);
-    if (rickroll_playback) {
-      xSemaphoreGive(playback_mutex);
-      break;
-    }
-
-    int64_t skip = 0;
-    if (first_playback && rickroll_duration > 0) {
-      struct timeval now = {};
-      gettimeofday(&now, NULL);
-
-      skip = now.tv_sec * 48000 + (48000 * now.tv_usec) / 1000000;
-      skip %= rickroll_duration;
-      first_playback = false;
-    }
-
-    esp_err_t err = playback_file(
-        &(playback_cfg_t){
-            .path = "giant-switch/rickroll.opus",
-            .tuned = true,
-            .skip_samples = skip,
-        },
-        &rickroll_playback);
-    xSemaphoreGive(playback_mutex);
-    if (err != ESP_OK) {
-      ESP_LOGE(RADIO_TAG, "Failed to play rickroll: %d", err);
-      break;
-    }
-
-    err = playback_wait_for_completion(rickroll_playback);
-    if (err != ESP_OK) {
-      ESP_LOGE(RADIO_TAG, "Failed to wait for completion: %d", err);
-      break;
-    }
-
-    xSemaphoreTake(playback_mutex, portMAX_DELAY);
-    playback_free(rickroll_playback);
-    rickroll_playback = NULL;
-    xSemaphoreGive(playback_mutex);
-  }
+  xSemaphoreGive(interrupt_mutex);
 
   vTaskDelete(NULL);
 }
@@ -108,7 +55,7 @@ static void timer_cb(void *arg) {
   snprintf(path, sizeof(path), "giant-switch/interrupt-%d.opus",
            current_strongest_minor);
 
-  xSemaphoreTake(playback_mutex, portMAX_DELAY);
+  xSemaphoreTake(interrupt_mutex, portMAX_DELAY);
   esp_err_t err = playback_file(
       &(playback_cfg_t){
           .path = path,
@@ -116,14 +63,14 @@ static void timer_cb(void *arg) {
           .duck_others = true,
       },
       &interrupt_playback);
-  xSemaphoreGive(playback_mutex);
+  xSemaphoreGive(interrupt_mutex);
 
   if (err != ESP_OK) {
     ESP_LOGE(RADIO_TAG, "Failed to play interrupt: %d", err);
     return;
   }
 
-  BaseType_t result = xTaskCreate(playback_task, "interrupt_playback", 4096,
+  BaseType_t result = xTaskCreate(interrupt_task, "interrupt_playback", 4096,
                                   &interrupt_playback, 11, NULL);
   if (result != pdPASS) {
     ESP_LOGE(RADIO_TAG, "Failed to create interrupt playback task: %d", result);
@@ -132,40 +79,49 @@ static void timer_cb(void *arg) {
   esp_timer_start_once(interrupt_timer, 30000000);
 }
 
+static void playback_empty_cb() {
+  if (entuned && current_strongest_minor) {
+    playback_queue_add(&(playback_cfg_t){
+        .path = "giant-switch/rickroll.opus",
+        .tuned = true,
+    });
+  }
+}
+
 static void stop_playback() {
   esp_timer_stop(interrupt_timer);
 
-  xSemaphoreTake(playback_mutex, portMAX_DELAY);
-  if (rickroll_playback) {
-    ESP_ERROR_CHECK_WITHOUT_ABORT(playback_stop(rickroll_playback));
-  }
+  xSemaphoreTake(interrupt_mutex, portMAX_DELAY);
   if (interrupt_playback) {
     ESP_ERROR_CHECK_WITHOUT_ABORT(playback_stop(interrupt_playback));
   }
-  xSemaphoreGive(playback_mutex);
+  xSemaphoreGive(interrupt_mutex);
+
+  playback_queue_drain();
 }
 
 static void start_playback() {
-  xSemaphoreTake(playback_mutex, portMAX_DELAY);
-  if (rickroll_playback) {
-    goto cleanup;
-  }
-
-  BaseType_t result = xTaskCreate(rickroll_playback_task, "rickroll_playback",
-                                  4096, NULL, 11, NULL);
-  if (result != pdPASS) {
-    ESP_LOGE(RADIO_TAG, "Failed to create playback task: %d", result);
-    goto cleanup;
+  if (playback_queue_active()) {
+    return;
   }
 
   struct timeval now = {};
   gettimeofday(&now, NULL);
-  int64_t delay = now.tv_sec * 1000000 + now.tv_usec;
-  delay %= 30000000;
-  esp_timer_start_once(interrupt_timer, delay);
 
-cleanup:
-  xSemaphoreGive(playback_mutex);
+  int skip = 0;
+  if (rickroll_duration > 0) {
+    skip = (now.tv_sec * 48000 + (48000 * now.tv_usec) / 1000000) %
+           rickroll_duration;
+  }
+
+  playback_queue_add(&(playback_cfg_t){
+      .path = "giant-switch/rickroll.opus",
+      .tuned = true,
+      .skip_samples = skip,
+  });
+
+  uint64_t delay = (now.tv_sec * 1000000 + now.tv_usec) % 30000000;
+  esp_timer_start_once(interrupt_timer, delay);
 }
 
 static void bluetooth_cb(bluetooth_beacon_t *newest,
@@ -201,9 +157,13 @@ static void entune(void *arg) {
   if (current_strongest_minor != 0) {
     start_playback();
   }
+  ESP_ERROR_CHECK_WITHOUT_ABORT(
+      playback_queue_subscribe_empty(playback_empty_cb));
 }
 
 static void detune(void *arg) {
+  ESP_ERROR_CHECK_WITHOUT_ABORT(
+      playback_queue_unsubscribe_empty(playback_empty_cb));
   stop_playback();
   ESP_ERROR_CHECK_WITHOUT_ABORT(bluetooth_set_mode(BLUETOOTH_MODE_DEFAULT));
   ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_default_static(true));
@@ -231,9 +191,9 @@ static void things_cb(const char *key, const things_attribute_t *value) {
 }
 
 esp_err_t station_rickroll_init() {
-  playback_mutex = xSemaphoreCreateMutex();
-  ESP_RETURN_ON_FALSE(playback_mutex != NULL, ESP_ERR_NO_MEM, RADIO_TAG,
-                      "Failed to create playback mutex");
+  interrupt_mutex = xSemaphoreCreateMutex();
+  ESP_RETURN_ON_FALSE(interrupt_mutex != NULL, ESP_ERR_NO_MEM, RADIO_TAG,
+                      "Failed to create interrupt mutex");
 
   esp_err_t err =
       playback_duration("giant-switch/rickroll.opus", &rickroll_duration);
