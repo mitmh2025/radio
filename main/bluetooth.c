@@ -184,6 +184,10 @@ static void advertise() {
   }
 
   struct ble_gap_adv_params adv_params = {};
+  if (mode == BLUETOOTH_MODE_AGGRESSIVE) {
+    adv_params.itvl_min = BLE_GAP_ADV_ITVL_MS(30);
+    adv_params.itvl_max = BLE_GAP_ADV_ITVL_MS(60);
+  }
   rc = ble_gap_adv_start(BLE_OWN_ADDR_PUBLIC, NULL, BLE_HS_FOREVER, &adv_params,
                          NULL, NULL);
   if (rc != 0) {

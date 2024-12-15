@@ -73,6 +73,8 @@ static void giant_switch_attr_cb(const char *key,
 }
 
 static void giant_switch_main() {
+  ESP_ERROR_CHECK_WITHOUT_ABORT(bluetooth_set_mode(BLUETOOTH_MODE_AGGRESSIVE));
+
   giant_switch_file_mutex = xSemaphoreCreateMutex();
   giant_switch_task = xTaskGetCurrentTaskHandle();
 
