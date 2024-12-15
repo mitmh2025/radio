@@ -140,15 +140,19 @@ static void notify_subscribers() {
 static void beacon_cleanup(void *arg) {
   // Remove any beacon we haven't seen in the last 30 seconds
   int64_t now = esp_timer_get_time();
+  bool removed = false;
   xSemaphoreTake(beacon_mutex, portMAX_DELAY);
   struct bt_beacon *beacon, *tmp;
   TAILQ_FOREACH_SAFE(beacon, &beacons, entries, tmp) {
     if (now - beacon->beacon.last_seen > 30 * 1000 * 1000) {
       TAILQ_REMOVE(&beacons, beacon, entries);
       free(beacon);
+      removed = true;
     }
   }
-  notify_subscribers();
+  if (removed) {
+    notify_subscribers();
+  }
   xSemaphoreGive(beacon_mutex);
 }
 
