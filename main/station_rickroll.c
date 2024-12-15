@@ -7,9 +7,11 @@
 #include "tuner.h"
 
 #include <math.h>
+#include <sys/time.h>
 
 #include "esp_check.h"
 #include "esp_log.h"
+#include "esp_random.h"
 #include "esp_timer.h"
 
 static frequency_handle_t freq_handle;
@@ -22,6 +24,8 @@ static playback_handle_t rickroll_playback = NULL;
 static playback_handle_t interrupt_playback = NULL;
 
 static esp_timer_handle_t interrupt_timer = NULL;
+
+static int64_t rickroll_duration = 0;
 
 static void playback_task(void *arg) {
   playback_handle_t *handle = arg;
@@ -44,18 +48,34 @@ static void playback_task(void *arg) {
 }
 
 static void rickroll_playback_task(void *arg) {
+  bool first_playback = true;
+
   while (true) {
     if (!entuned || !current_strongest_minor) {
       break;
     }
 
     xSemaphoreTake(playback_mutex, portMAX_DELAY);
-    // TODO: the first time we start playback, seek a random amount into the
-    // song
+    if (rickroll_playback) {
+      xSemaphoreGive(playback_mutex);
+      break;
+    }
+
+    int64_t skip = 0;
+    if (first_playback && rickroll_duration > 0) {
+      struct timeval now = {};
+      gettimeofday(&now, NULL);
+
+      skip = now.tv_sec * 48000 + (48000 * now.tv_usec) / 1000000;
+      skip %= rickroll_duration;
+      first_playback = false;
+    }
+
     esp_err_t err = playback_file(
         &(playback_cfg_t){
             .path = "giant-switch/rickroll.opus",
             .tuned = true,
+            .skip_samples = skip,
         },
         &rickroll_playback);
     xSemaphoreGive(playback_mutex);
@@ -138,7 +158,11 @@ static void start_playback() {
     goto cleanup;
   }
 
-  esp_timer_start_once(interrupt_timer, 15000000);
+  struct timeval now = {};
+  gettimeofday(&now, NULL);
+  int64_t delay = now.tv_sec * 1000000 + now.tv_usec;
+  delay %= 30000000;
+  esp_timer_start_once(interrupt_timer, delay);
 
 cleanup:
   xSemaphoreGive(playback_mutex);
@@ -210,6 +234,15 @@ esp_err_t station_rickroll_init() {
   playback_mutex = xSemaphoreCreateMutex();
   ESP_RETURN_ON_FALSE(playback_mutex != NULL, ESP_ERR_NO_MEM, RADIO_TAG,
                       "Failed to create playback mutex");
+
+  esp_err_t err =
+      playback_duration("giant-switch/rickroll.opus", &rickroll_duration);
+  if (err != ESP_OK) {
+    ESP_LOGW(
+        RADIO_TAG,
+        "Failed to get rickroll duration, will skip faking infinite loop: %d",
+        err);
+  }
 
   ESP_RETURN_ON_ERROR(esp_timer_create(
                           &(esp_timer_create_args_t){

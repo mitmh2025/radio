@@ -12,6 +12,7 @@ typedef struct {
   const char *path;
   bool duck_others;
   bool tuned;
+  int64_t skip_samples;
 } playback_cfg_t;
 
 typedef struct playback_handle *playback_handle_t;

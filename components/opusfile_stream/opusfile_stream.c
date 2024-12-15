@@ -129,6 +129,7 @@ audio_element_handle_t opusfile_stream_init(opusfile_stream_cfg_t *config) {
   cfg.task_core = config->task_core;
   cfg.out_rb_size = config->out_rb_size;
   cfg.buffer_len = config->buf_sz;
+  cfg.stack_in_ext = true;
   if (cfg.buffer_len == 0) {
     cfg.buffer_len = OPUSFILE_STREAM_BUF_SIZE;
   }

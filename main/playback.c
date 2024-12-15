@@ -67,6 +67,13 @@ esp_err_t playback_file(const playback_cfg_t *cfg,
     handle->decoder = opusfile_stream_init(&opusfile_cfg);
     ESP_GOTO_ON_FALSE(handle->decoder, ESP_FAIL, cleanup, RADIO_TAG,
                       "Failed to create Opus decoder");
+
+    if (cfg->skip_samples > 0) {
+      ESP_GOTO_ON_ERROR(
+          audio_element_set_byte_pos(handle->decoder, cfg->skip_samples),
+          cleanup, RADIO_TAG, "Failed to set skip samples for decoder");
+    }
+
     ESP_GOTO_ON_ERROR(
         audio_pipeline_register(handle->pipeline, handle->decoder, "decoder"),
         cleanup, RADIO_TAG, "Failed to register decoder to pipeline");
@@ -78,6 +85,9 @@ esp_err_t playback_file(const playback_cfg_t *cfg,
         audio_pipeline_link(handle->pipeline, (const char *[]){"decoder"}, 1),
         cleanup, RADIO_TAG, "Failed to link decoder to pipeline");  
   } else {
+    ESP_GOTO_ON_FALSE(cfg->skip_samples == 0, ESP_ERR_INVALID_ARG, cleanup,
+                      RADIO_TAG, "skip_samples not supported for WAV file");
+
     file_stream_cfg_t file_cfg = FILE_STREAM_CFG_DEFAULT();
     file_cfg.fd = handle->fd;
     audio_element_handle_t file_stream = file_stream_init(&file_cfg);
@@ -274,6 +284,58 @@ void playback_free(playback_handle_t handle) {
   free(handle);
 }
 
+struct playback_duration_args {
+  TaskHandle_t caller;
+  int fd;
+  int64_t *duration;
+  esp_err_t ret;
+};
+
+static void playback_duration_task(void *ctx) {
+  struct playback_duration_args *args = ctx;
+
+  OggOpusFile *opus_file = NULL;
+
+  OpusFileCallbacks cb = {};
+  void *opus_stream = op_fdopen(&cb, args->fd, "rb");
+  if (!opus_stream) {
+    ESP_LOGE(RADIO_TAG, "Failed to open Opus stream: %d", errno);
+    args->ret = ESP_FAIL;
+    return;
+  }
+  args->fd = -1;
+
+  int err;
+  opus_file = op_open_callbacks(opus_stream, &cb, NULL, 0, &err);
+  if (!opus_file) {
+    ESP_LOGE(RADIO_TAG, "Failed to open Opus file: %d", err);
+    args->ret = ESP_FAIL;
+    goto cleanup;
+  }
+  opus_stream = NULL;
+
+  int64_t pcm_duration = op_pcm_total(opus_file, -1);
+  if (pcm_duration < 0) {
+    ESP_LOGE(RADIO_TAG, "Failed to get PCM duration: %" PRId64, pcm_duration);
+    args->ret = ESP_FAIL;
+    goto cleanup;
+  }
+
+  *args->duration = pcm_duration;
+
+cleanup:
+  if (opus_file != NULL) {
+    op_free(opus_file);
+  }
+
+  if (opus_stream != NULL) {
+    fclose(opus_stream);
+  }
+
+  xTaskNotifyGive(args->caller);
+  vTaskDelete(NULL);
+}
+
 esp_err_t playback_duration(const char *path, int64_t *duration) {
   ESP_RETURN_ON_FALSE(path, ESP_ERR_INVALID_ARG, RADIO_TAG, "Invalid path");
   ESP_RETURN_ON_FALSE(duration, ESP_ERR_INVALID_ARG, RADIO_TAG,
@@ -283,33 +345,28 @@ esp_err_t playback_duration(const char *path, int64_t *duration) {
   ESP_RETURN_ON_FALSE(fd >= 0, ESP_FAIL, RADIO_TAG, "Failed to open file: %d",
                       errno);
 
-  esp_err_t ret = ESP_OK;
-  OggOpusFile *opus_file = NULL;
+  struct playback_duration_args args = {
+      .caller = xTaskGetCurrentTaskHandle(),
+      .fd = fd,
+      .duration = duration,
+      .ret = ESP_OK,
+  };
 
-  OpusFileCallbacks cb = {};
-  void *opus_stream = op_fdopen(&cb, fd, "rb");
-  ESP_GOTO_ON_FALSE(opus_stream, ESP_FAIL, cleanup, RADIO_TAG,
-                    "Failed to open Opus stream: %d", errno);
-  int err;
-  opus_file = op_open_callbacks(opus_stream, &cb, NULL, 0, &err);
-  ESP_GOTO_ON_FALSE(opus_file, ESP_FAIL, cleanup, RADIO_TAG,
-                    "Failed to open Opus file: %d", err);
-  fd = -1;
+  BaseType_t result = xTaskCreate(playback_duration_task, "playback_duration",
+                                  20 * 1024, &args, 11, NULL);
 
-  int64_t pcm_duration = op_pcm_total(opus_file, -1);
-  ESP_GOTO_ON_FALSE(pcm_duration >= 0, ESP_FAIL, cleanup, RADIO_TAG,
-                    "Failed to get PCM duration: %" PRId64, pcm_duration);
-
-  *duration = pcm_duration;
-
-cleanup:
-  if (opus_file != NULL) {
-    op_free(opus_file);
+  if (result != pdPASS) {
+    ESP_LOGE(RADIO_TAG, "Failed to create playback duration task: %d", result);
+    args.ret = ESP_FAIL;
+    goto cleanup;
   }
 
+  ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+cleanup:
   if (fd >= 0) {
     close(fd);
   }
 
-  return ret;
+  return args.ret;
 }
