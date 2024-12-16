@@ -206,7 +206,7 @@ esp_err_t playback_wait_for_completion(playback_handle_t handle) {
   return ESP_OK;
 }
 
-esp_err_t playback_detune(playback_handle_t handle) {
+esp_err_t playback_pause(playback_handle_t handle) {
   ESP_RETURN_ON_FALSE(handle, ESP_ERR_INVALID_ARG, RADIO_TAG,
                       "Invalid playback handle");
   ESP_RETURN_ON_ERROR(
@@ -220,7 +220,7 @@ esp_err_t playback_detune(playback_handle_t handle) {
   return ESP_OK;
 }
 
-esp_err_t playback_entune(playback_handle_t handle) {
+esp_err_t playback_resume(playback_handle_t handle) {
   ESP_RETURN_ON_FALSE(handle, ESP_ERR_INVALID_ARG, RADIO_TAG,
                       "Invalid playback handle");
 
@@ -233,6 +233,16 @@ esp_err_t playback_entune(playback_handle_t handle) {
                                 }),
       RADIO_TAG, "Failed to entune playback");
   return ESP_OK;
+}
+
+esp_err_t playback_pause_toggle(playback_handle_t handle) {
+  ESP_RETURN_ON_FALSE(handle, ESP_ERR_INVALID_ARG, RADIO_TAG,
+                      "Invalid playback handle");
+  if (handle->tuned) {
+    return playback_pause(handle);
+  } else {
+    return playback_resume(handle);
+  }
 }
 
 esp_err_t playback_stop(playback_handle_t handle) {

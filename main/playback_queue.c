@@ -103,6 +103,36 @@ esp_err_t playback_queue_drain() {
   return ESP_OK;
 }
 
+esp_err_t playback_queue_pause() {
+  xSemaphoreTake(current_playback_mutex, portMAX_DELAY);
+  if (current_playback) {
+    playback_pause(current_playback);
+  }
+  xSemaphoreGive(current_playback_mutex);
+
+  return ESP_OK;
+}
+
+esp_err_t playback_queue_resume() {
+  xSemaphoreTake(current_playback_mutex, portMAX_DELAY);
+  if (current_playback) {
+    playback_resume(current_playback);
+  }
+  xSemaphoreGive(current_playback_mutex);
+
+  return ESP_OK;
+}
+
+esp_err_t playback_queue_pause_toggle() {
+  xSemaphoreTake(current_playback_mutex, portMAX_DELAY);
+  if (current_playback) {
+    playback_pause_toggle(current_playback);
+  }
+  xSemaphoreGive(current_playback_mutex);
+
+  return ESP_OK;
+}
+
 esp_err_t playback_queue_init() {
   playback_queue = xQueueCreate(4, sizeof(playback_cfg_t));
   ESP_RETURN_ON_FALSE(playback_queue, ESP_ERR_NO_MEM, RADIO_TAG,

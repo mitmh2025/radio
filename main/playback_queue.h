@@ -16,6 +16,9 @@ esp_err_t playback_queue_subscribe_empty(playback_queue_empty_cb_t cb);
 esp_err_t playback_queue_unsubscribe_empty(playback_queue_empty_cb_t cb);
 esp_err_t playback_queue_skip();
 esp_err_t playback_queue_drain();
+esp_err_t playback_queue_pause();
+esp_err_t playback_queue_resume();
+esp_err_t playback_queue_pause_toggle();
 bool playback_queue_active();
 
 #ifdef __cplusplus
