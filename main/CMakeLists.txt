@@ -76,4 +76,4 @@ foreach(FILE IN ITEMS index.html style.css)
     ${COMPONENT_LIB} "${CMAKE_CURRENT_BINARY_DIR}/captive/${FILE}.gz" BINARY)
 endforeach()
 
-target_compile_options(${COMPONENT_LIB} PRIVATE -Werror)
+target_compile_options(${COMPONENT_LIB} PRIVATE -Werror -Werror=shadow)

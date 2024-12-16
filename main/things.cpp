@@ -109,7 +109,7 @@ static void update_attr_cache(std::string key,
 // Must be called while holding things_attribute_mutex
 static void update_attr_nvs(std::string key,
                             things_attribute_cache_entry_t value) {
-  esp_err_t err = std::visit(
+  esp_err_t ret = std::visit(
       overloaded{
           [&](std::monostate &) {
             return nvs_erase_key(things_attr_nvs_handle, key.c_str());
@@ -192,15 +192,15 @@ static void update_attr_nvs(std::string key,
           },
       },
       value);
-  if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) {
+  if (ret != ESP_OK && ret != ESP_ERR_NVS_NOT_FOUND) {
     ESP_LOGE(RADIO_TAG, "Failed to update attribute %s in NVS: %d", key.c_str(),
-             err);
+             ret);
   }
 
-  err = nvs_commit(things_attr_nvs_handle);
-  if (err != ESP_OK) {
+  ret = nvs_commit(things_attr_nvs_handle);
+  if (ret != ESP_OK) {
     ESP_LOGE(RADIO_TAG, "Failed to commit NVS after updating attribute %s: %d",
-             key.c_str(), err);
+             key.c_str(), ret);
   }
 }
 
@@ -695,7 +695,7 @@ static void things_task(void *arg) {
     ESP_LOGI(RADIO_TAG, "Connected to ThingsBoard");
 
     size_t core_addr, core_size;
-    esp_err_t err = esp_core_dump_image_get(&core_addr, &core_size);
+    err = esp_core_dump_image_get(&core_addr, &core_size);
     if (err == ESP_OK) {
       ESP_LOGW(RADIO_TAG, "Core dump detected at 0x%08x, size %d bytes",
                core_addr, core_size);
@@ -974,12 +974,12 @@ esp_err_t things_subscribe_attribute(const char *key,
     auto conn = tb.lock();
     if (conn && conn->connected()) {
       std::vector<const char *> keys{key};
-      Attribute_Request_Callback callback(
+      Attribute_Request_Callback req_callback(
           [](const JsonObjectConst &attrs) {
             things_attribute_callback(attrs);
           },
           keys.cbegin(), keys.cend());
-      conn->Shared_Attributes_Request(callback);
+      conn->Shared_Attributes_Request(req_callback);
     }
   }
 

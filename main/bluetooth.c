@@ -47,7 +47,7 @@ const uint16_t BLUETOOTH_MAJOR_FUNAROUND = 0x0003;
 static bool synced = false;
 
 static SemaphoreHandle_t mutex = NULL;
-static bluetooth_mode_t mode = BLUETOOTH_MODE_DEFAULT;
+static bluetooth_mode_t current_mode = BLUETOOTH_MODE_DEFAULT;
 static uint16_t adv_major = UINT16_MAX;
 static uint16_t adv_minor = UINT16_MAX;
 
@@ -65,7 +65,7 @@ static void telemetry_generator() {
                                                      "default",
                                                      "disabled",
                                                      "aggressive",
-                                                 }[mode]);
+                                                 }[current_mode]);
 
   // Generate a JSON string with all beacons that we can currently see in the
   // form:
@@ -168,7 +168,7 @@ static void advertise() {
     return;
   }
 
-  if (mode == BLUETOOTH_MODE_DISABLED) {
+  if (current_mode == BLUETOOTH_MODE_DISABLED) {
     return;
   }
 
@@ -185,7 +185,7 @@ static void advertise() {
   }
 
   struct ble_gap_adv_params adv_params = {};
-  if (mode == BLUETOOTH_MODE_AGGRESSIVE) {
+  if (current_mode == BLUETOOTH_MODE_AGGRESSIVE) {
     adv_params.itvl_min = BLE_GAP_ADV_ITVL_MS(30);
     adv_params.itvl_max = BLE_GAP_ADV_ITVL_MS(60);
   }
@@ -280,11 +280,11 @@ static esp_err_t scan() {
   ESP_RETURN_ON_FALSE(rc == 0 || rc == BLE_HS_EALREADY, ESP_FAIL, RADIO_TAG,
                       "Unable to stop existing BlueTooth scan: %d", rc);
 
-  if (mode == BLUETOOTH_MODE_DISABLED) {
+  if (current_mode == BLUETOOTH_MODE_DISABLED) {
     return ESP_OK;
   }
 
-  uint16_t interval = mode == BLUETOOTH_MODE_AGGRESSIVE
+  uint16_t interval = current_mode == BLUETOOTH_MODE_AGGRESSIVE
                           ? BLE_GAP_SCAN_ITVL_MS(60)
                           : BLE_GAP_SCAN_SLOW_INTERVAL1;
   uint16_t window = BLE_GAP_SCAN_FAST_WINDOW;
@@ -429,16 +429,16 @@ esp_err_t bluetooth_init(void) {
   return ESP_OK;
 }
 
-esp_err_t bluetooth_set_mode(bluetooth_mode_t mode) {
-  ESP_RETURN_ON_FALSE(mode < BLUETOOTH_MODE_MAX, ESP_ERR_INVALID_ARG, RADIO_TAG,
-                      "Invalid Bluetooth mode: %d", mode);
+esp_err_t bluetooth_set_mode(bluetooth_mode_t new_mode) {
+  ESP_RETURN_ON_FALSE(new_mode < BLUETOOTH_MODE_MAX, ESP_ERR_INVALID_ARG, RADIO_TAG,
+                      "Invalid Bluetooth mode: %d", new_mode);
   ESP_RETURN_ON_FALSE(mutex != NULL, ESP_ERR_INVALID_STATE, RADIO_TAG,
                       "Bluetooth not initialized");
 
   xSemaphoreTake(mutex, portMAX_DELAY);
-  bluetooth_mode_t old_mode = mode;
-  mode = mode;
-  if (old_mode != mode) {
+  bluetooth_mode_t old_mode = current_mode;
+  current_mode = new_mode;
+  if (old_mode != new_mode) {
     ESP_ERROR_CHECK_WITHOUT_ABORT(scan());
     advertise();
   }
@@ -447,7 +447,7 @@ esp_err_t bluetooth_set_mode(bluetooth_mode_t mode) {
   xSemaphoreTake(beacon_mutex, portMAX_DELAY);
   struct bt_beacon *beacon, *tmp;
   TAILQ_FOREACH_SAFE(beacon, &beacons, entries, tmp) {
-    if (mode == BLUETOOTH_MODE_DISABLED) {
+    if (new_mode == BLUETOOTH_MODE_DISABLED) {
       TAILQ_REMOVE(&beacons, beacon, entries);
       free(beacon);
     } else {
