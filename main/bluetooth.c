@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include <sys/queue.h>
 
+#include "esp_bt.h"
 #include "esp_check.h"
 #include "esp_log.h"
 #include "esp_mac.h"
@@ -175,9 +176,9 @@ static void advertise() {
     return;
   }
 
-  // TODO: figure out how to set the tx power
+  // TODO: figure out if there's a better setting for tx power
   rc = ble_ibeacon_set_adv_data((void *)&radio_uuid.value, adv_major, adv_minor,
-                                0);
+                                -30);
   if (rc != 0) {
     ESP_LOGE(RADIO_TAG, "Failed to set iBeacon advertisement data: %d", rc);
     return;
@@ -414,6 +415,10 @@ esp_err_t bluetooth_init(void) {
   int rc = ble_svc_gap_device_name_set(device_name);
   ESP_RETURN_ON_FALSE(rc == 0, ESP_ERR_INVALID_STATE, RADIO_TAG,
                       "Failed to set device name: %d", rc);
+
+  esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_DEFAULT, ESP_PWR_LVL_P21);
+  esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_ADV, ESP_PWR_LVL_P21);
+  esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_SCAN, ESP_PWR_LVL_P21);
 
   nimble_port_freertos_init(bluetooth_task);
 
