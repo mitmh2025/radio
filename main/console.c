@@ -5,6 +5,7 @@
 #include "calibration.h"
 #include "console.h"
 #include "main.h"
+#include "station_funaround.h"
 #include "station_pi.h"
 #include "storage.h"
 #include "things.h"
@@ -673,6 +674,34 @@ static int pi_reset_play_time(int argc, char **argv) {
 }
 
 static struct {
+  struct arg_int *ratchet;
+  struct arg_end *end;
+} funaround_set_ratchet_args;
+
+static int funaround_set_ratchet(int argc, char **argv) {
+  int nerrors = arg_parse(argc, argv, (void **)&funaround_set_ratchet_args);
+
+  if (nerrors != 0) {
+    arg_print_errors(stderr, funaround_set_ratchet_args.end, argv[0]);
+    return 1;
+  }
+
+  if (funaround_set_ratchet_args.ratchet->count == 0) {
+    arg_print_syntax(stderr, (void **)&funaround_set_ratchet_args, argv[0]);
+    return 1;
+  }
+
+  esp_err_t err = station_funaround_set_ratchet(
+      funaround_set_ratchet_args.ratchet->ival[0]);
+  if (err != ESP_OK) {
+    printf("Failed to set ratchet: %d\n", err);
+    return 1;
+  }
+
+  return 0;
+}
+
+static struct {
   struct arg_str *ssid;
   struct arg_str *password;
   struct arg_end *end;
@@ -967,6 +996,21 @@ esp_err_t console_init() {
   err = esp_console_cmd_register(&cmd_pi_reset_play_time);
   ESP_RETURN_ON_ERROR(err, RADIO_TAG,
                       "Failed to register pi-reset-play-time command: %d", err);
+
+  funaround_set_ratchet_args.ratchet = arg_int1(
+      NULL, NULL, "<ratchet>", "Ratchet to set (0 for start of funaround)");
+  funaround_set_ratchet_args.end = arg_end(1);
+  esp_console_cmd_t cmd_funaround_set_ratchet = {
+      .command = "funaround-set-ratchet",
+      .help = "Set the current ratchet for the Funaround",
+      .hint = NULL,
+      .func = &funaround_set_ratchet,
+      .argtable = &funaround_set_ratchet_args,
+  };
+  err = esp_console_cmd_register(&cmd_funaround_set_ratchet);
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG,
+                      "Failed to register funaround-set-ratchet command: %d",
+                      err);
 
   wifi_set_alt_network_args.ssid =
       arg_str1(NULL, NULL, "<ssid>", "SSID of the network");
