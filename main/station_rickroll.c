@@ -24,6 +24,7 @@ static SemaphoreHandle_t interrupt_mutex = NULL;
 static playback_handle_t interrupt_playback = NULL;
 static esp_timer_handle_t interrupt_timer = NULL;
 
+static const char *rickroll_file = "giant-switch/rickroll.opus";
 static int64_t rickroll_duration = 0;
 
 static void interrupt_task(void *arg) {
@@ -82,7 +83,7 @@ static void timer_cb(void *arg) {
 static void playback_empty_cb() {
   if (entuned && current_strongest_minor) {
     playback_queue_add(&(playback_cfg_t){
-        .path = "giant-switch/rickroll.opus",
+        .path = rickroll_file,
         .tuned = true,
     });
   }
@@ -119,7 +120,7 @@ static void start_playback() {
   }
 
   playback_queue_add(&(playback_cfg_t){
-      .path = "giant-switch/rickroll.opus",
+      .path = rickroll_file,
       .tuned = true,
       .skip_samples = skip,
   });
@@ -199,8 +200,7 @@ esp_err_t station_rickroll_init() {
   ESP_RETURN_ON_FALSE(interrupt_mutex != NULL, ESP_ERR_NO_MEM, RADIO_TAG,
                       "Failed to create interrupt mutex");
 
-  esp_err_t err =
-      playback_duration("giant-switch/rickroll.opus", &rickroll_duration);
+  esp_err_t err = playback_duration(rickroll_file, &rickroll_duration);
   if (err != ESP_OK) {
     ESP_LOGW(
         RADIO_TAG,

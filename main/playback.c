@@ -311,7 +311,7 @@ static void playback_duration_task(void *ctx) {
   if (!opus_stream) {
     ESP_LOGE(RADIO_TAG, "Failed to open Opus stream: %d", errno);
     args->ret = ESP_FAIL;
-    return;
+    goto cleanup;
   }
   args->fd = -1;
 
@@ -374,8 +374,8 @@ esp_err_t playback_duration(const char *path, int64_t *duration) {
   ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
 cleanup:
-  if (fd >= 0) {
-    close(fd);
+  if (args.fd >= 0) {
+    close(args.fd);
   }
 
   return args.ret;
