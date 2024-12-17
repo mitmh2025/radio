@@ -158,7 +158,7 @@ esp_err_t playback_wait_for_completion(playback_handle_t handle) {
       } else if (msg.cmd == AEL_MSG_CMD_RESUME) {
         handle->tuned = true;
       } else if (msg.cmd == AEL_MSG_CMD_STOP) {
-        ESP_LOGI(RADIO_TAG, "Playback stopped");
+        ESP_LOGD(RADIO_TAG, "Playback stopped");
         break;
       }
     }
