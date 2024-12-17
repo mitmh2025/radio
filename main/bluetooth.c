@@ -143,6 +143,8 @@ static void beacon_cleanup(void *arg) {
   struct bt_beacon *beacon, *tmp;
   TAILQ_FOREACH_SAFE(beacon, &beacons, entries, tmp) {
     if (now - beacon->beacon.last_seen > 30 * 1000 * 1000) {
+      ESP_LOGD(RADIO_TAG, "Removing beacon: major=%" PRIu16 ", minor=%" PRIu16,
+               beacon->beacon.major, beacon->beacon.minor);
       beacon->beacon.last_seen = 0;
       beacon->beacon.period = 0;
       beacon->beacon.rssi = INT8_MIN;

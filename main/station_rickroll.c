@@ -141,14 +141,14 @@ static void bluetooth_cb(bluetooth_beacon_t *newest,
   }
 
   if (current_strongest_minor != 0) {
-    ESP_LOGI(RADIO_TAG, "Rickroll beacon lost");
-    stop_playback();
+    if (entuned) {
+      stop_playback();
+    }
   }
 
   current_strongest_minor = new_strongest_minor;
 
   if (new_strongest_minor != 0) {
-    ESP_LOGI(RADIO_TAG, "Rickroll beacon found");
     if (entuned) {
       start_playback();
     }
