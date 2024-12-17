@@ -28,6 +28,7 @@ static bool tuned = false;
 const int8_t threshold = -75;
 
 static esp_err_t set_ratchet(uint16_t new_ratchet) {
+  ESP_LOGI(RADIO_TAG, "Setting funaround ratchet to %d", new_ratchet);
   ratchet = new_ratchet;
   next_detected = false;
   ESP_ERROR_CHECK(nvs_set_u16(funaround_nvs_handle, "ratchet", ratchet));
@@ -74,8 +75,13 @@ static void IRAM_ATTR circle_button_intr(void *ctx, bool state) {
 
 static void beacon_cb(bluetooth_beacon_t *newest, bluetooth_beacon_t *strongest,
                       void *arg) {
-  if (newest && newest->rssi > threshold && newest->minor == ratchet + 1) {
-    next_detected = true;
+  if (newest && newest->minor == ratchet + 1) {
+    bool new_detected = newest->rssi > threshold;
+    if (new_detected != next_detected) {
+      ESP_LOGD(RADIO_TAG, "%s funaround beacon %d",
+               new_detected ? "Found" : "Lost", newest->minor);
+      next_detected = new_detected;
+    }
   }
 
   update(false);

@@ -116,14 +116,12 @@ static void telemetry_generator() {
 }
 
 // Must call while holding beacon_mutex
-static void notify_subscriber(struct bt_subscriber *sub) {
-  struct bt_beacon *newest = NULL, *strongest = NULL;
+static void notify_subscriber(struct bt_subscriber *sub,
+                              struct bt_beacon *newest) {
+  struct bt_beacon *strongest = NULL;
   struct bt_beacon *beacon;
   TAILQ_FOREACH(beacon, &beacons, entries) {
     if (beacon->beacon.major == sub->major) {
-      if (!newest || beacon->beacon.last_seen > newest->beacon.last_seen) {
-        newest = beacon;
-      }
       if (!strongest || beacon->beacon.rssi > strongest->beacon.rssi) {
         strongest = beacon;
       }
@@ -133,26 +131,25 @@ static void notify_subscriber(struct bt_subscriber *sub) {
 }
 
 // Must call while holding beacon_mutex
-static void notify_subscribers() {
+static void notify_subscribers(struct bt_beacon *newest) {
   struct bt_subscriber *sub;
-  TAILQ_FOREACH(sub, &subscribers, entries) { notify_subscriber(sub); }
+  TAILQ_FOREACH(sub, &subscribers, entries) { notify_subscriber(sub, newest); }
 }
 
 static void beacon_cleanup(void *arg) {
   // Remove any beacon we haven't seen in the last 30 seconds
   int64_t now = esp_timer_get_time();
-  bool removed = false;
   xSemaphoreTake(beacon_mutex, portMAX_DELAY);
   struct bt_beacon *beacon, *tmp;
   TAILQ_FOREACH_SAFE(beacon, &beacons, entries, tmp) {
     if (now - beacon->beacon.last_seen > 30 * 1000 * 1000) {
+      beacon->beacon.last_seen = 0;
+      beacon->beacon.period = 0;
+      beacon->beacon.rssi = INT8_MIN;
+      notify_subscribers(beacon);
       TAILQ_REMOVE(&beacons, beacon, entries);
       free(beacon);
-      removed = true;
     }
-  }
-  if (removed) {
-    notify_subscribers();
   }
   xSemaphoreGive(beacon_mutex);
 }
@@ -263,7 +260,7 @@ static int gap_event(struct ble_gap_event *event, void *arg) {
     }
     beacon->beacon.last_seen = now;
 
-    notify_subscribers();
+    notify_subscribers(beacon);
     xSemaphoreGive(beacon_mutex);
     break;
   }
@@ -480,7 +477,15 @@ esp_err_t bluetooth_subscribe_beacon(uint16_t major,
   sub->callback = callback;
   sub->arg = arg;
   TAILQ_INSERT_TAIL(&subscribers, sub, entries);
-  notify_subscriber(sub);
+
+  struct bt_beacon *newest = NULL, *beacon = NULL;
+  TAILQ_FOREACH(beacon, &beacons, entries) {
+    if (beacon->beacon.major == major &&
+        (!newest || beacon->beacon.last_seen > newest->beacon.last_seen)) {
+      newest = beacon;
+    }
+  }
+  notify_subscriber(sub, newest);
 
   xSemaphoreGive(beacon_mutex);
 
