@@ -23,6 +23,7 @@ idf_component_register(
   static.c
   station_2pi.c
   station_funaround.c
+  station_numbers.c
   station_pi_activation.c
   station_pi.c
   station_rickroll.c
