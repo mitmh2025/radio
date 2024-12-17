@@ -107,11 +107,15 @@ static void start_playback() {
 
   struct timeval now = {};
   gettimeofday(&now, NULL);
+  uint64_t ts = now.tv_sec * 1000000 + now.tv_usec;
+  if (ts < 1000000ULL * 60 * 60 * 24 * 365) {
+    // clock is not accurate yet
+    ts = ((uint64_t)esp_random() << 32) | esp_random();
+  }
 
   int skip = 0;
   if (rickroll_duration > 0) {
-    skip = (now.tv_sec * 48000 + (48000 * now.tv_usec) / 1000000) %
-           rickroll_duration;
+    skip = ((ts * 48000) / 1000000) % rickroll_duration;
   }
 
   playback_queue_add(&(playback_cfg_t){
@@ -120,7 +124,7 @@ static void start_playback() {
       .skip_samples = skip,
   });
 
-  uint64_t delay = (now.tv_sec * 1000000 + now.tv_usec) % 30000000;
+  uint64_t delay = ts % 30000000;
   esp_timer_start_once(interrupt_timer, delay);
 }
 
