@@ -18,6 +18,7 @@
 #include "mixer.h"
 #include "playback.h"
 #include "playback_queue.h"
+#include "static.h"
 #include "station_2pi.h"
 #include "station_funaround.h"
 #include "station_pi.h"
@@ -203,6 +204,7 @@ void app_main(void) {
 
   ESP_ERROR_CHECK_WITHOUT_ABORT(things_init());
   ESP_ERROR_CHECK_WITHOUT_ABORT(file_cache_init());
+  ESP_ERROR_CHECK_WITHOUT_ABORT(static_init());
 
   if (!(xEventGroupGetBits(radio_event_group) &
         RADIO_EVENT_GROUP_THINGS_PROVISIONED)) {

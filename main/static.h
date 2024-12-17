@@ -8,6 +8,7 @@
 extern "C" {
 #endif
 
+esp_err_t static_init(void);
 int static_read_audio(void *ctx, char *data, int len, TickType_t ticks_to_wait);
 
 #ifdef __cplusplus

@@ -5,6 +5,7 @@
 
 #include <errno.h>
 #include <string.h>
+#include <sys/queue.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 
@@ -17,6 +18,15 @@
 #include <com/amazonaws/kinesis/video/common/Include.h>
 
 #define FILE_CACHE_PREFIX STORAGE_MOUNTPOINT "/cache"
+
+static SemaphoreHandle_t subscriber_mutex = NULL;
+struct subscriber {
+  file_cache_refresh_cb callback;
+  void *arg;
+  TAILQ_ENTRY(subscriber) entries;
+};
+TAILQ_HEAD(subscriber_list, subscriber);
+static struct subscriber_list subscribers = TAILQ_HEAD_INITIALIZER(subscribers);
 
 typedef struct {
   const char *name;
@@ -652,6 +662,10 @@ static void file_cache_task(void *context) {
     manifest_cache_last_update = time(NULL);
     manifest_cache_last_update_err = err;
     xSemaphoreGive(manifest_cache_mutex);
+    xSemaphoreTake(subscriber_mutex, portMAX_DELAY);
+    struct subscriber *sub;
+    TAILQ_FOREACH(sub, &subscribers, entries) { sub->callback(sub->arg); }
+    xSemaphoreGive(subscriber_mutex);
     if (err != ESP_OK) {
       uint32_t wait = 10000 + esp_random() % 5000;
       ESP_LOGE(RADIO_TAG,
@@ -671,6 +685,7 @@ static void file_cache_task(void *context) {
 }
 
 esp_err_t file_cache_init(void) {
+  subscriber_mutex = xSemaphoreCreateMutex();
   manifest_url_mutex = xSemaphoreCreateMutex();
   manifest_cache_mutex = xSemaphoreCreateMutex();
 
@@ -719,4 +734,16 @@ int file_cache_open_file(const char *name) {
 cleanup:
   xSemaphoreGive(manifest_cache_mutex);
   return ret;
+}
+
+esp_err_t file_cache_subscribe_refresh(file_cache_refresh_cb cb, void *ctx) {
+  xSemaphoreTake(subscriber_mutex, portMAX_DELAY);
+  struct subscriber *sub = calloc(1, sizeof(struct subscriber));
+  ESP_RETURN_ON_FALSE(sub != NULL, ESP_ERR_NO_MEM, RADIO_TAG,
+                      "Failed to allocate subscriber");
+  sub->callback = cb;
+  sub->arg = ctx;
+  TAILQ_INSERT_TAIL(&subscribers, sub, entries);
+  xSemaphoreGive(subscriber_mutex);
+  return ESP_OK;
 }
