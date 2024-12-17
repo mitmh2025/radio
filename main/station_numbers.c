@@ -92,18 +92,6 @@ static void things_cb(const char *key, const things_attribute_t *value) {
   }
 }
 
-static void cache_updated(void *ctx) {
-  int64_t duration = 0;
-  esp_err_t err = playback_duration(numbers_file, &duration);
-  if (err != ESP_OK) {
-    ESP_LOGW(RADIO_TAG, "Failed to get numbers duration: %d", err);
-    return;
-  }
-  if (duration > 0) {
-    numbers_duration = duration;
-  }
-}
-
 esp_err_t station_numbers_init() {
   esp_err_t err = playback_duration(numbers_file, &numbers_duration);
   if (err != ESP_OK) {
