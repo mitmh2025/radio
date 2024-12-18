@@ -25,7 +25,13 @@ static uint16_t ratchet = 0;
 static bool next_detected = false;
 static bool tuned = false;
 
-const int8_t threshold = -75;
+static const int8_t threshold = -75;
+
+static size_t telemetry_index = 0;
+
+static void telemetry_generator() {
+  things_send_telemetry_int("funaround_ratchet", ratchet);
+}
 
 static esp_err_t set_ratchet(uint16_t new_ratchet) {
   ESP_LOGI(RADIO_TAG, "Setting funaround ratchet to %d", new_ratchet);
@@ -33,6 +39,7 @@ static esp_err_t set_ratchet(uint16_t new_ratchet) {
   next_detected = false;
   ESP_ERROR_CHECK(nvs_set_u16(funaround_nvs_handle, "ratchet", ratchet));
   ESP_ERROR_CHECK(nvs_commit(funaround_nvs_handle));
+  things_force_telemetry(telemetry_index);
   return ESP_OK;
 }
 
@@ -165,6 +172,10 @@ esp_err_t station_funaround_init() {
   ESP_RETURN_ON_ERROR(
       bluetooth_subscribe_beacon(BLUETOOTH_MAJOR_FUNAROUND, beacon_cb, NULL),
       RADIO_TAG, "Failed to subscribe to funaround beacons");
+
+  ESP_RETURN_ON_ERROR(things_register_telemetry_generator(
+                          telemetry_generator, "funaround", &telemetry_index),
+                      RADIO_TAG, "Failed to register funaround telemetry");
 
   return ESP_OK;
 }
