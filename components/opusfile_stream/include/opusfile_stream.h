@@ -10,8 +10,7 @@ extern "C" {
 #define OPUSFILE_STREAM_TASK_STACK (30 * 1024)
 #define OPUSFILE_STREAM_TASK_CORE (0)
 #define OPUSFILE_STREAM_TASK_PRIO (11)
-#define OPUSFILE_STREAM_RINGBUFFER_SIZE                                        \
-  (8 * 60 * 1024) // roughly 60 seconds of audio at 8kbps
+#define OPUSFILE_STREAM_RINGBUFFER_SIZE (11520 * 16)
 
 typedef struct {
   int fd;          /*!< File descriptor */

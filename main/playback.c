@@ -49,14 +49,13 @@ esp_err_t playback_file(const playback_cfg_t *cfg,
   ESP_RETURN_ON_FALSE(handle->fd >= 0, ESP_FAIL, RADIO_TAG,
                       "Failed to open file: %d", errno);
 
-  audio_pipeline_cfg_t pipeline_cfg = {
-      .rb_size = 2048,
-  };
+  audio_pipeline_cfg_t pipeline_cfg = {};
   handle->pipeline = audio_pipeline_init(&pipeline_cfg);
   ESP_RETURN_ON_FALSE(handle->pipeline, ESP_FAIL, RADIO_TAG,
                       "Failed to create audio pipeline");
 
-  handle->output = rb_create(960 * 2, 1);
+  // Buffer 2 seconds of audio
+  handle->output = rb_create(960 * 2 * 100, 1);
   ESP_GOTO_ON_ERROR(handle->output == NULL, cleanup, RADIO_TAG,
                     "Failed to create output ringbuf");
 
