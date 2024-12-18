@@ -1,6 +1,7 @@
 #include "fm.h"
-#include "board.h"
 #include "main.h"
+
+#include "board.h"
 #include "things.h"
 
 #include "esp_check.h"

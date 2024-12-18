@@ -1,5 +1,7 @@
 #pragma once
 
+#define LOG_LOCAL_LEVEL ESP_LOG_DEBUG
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 

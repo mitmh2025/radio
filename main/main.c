@@ -158,7 +158,6 @@ void app_main(void) {
   esp_log_level_set("AUDIO_PIPELINE", ESP_LOG_ERROR);
   esp_log_level_set("AUDIO_ELEMENT", ESP_LOG_ERROR);
   esp_log_level_set(RADIO_TAG, ESP_LOG_DEBUG);
-  esp_log_level_set("radio:bt", ESP_LOG_DEBUG);
   esp_log_level_set("kvswebrtc", ESP_LOG_WARN);
 
   esp_err_t err = nvs_flash_init();

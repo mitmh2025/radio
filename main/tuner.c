@@ -1,9 +1,10 @@
 #include "tuner.h"
+#include "main.h"
+
 #include "adc.h"
 #include "board.h"
 #include "debounce.h"
 #include "fm.h"
-#include "main.h"
 #include "mixer.h"
 #include "tas2505.h"
 #include "things.h"

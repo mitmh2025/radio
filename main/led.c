@@ -1,6 +1,7 @@
 #include "led.h"
-#include "board.h"
 #include "main.h"
+
+#include "board.h"
 #include "things.h"
 
 #include <string.h>

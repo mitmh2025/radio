@@ -1,11 +1,12 @@
 #include "calibration.h"
+#include "main.h"
+
 #include "accelerometer.h"
 #include "adc.h"
 #include "board.h"
 #include "debounce.h"
 #include "led.h"
 #include "magnet.h"
-#include "main.h"
 #include "mixer.h"
 #include "tas2505.h"
 #include "tone_generator.h"
