@@ -732,7 +732,7 @@ static void station_pi_task(void *ctx) {
       }
     }
 
-    if (current_stage >= STAGE_COUNT) {
+    if (current_stage >= STAGE_COUNT && entuned) {
       // Don't pitch bend if there's an active knock going on because that
       // throws off the accelerometer
       if (knock_last_time + PULSE_DEBOUNCE_US < esp_timer_get_time()) {
