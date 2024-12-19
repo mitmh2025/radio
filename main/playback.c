@@ -142,6 +142,8 @@ esp_err_t playback_wait_for_completion(playback_handle_t handle) {
   ESP_RETURN_ON_FALSE(handle, ESP_ERR_INVALID_ARG, RADIO_TAG,
                       "Invalid playback handle");
 
+  bool stopped = false;
+
   while (1) {
     audio_event_iface_msg_t msg;
     esp_err_t ret = audio_event_iface_listen(handle->evt, &msg, portMAX_DELAY);
@@ -158,6 +160,7 @@ esp_err_t playback_wait_for_completion(playback_handle_t handle) {
         handle->tuned = true;
       } else if (msg.cmd == AEL_MSG_CMD_STOP) {
         ESP_LOGD(RADIO_TAG, "Playback stopped");
+        stopped = true;
         break;
       }
     }
@@ -198,7 +201,7 @@ esp_err_t playback_wait_for_completion(playback_handle_t handle) {
   }
 
   // Wait for the output ringbuffer to drain
-  while (handle->channel &&
+  while (!stopped && handle->channel &&
          rb_bytes_filled(handle->output) >
              960 * handle->info.channels * handle->info.bits / 8) {
     vTaskDelay(pdMS_TO_TICKS(20));
