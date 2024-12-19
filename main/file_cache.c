@@ -16,6 +16,7 @@
 #include "esp_random.h"
 
 #include <com/amazonaws/kinesis/video/common/Include.h>
+#include <psa/crypto_sizes.h>
 
 #define FILE_CACHE_PREFIX STORAGE_MOUNTPOINT "/cache"
 
@@ -45,6 +46,7 @@ static SemaphoreHandle_t manifest_url_mutex = NULL;
 static char *manifest_url = NULL;
 
 static SemaphoreHandle_t manifest_cache_mutex = NULL;
+static uint8_t manifest_hash[PSA_HASH_LENGTH(PSA_ALG_SHA_256)] = {};
 static file_cache_manifest *manifest_cache = NULL;
 static time_t manifest_cache_last_update = 0;
 static esp_err_t manifest_cache_last_update_err = ESP_OK;
@@ -64,6 +66,12 @@ static void telemetry_generator(void) {
                             manifest_cache_last_update);
   things_send_telemetry_int("file_cache_last_error",
                             manifest_cache_last_update_err);
+
+  char hash_str[PSA_HASH_MAX_SIZE * 2 + 1];
+  for (size_t i = 0; i < PSA_HASH_LENGTH(PSA_ALG_SHA_256); i++) {
+    snprintf(hash_str + i * 2, 3, "%02x", manifest_hash[i]);
+  }
+  things_send_telemetry_string("file_cache_hash", hash_str);
 
   xSemaphoreGive(manifest_cache_mutex);
 }
@@ -164,7 +172,7 @@ static esp_err_t event_handler(esp_http_client_event_t *evt) {
       memcpy(*data->contents + data->len, http_data, http_len);
       data->len += http_len;
     }
-    while (http_len > 0) {
+    while (data->fd >= 0 && http_len > 0) {
       ssize_t ret = write(data->fd, http_data, http_len);
       if (ret < 0) {
         ESP_LOGE(RADIO_TAG, "Error writing to file: %d (%s)", errno,
@@ -190,12 +198,14 @@ static esp_err_t fetch_file(const char *url, const char *path, char **contents,
       .contents = contents,
   };
 
-  data.fd = open(path, O_CREAT | O_TRUNC | O_WRONLY, 0666);
-  if (data.fd == -1) {
-    ESP_LOGE(RADIO_TAG, "Error creating file (%s): %d (%s)", path, errno,
-             strerror(errno));
-    ret = ESP_FAIL;
-    goto cleanup;
+  if (path != NULL) {
+    data.fd = open(path, O_CREAT | O_TRUNC | O_WRONLY, 0666);
+    if (data.fd == -1) {
+      ESP_LOGE(RADIO_TAG, "Error creating file (%s): %d (%s)", path, errno,
+               strerror(errno));
+      ret = ESP_FAIL;
+      goto cleanup;
+    }
   }
 
   const char *initial_url = base_url != NULL ? base_url : url;
@@ -479,12 +489,36 @@ static esp_err_t refresh() {
 
   ESP_LOGD(RADIO_TAG, "Fetching manifest from %s", current_manifest_url);
   size_t manifest_len;
-  ESP_GOTO_ON_ERROR(
-      fetch_file(current_manifest_url, FILE_CACHE_PREFIX "/manifest.json.new",
-                 &manifest_contents, &manifest_len, NULL),
-      cleanup, RADIO_TAG, "Failed to fetch manifest: %d", err_rc_);
+  ESP_GOTO_ON_ERROR(fetch_file(current_manifest_url, NULL, &manifest_contents,
+                               &manifest_len, NULL),
+                    cleanup, RADIO_TAG, "Failed to fetch manifest: %d",
+                    err_rc_);
   ESP_GOTO_ON_FALSE(manifest_contents != NULL, ESP_FAIL, cleanup, RADIO_TAG,
                     "Unable to fetch manfiest file contents");
+
+  uint8_t hash[PSA_HASH_LENGTH(PSA_ALG_SHA_256)];
+  size_t hash_length;
+  psa_status_t status =
+      psa_hash_compute(PSA_ALG_SHA_256, (const uint8_t *)manifest_contents,
+                       manifest_len, hash, sizeof(hash), &hash_length);
+  ESP_GOTO_ON_FALSE(status == PSA_SUCCESS, ESP_FAIL, cleanup, RADIO_TAG,
+                    "Error computing manifest hash: %" PRId32, status);
+  if (memcmp(hash, manifest_hash, sizeof(hash)) == 0) {
+    ESP_LOGD(RADIO_TAG, "Manifest hash matches, skipping refresh");
+    goto cleanup;
+  }
+
+  int fd = open(FILE_CACHE_PREFIX "/manifest.json.new",
+                O_CREAT | O_TRUNC | O_WRONLY, 0666);
+  ESP_GOTO_ON_FALSE(fd != -1, ESP_FAIL, cleanup, RADIO_TAG,
+                    "Error creating manifest file: %d (%s)", errno,
+                    strerror(errno));
+  ssize_t written = write(fd, manifest_contents, manifest_len);
+  fsync(fd);
+  close(fd);
+  ESP_GOTO_ON_FALSE(written == manifest_len, ESP_FAIL, cleanup, RADIO_TAG,
+                    "Error writing manifest file: %d (%s)", errno,
+                    strerror(errno));
 
   manifest = parse_manifest(manifest_contents, manifest_len);
   ESP_GOTO_ON_FALSE(manifest != NULL, ESP_FAIL, cleanup, RADIO_TAG,
@@ -627,6 +661,14 @@ static esp_err_t load_manifest() {
                     "Error reading manifest.json file: %d (%s)", errno,
                     strerror(errno));
 
+  uint8_t hash[PSA_HASH_LENGTH(PSA_ALG_SHA_256)];
+  size_t hash_len = 0;
+  psa_status_t status =
+      psa_hash_compute(PSA_ALG_SHA_256, (const uint8_t *)manifest_contents,
+                       st.st_size, hash, sizeof(hash), &hash_len);
+  ESP_GOTO_ON_FALSE(status == PSA_SUCCESS, ESP_FAIL, cleanup, RADIO_TAG,
+                    "Error computing manifest hash: %" PRId32, status);
+
   file_cache_manifest *manifest = parse_manifest(manifest_contents, st.st_size);
   ESP_GOTO_ON_FALSE(manifest != NULL, ESP_FAIL, cleanup, RADIO_TAG,
                     "Error parsing manifest.json");
@@ -636,6 +678,7 @@ static esp_err_t load_manifest() {
     free_file_cache_manifest(manifest_cache);
   }
   manifest_cache = manifest;
+  memcpy(manifest_hash, hash, sizeof(manifest_hash));
   xSemaphoreGive(manifest_cache_mutex);
 
 cleanup:
@@ -705,6 +748,31 @@ esp_err_t file_cache_init(void) {
                                       &telemetry_index);
 
   return ESP_OK;
+}
+
+char *file_cache_get_hash(const char *name) {
+  char *ret = NULL;
+
+  xSemaphoreTake(manifest_cache_mutex, portMAX_DELAY);
+  if (manifest_cache == NULL) {
+    goto cleanup;
+  }
+
+  file_cache_manifest_entry key = {
+      .name = name,
+  };
+  const file_cache_manifest_entry *entry =
+      bsearch(&key, manifest_cache->entries, manifest_cache->entry_count,
+              sizeof(file_cache_manifest_entry), manifest_entry_compare_name);
+  if (entry == NULL) {
+    goto cleanup;
+  }
+
+  ret = strdup(entry->hash);
+
+cleanup:
+  xSemaphoreGive(manifest_cache_mutex);
+  return ret;
 }
 
 int file_cache_open_file(const char *name) {
