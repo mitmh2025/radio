@@ -125,7 +125,7 @@ static void start_playback() {
       .skip_samples = skip,
   });
 
-  uint64_t delay = ts % 30000000;
+  uint64_t delay = 30000000 - (ts % 30000000);
   esp_timer_start_once(interrupt_timer, delay);
 }
 

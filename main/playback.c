@@ -197,6 +197,13 @@ esp_err_t playback_wait_for_completion(playback_handle_t handle) {
     }
   }
 
+  // Wait for the output ringbuffer to drain
+  while (handle->channel &&
+         rb_bytes_filled(handle->output) >
+             960 * handle->info.channels * handle->info.bits / 8) {
+    vTaskDelay(pdMS_TO_TICKS(20));
+  }
+
   if (handle->channel) {
     mixer_stop_audio(handle->channel);
     handle->channel = NULL;

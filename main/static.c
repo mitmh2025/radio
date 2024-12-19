@@ -54,7 +54,6 @@ static void cache_updated(void *ctx) {
 
   new_opus_data_len = st.st_size;
 
-cleanup:
   xSemaphoreTake(mutex, portMAX_DELAY);
   if (opus_file) {
     op_free(opus_file);
@@ -68,8 +67,14 @@ cleanup:
 
   opus_data = new_opus_data;
   opus_data_len = new_opus_data_len;
-
   xSemaphoreGive(mutex);
+
+  new_opus_data = NULL;
+
+cleanup:
+  if (new_opus_data) {
+    free(new_opus_data);
+  }
 
   if (fd >= 0) {
     close(fd);

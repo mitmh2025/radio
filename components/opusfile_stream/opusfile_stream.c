@@ -108,7 +108,7 @@ static int _opusfile_read(audio_element_handle_t self, char *buffer, int len,
   } else if (rlen < 0) {
     ESP_LOGE(TAG, "read failed: %d", rlen);
   } else {
-    audio_element_update_byte_pos(self, rlen * 2);
+    audio_element_update_byte_pos(self, rlen);
   }
 
   return rlen * 2;
