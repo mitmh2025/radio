@@ -16,13 +16,47 @@ static const char *TAG = "OPUSFILE_STREAM";
 typedef struct opusfile_stream {
   int fd;
   OggOpusFile *opus_file;
+  OpusDecoder *opus_decoder;
 } opusfile_stream_t;
+
+static int _opusfile_decode(void *ctx, OpusMSDecoder *decoder, void *pcm,
+                            const ogg_packet *op, int nsamples, int nchannels,
+                            int format, int li) {
+  opusfile_stream_t *file = (opusfile_stream_t *)ctx;
+  if (file == NULL) {
+    ESP_LOGE(TAG, "Invalid context");
+    return OP_DEC_USE_DEFAULT;
+  }
+
+  if (file->opus_decoder == NULL) {
+    ESP_LOGE(TAG, "Opus decoder is not initialized");
+    return OP_DEC_USE_DEFAULT;
+  }
+
+  int ret =
+      opus_decode(file->opus_decoder, op->packet, op->bytes, pcm, nsamples, 0);
+  if (ret < 0) {
+    ESP_LOGE(TAG, "opus_decode failed: %d", ret);
+    return ret;
+  }
+
+  return 0;
+}
 
 static esp_err_t _opusfile_open(audio_element_handle_t self) {
   opusfile_stream_t *file = (opusfile_stream_t *)audio_element_getdata(self);
   audio_element_info_t info;
   audio_element_getinfo(self, &info);
   ESP_LOGD(TAG, "_opusfile_open");
+
+  if (file->opus_decoder == NULL) {
+    int err;
+    file->opus_decoder = opus_decoder_create(48000, 1, &err);
+    if (err != OPUS_OK) {
+      ESP_LOGE(TAG, "Failed to create Opus decoder: %d", err);
+      return ESP_FAIL;
+    }
+  }
 
   if (file->opus_file == NULL) {
     OpusFileCallbacks cb = {};
@@ -38,6 +72,8 @@ static esp_err_t _opusfile_open(audio_element_handle_t self) {
       ESP_LOGE(TAG, "Failed to open Opus file: %d", err);
       return ESP_FAIL;
     }
+
+    op_set_decode_callback(file->opus_file, _opusfile_decode, file);
 
     file->fd = -1;
   }
@@ -75,6 +111,9 @@ static esp_err_t _opusfile_destroy(audio_element_handle_t self) {
   opusfile_stream_t *file = (opusfile_stream_t *)audio_element_getdata(self);
   if (file->opus_file != NULL) {
     op_free(file->opus_file);
+  }
+  if (file->opus_decoder != NULL) {
+    opus_decoder_destroy(file->opus_decoder);
   }
   audio_free(file);
   return ESP_OK;
