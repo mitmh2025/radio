@@ -775,7 +775,7 @@ cleanup:
   return ret;
 }
 
-int file_cache_open_file(const char *name) {
+int file_cache_open_file(const char *name, char (*hash)[256]) {
   int ret = -1;
 
   xSemaphoreTake(manifest_cache_mutex, portMAX_DELAY);
@@ -798,6 +798,14 @@ int file_cache_open_file(const char *name) {
   char path[128];
   snprintf(path, sizeof(path), FILE_CACHE_PREFIX "/%s", entry->hash_filename);
   ret = open(path, O_RDONLY);
+
+  if (ret < 0) {
+    goto cleanup;
+  }
+
+  if (hash != NULL) {
+    strncpy(hash[0], entry->hash, 256);
+  }
 
 cleanup:
   xSemaphoreGive(manifest_cache_mutex);

@@ -45,7 +45,7 @@ esp_err_t playback_file(const playback_cfg_t *cfg,
   handle->duck_others = cfg->duck_others;
   handle->tuned = cfg->tuned;
 
-  handle->fd = file_cache_open_file(handle->path);
+  handle->fd = file_cache_open_file(handle->path, NULL);
   ESP_RETURN_ON_FALSE(handle->fd >= 0, ESP_FAIL, RADIO_TAG,
                       "Failed to open file: %d", errno);
 
@@ -360,7 +360,7 @@ esp_err_t playback_duration(const char *path, int64_t *duration) {
   ESP_RETURN_ON_FALSE(duration, ESP_ERR_INVALID_ARG, RADIO_TAG,
                       "Invalid duration");
 
-  int fd = file_cache_open_file(path);
+  int fd = file_cache_open_file(path, NULL);
   ESP_RETURN_ON_FALSE(fd >= 0, ESP_FAIL, RADIO_TAG, "Failed to open file: %d",
                       errno);
 

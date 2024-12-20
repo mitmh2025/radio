@@ -18,7 +18,7 @@
 #define STATIC_BUFFER_SIZE (STATIC_SAMPLE_COUNT * 2) // 16-bit mono
 
 static SemaphoreHandle_t mutex = NULL;
-static char *opus_hash = NULL;
+static char opus_hash[256] = {};
 static unsigned char *opus_data = NULL;
 static size_t opus_data_len = 0;
 static OggOpusFile *opus_file = NULL;
@@ -28,33 +28,22 @@ static StaticTask_t task_buffer;
 static EXT_RAM_BSS_ATTR StackType_t task_stack[30 * 1024 / sizeof(StackType_t)];
 
 static void cache_updated(void *ctx) {
-  char *new_opus_hash = NULL;
+  char new_opus_hash[256] = {};
   unsigned char *new_opus_data = NULL;
   size_t new_opus_data_len = 0;
   int fd = -1;
 
-  new_opus_hash = file_cache_get_hash("static.opus");
-  if (!new_opus_hash) {
-    ESP_LOGD(RADIO_TAG, "No hash for static.opus");
+  fd = file_cache_open_file("static.opus", &new_opus_hash);
+  if (fd < 0) {
+    ESP_LOGD(RADIO_TAG, "Failed to open static.opus: %d", errno);
     goto cleanup;
   }
 
   bool changed = false;
   xSemaphoreTake(mutex, portMAX_DELAY);
-  if (opus_hash) {
-    changed = strcmp(opus_hash, new_opus_hash) != 0;
-  } else {
-    changed = true;
-  }
+  changed = strncmp(opus_hash, new_opus_hash, sizeof(opus_hash)) != 0;
   xSemaphoreGive(mutex);
-
   if (!changed) {
-    goto cleanup;
-  }
-
-  fd = file_cache_open_file("static.opus");
-  if (fd < 0) {
-    ESP_LOGD(RADIO_TAG, "Failed to open static.opus: %d", errno);
     goto cleanup;
   }
 
@@ -88,24 +77,14 @@ static void cache_updated(void *ctx) {
     opus_data = NULL;
   }
 
-  if (opus_hash) {
-    free(opus_hash);
-    opus_hash = NULL;
-  }
-
-  opus_hash = new_opus_hash;
+  memcpy(opus_hash, new_opus_hash, sizeof(opus_hash));
   opus_data = new_opus_data;
   opus_data_len = new_opus_data_len;
   xSemaphoreGive(mutex);
 
-  new_opus_hash = NULL;
   new_opus_data = NULL;
 
 cleanup:
-  if (new_opus_hash) {
-    free(new_opus_hash);
-  }
-
   if (new_opus_data) {
     free(new_opus_data);
   }
