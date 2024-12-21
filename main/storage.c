@@ -145,6 +145,9 @@ static int64_t directory_size(const char *path) {
   }
 
   closedir(dir);
+  if (path_buffer) {
+    free(path_buffer);
+  }
 
   return size;
 }
