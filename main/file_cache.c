@@ -549,6 +549,11 @@ static esp_err_t refresh() {
         cleanup, RADIO_TAG, "Failed to fetch file %s: %d", entry->name,
         err_rc_);
 
+    ESP_GOTO_ON_FALSE(stat(tmppath, &st) == 0 && st.st_size == entry->size,
+                      ESP_FAIL, cleanup, RADIO_TAG,
+                      "File %s (%s) fetched to %s is not the expected size",
+                      entry->url, entry->name, tmppath);
+
     error = rename(tmppath, path);
     ESP_GOTO_ON_FALSE(error == 0, ESP_FAIL, cleanup, RADIO_TAG,
                       "Error moving file %s to %s: %d (%s)", path, path, errno,
