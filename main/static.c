@@ -119,7 +119,6 @@ static int static_read_opusfile(void *ctx, char *data, int len,
       opus_data = NULL;
       return static_read_random(ctx, data, len, ticks_to_wait);
     }
-    op_set_gain_offset(opus_file, OP_HEADER_GAIN, -18 * 256);
   }
 
   int bytes_read = 0;

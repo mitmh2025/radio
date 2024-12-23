@@ -18,7 +18,9 @@
 #define MIXER_SAMPLE_SIZE (960)                   // 20ms of audio at 48kHz
 #define MIXER_BUFFER_SIZE (MIXER_SAMPLE_SIZE * 2) // 16-bit mono
 
-#define MIXER_DUCK_GAIN (-15) // dB
+#define MIXER_DUCK_GAIN (-15)           // dB
+#define MIXER_STATIC_DEFAULT_GAIN (-18) // dB
+#define MIXER_STATIC_COMFORT_GAIN (-35) // dB
 
 #define MIXER_MUTEX_LOCK()                                                     \
   do {                                                                         \
@@ -36,7 +38,8 @@
   } while (0)
 
 static SemaphoreHandle_t mixer_mutex = NULL;
-static atomic_bool default_static = false;
+static atomic_int static_mode = MIXER_STATIC_MODE_NONE;
+char static_in_buffer[MIXER_BUFFER_SIZE];
 static void *downmix_handle = NULL;
 static EXT_RAM_BSS_ATTR esp_downmix_input_info_t
     downmix_source_info[SOURCE_NUM_MAX] = {};
@@ -60,6 +63,7 @@ struct mixer_channel {
 };
 
 TAILQ_HEAD(mixer_channel_list, mixer_channel);
+int mixer_channel_count = 0;
 
 static struct mixer_channel_list mixer_channels =
     TAILQ_HEAD_INITIALIZER(mixer_channels);
@@ -73,19 +77,35 @@ static esp_err_t mixer_reopen() {
     downmix_handle = NULL;
   }
 
-  bool was_ducked = false;
-  for (int i = 0;
-       i < sizeof(downmix_source_info) / sizeof(downmix_source_info[0]); i++) {
-    if (downmix_source_info[i].gain[0] != 0 ||
-        downmix_source_info[i].gain[1] != 0) {
-      was_ducked = true;
-      break;
+  downmix_info.source_num = mixer_channel_count;
+  memset(downmix_source_info, 0, sizeof(downmix_source_info));
+  if (mixer_channel_count < 1) {
+    int current_static_mode = atomic_load(&static_mode);
+    if (current_static_mode == MIXER_STATIC_MODE_NONE) {
+      return ESP_OK;
     }
-  }
 
-  if (downmix_info.source_num < 1) {
-    return ESP_OK;
-  }
+    downmix_info.source_num++;
+    downmix_source_info[0].samplerate = 48000;
+    downmix_source_info[0].channel = 1;
+    downmix_source_info[0].bits_num = 16;
+    downmix_source_info[0].gain[0] =
+        current_static_mode == MIXER_STATIC_MODE_COMFORT
+            ? MIXER_STATIC_COMFORT_GAIN
+            : MIXER_STATIC_DEFAULT_GAIN;
+    downmix_source_info[0].gain[1] = downmix_source_info[0].gain[0];
+    downmix_source_info[0].transit_time = 250;
+  } else {
+    bool was_ducked = false;
+    for (int i = 0;
+         i < sizeof(downmix_source_info) / sizeof(downmix_source_info[0]);
+         i++) {
+      if (downmix_source_info[i].gain[0] != 0 ||
+          downmix_source_info[i].gain[1] != 0) {
+        was_ducked = true;
+        break;
+      }
+    }
 
   bool will_duck = false;
   mixer_channel_t chan;
@@ -96,7 +116,6 @@ static esp_err_t mixer_reopen() {
     }
   }
 
-  memset(downmix_source_info, 0, sizeof(downmix_source_info));
   int i;
   chan = TAILQ_FIRST(&mixer_channels);
   for (i = 0; i < downmix_info.source_num && chan != NULL;
@@ -113,6 +132,7 @@ static esp_err_t mixer_reopen() {
   if (i != downmix_info.source_num) {
     ESP_LOGE(RADIO_TAG, "Mismatch between source info and channels");
     return ESP_FAIL;
+  }
   }
 
   downmix_handle = esp_downmix_open(&downmix_info);
@@ -132,13 +152,13 @@ static void mixer_task(void *arg) {
 
     if (downmix_info.source_num == 0) {
       memset(downmix_buffer, 0, sizeof(downmix_buffer));
-
-      if (atomic_load(&default_static)) {
-        int ret = static_read_audio(NULL, (char *)downmix_buffer,
-                                    sizeof(downmix_buffer), portMAX_DELAY);
-        if (ret < 0) {
-          ESP_LOGE(RADIO_TAG, "Failed to read static audio: %d", ret);
-        }
+      goto done;
+    } else if (mixer_channel_count == 0) {
+      inbufs[0] = (unsigned char *)static_in_buffer;
+      int read = static_read_audio(NULL, static_in_buffer, MIXER_BUFFER_SIZE,
+                                   portMAX_DELAY);
+      if (read < 0) {
+        ESP_LOGE(RADIO_TAG, "Failed to read static audio: %d", read);
       }
     } else {
       mixer_channel_t chan = TAILQ_FIRST(&mixer_channels);
@@ -153,15 +173,16 @@ static void mixer_task(void *arg) {
                    "Failed to read audio data from mixer channel: %d", read);
         }
       }
-
-      int ret = esp_downmix_process(
-          downmix_handle, inbufs, (unsigned char *)downmix_buffer,
-          sizeof(downmix_buffer) / 2, ESP_DOWNMIX_WORK_MODE_SWITCH_ON);
-      if (ret < 0) {
-        ESP_LOGE(RADIO_TAG, "Failed to downmix audio: %d", ret);
-      }
     }
 
+    int ret = esp_downmix_process(
+        downmix_handle, inbufs, (unsigned char *)downmix_buffer,
+        sizeof(downmix_buffer) / 2, ESP_DOWNMIX_WORK_MODE_SWITCH_ON);
+    if (ret < 0) {
+      ESP_LOGE(RADIO_TAG, "Failed to downmix audio: %d", ret);
+    }
+
+  done:
     xSemaphoreGive(mixer_mutex);
     rb_write(mixer_rb, (char *)downmix_buffer, sizeof(downmix_buffer),
              portMAX_DELAY);
@@ -245,11 +266,10 @@ esp_err_t mixer_play_audio(mixer_read_callback_t callback, void *ctx,
   esp_err_t ret = ESP_OK;
 
   xSemaphoreTake(mixer_mutex, portMAX_DELAY);
-  ESP_GOTO_ON_FALSE(downmix_info.source_num + 1 <= SOURCE_NUM_MAX,
-                    ESP_ERR_NO_MEM, cleanup, RADIO_TAG,
-                    "No available downmix sources");
+  ESP_GOTO_ON_FALSE(mixer_channel_count + 1 <= SOURCE_NUM_MAX, ESP_ERR_NO_MEM,
+                    cleanup, RADIO_TAG, "No available downmix sources");
   TAILQ_INSERT_TAIL(&mixer_channels, channel, entries);
-  downmix_info.source_num++;
+  mixer_channel_count++;
   *slot = channel;
   channel = NULL;
   ESP_GOTO_ON_ERROR(mixer_reopen(), cleanup, RADIO_TAG,
@@ -270,7 +290,7 @@ esp_err_t mixer_stop_audio(mixer_channel_t slot) {
 
   xSemaphoreTake(mixer_mutex, portMAX_DELAY);
   TAILQ_REMOVE(&mixer_channels, slot, entries);
-  downmix_info.source_num--;
+  mixer_channel_count--;
   ESP_GOTO_ON_ERROR(mixer_reopen(), cleanup, RADIO_TAG,
                     "Failed to reopen mixer");
 
@@ -280,11 +300,16 @@ cleanup:
   return ret;
 }
 
-esp_err_t mixer_set_default_static(bool enable) {
+esp_err_t mixer_set_static(mixer_static_mode_t mode) {
   ESP_RETURN_ON_FALSE(mixer_mutex, ESP_ERR_INVALID_STATE, RADIO_TAG,
                       "mixer_play_audio must be called after mixer_init");
+  ESP_RETURN_ON_FALSE(mode < MIXER_STATIC_MODE_MAX, ESP_ERR_INVALID_ARG,
+                      RADIO_TAG, "Invalid static mode");
 
-  atomic_store(&default_static, enable);
+  atomic_store(&static_mode, mode);
+  xSemaphoreTake(mixer_mutex, portMAX_DELAY);
+  esp_err_t err = mixer_reopen();
+  xSemaphoreGive(mixer_mutex);
 
-  return ESP_OK;
+  return err;
 }

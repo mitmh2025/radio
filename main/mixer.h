@@ -5,6 +5,13 @@
 
 #include <stdbool.h>
 
+typedef enum {
+  MIXER_STATIC_MODE_DEFAULT,
+  MIXER_STATIC_MODE_COMFORT,
+  MIXER_STATIC_MODE_NONE,
+  MIXER_STATIC_MODE_MAX,
+} mixer_static_mode_t;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -20,7 +27,7 @@ esp_err_t mixer_play_audio(mixer_read_callback_t callback, void *ctx,
 esp_err_t mixer_stop_audio(mixer_channel_t slot);
 // Configure whether the mixer should play static when there are no active audio
 // sources
-esp_err_t mixer_set_default_static(bool enable);
+esp_err_t mixer_set_static(mixer_static_mode_t mode);
 
 #ifdef __cplusplus
 }

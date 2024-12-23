@@ -96,7 +96,7 @@ static void beacon_cb(bluetooth_beacon_t *newest, bluetooth_beacon_t *strongest,
 
 static void entune_funaround(void *ctx) {
   ESP_ERROR_CHECK_WITHOUT_ABORT(bluetooth_set_mode(BLUETOOTH_MODE_AGGRESSIVE));
-  ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_default_static(false));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_static(MIXER_STATIC_MODE_COMFORT));
   ESP_ERROR_CHECK_WITHOUT_ABORT(gpio_config(&(gpio_config_t){
       .pin_bit_mask = BIT64(BUTTON_TRIANGLE_PIN) | BIT64(BUTTON_CIRCLE_PIN),
       .mode = GPIO_MODE_INPUT,
@@ -120,7 +120,7 @@ static void detune_funaround(void *ctx) {
   ESP_ERROR_CHECK_WITHOUT_ABORT(debounce_handler_remove(BUTTON_TRIANGLE_PIN));
   ESP_ERROR_CHECK_WITHOUT_ABORT(playback_queue_drain());
   ESP_ERROR_CHECK_WITHOUT_ABORT(led_set_pixel(1, 0, 0, 0));
-  ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_default_static(true));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_static(MIXER_STATIC_MODE_DEFAULT));
   ESP_ERROR_CHECK_WITHOUT_ABORT(bluetooth_set_mode(BLUETOOTH_MODE_DEFAULT));
 }
 

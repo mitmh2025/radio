@@ -157,7 +157,7 @@ static void bluetooth_cb(bluetooth_beacon_t *newest,
 
 static void entune(void *arg) {
   entuned = true;
-  ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_default_static(false));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_static(MIXER_STATIC_MODE_COMFORT));
   ESP_ERROR_CHECK_WITHOUT_ABORT(bluetooth_set_mode(BLUETOOTH_MODE_AGGRESSIVE));
   if (current_strongest_minor != 0) {
     start_playback();
@@ -171,7 +171,7 @@ static void detune(void *arg) {
       playback_queue_unsubscribe_empty(playback_empty_cb));
   stop_playback();
   ESP_ERROR_CHECK_WITHOUT_ABORT(bluetooth_set_mode(BLUETOOTH_MODE_DEFAULT));
-  ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_default_static(true));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_static(MIXER_STATIC_MODE_DEFAULT));
   entuned = false;
 }
 

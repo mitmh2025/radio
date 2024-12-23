@@ -882,7 +882,7 @@ cleanup:
 
 static void entune(void *ctx) {
   station_pi_activation_enable(false);
-  ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_default_static(false));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_static(MIXER_STATIC_MODE_NONE));
   ESP_ERROR_CHECK_WITHOUT_ABORT(audio_output_suspend());
   ESP_ERROR_CHECK_WITHOUT_ABORT(tas2505_set_output(TAS2505_OUTPUT_SPEAKER));
   memset(notes_played, 0, sizeof(notes_played));
@@ -924,7 +924,7 @@ static void detune(void *ctx) {
   ESP_ERROR_CHECK_WITHOUT_ABORT(accelerometer_unsubscribe_pulse());
   ESP_ERROR_CHECK_WITHOUT_ABORT(led_set_pixel(1, 0, 0, 0));
   ESP_ERROR_CHECK_WITHOUT_ABORT(audio_output_resume());
-  ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_default_static(true));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_static(MIXER_STATIC_MODE_DEFAULT));
   station_pi_activation_enable(true);
 }
 

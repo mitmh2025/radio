@@ -22,7 +22,7 @@ static void ap_start_timer_cb(void *arg) {
 }
 
 static void entune_wifi(void *ctx) {
-  ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_default_static(false));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_static(MIXER_STATIC_MODE_COMFORT));
   esp_timer_start_once(ap_start_timer, 1000000);
   // TODO: audio cue
 }
@@ -34,7 +34,7 @@ static void detune_wifi(void *ctx) {
   ESP_ERROR_CHECK_WITHOUT_ABORT(wifi_disable_ap());
   xSemaphoreGive(ap_mode_lock);
 
-  ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_default_static(true));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_static(MIXER_STATIC_MODE_DEFAULT));
 }
 
 esp_err_t station_wifi_init() {

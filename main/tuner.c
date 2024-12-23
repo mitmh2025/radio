@@ -84,12 +84,12 @@ static void telemetry_generator() {
 }
 
 static void entune_pm() {
-  ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_default_static(true));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_static(MIXER_STATIC_MODE_DEFAULT));
   ESP_ERROR_CHECK_WITHOUT_ABORT(tas2505_set_input(TAS2505_INPUT_DAC));
 }
 
 static void detune_pm() {
-  ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_default_static(false));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_static(MIXER_STATIC_MODE_NONE));
 }
 
 static void entune_fm() {

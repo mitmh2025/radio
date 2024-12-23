@@ -58,7 +58,7 @@ static void start_playback() {
 
 static void entune(void *arg) {
   entuned = true;
-  ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_default_static(false));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_static(MIXER_STATIC_MODE_NONE));
   start_playback();
   ESP_ERROR_CHECK_WITHOUT_ABORT(
       playback_queue_subscribe_empty(playback_empty_cb));
@@ -68,7 +68,7 @@ static void detune(void *arg) {
   ESP_ERROR_CHECK_WITHOUT_ABORT(
       playback_queue_unsubscribe_empty(playback_empty_cb));
   stop_playback();
-  ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_default_static(true));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_static(MIXER_STATIC_MODE_DEFAULT));
   entuned = false;
 }
 
