@@ -409,6 +409,21 @@ static void check_sequence(void *arg) {
   if (err != ESP_OK) {
     ESP_LOGE(RADIO_TAG, "Failed to save stage: %d", err);
   }
+  play_flush_timer_cb(NULL);
+
+  int64_t completion_total_play_time = 0;
+  xSemaphoreTake(play_time_mutex, portMAX_DELAY);
+  completion_total_play_time = total_play_time;
+  xSemaphoreGive(play_time_mutex);
+
+  char key[sizeof("stage_000_time")];
+  snprintf(key, sizeof(key), "stage_%d_time", current_stage - 1);
+  err = nvs_set_i64(pi_nvs_handle, key, completion_total_play_time);
+  if (err != ESP_OK) {
+    ESP_LOGE(RADIO_TAG, "Failed to save stage time: %d", err);
+  }
+
+  force_telemetry();
 }
 
 static void schedule_sequence_check() {
