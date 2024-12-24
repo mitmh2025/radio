@@ -33,9 +33,9 @@ static void cache_updated(void *ctx) {
   size_t new_opus_data_len = 0;
   int fd = -1;
 
-  fd = file_cache_open_file("static.opus", &new_opus_hash);
+  fd = file_cache_open_file("diligent-spy/static.opus", &new_opus_hash);
   if (fd < 0) {
-    ESP_LOGD(RADIO_TAG, "Failed to open static.opus: %d", errno);
+    ESP_LOGD(RADIO_TAG, "Failed to load static: %d", errno);
     goto cleanup;
   }
 
