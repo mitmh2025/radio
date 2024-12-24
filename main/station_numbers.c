@@ -7,6 +7,7 @@
 #include "tuner.h"
 
 #include <math.h>
+#include <string.h>
 #include <sys/time.h>
 
 #include "esp_check.h"
@@ -22,10 +23,11 @@ static int64_t numbers_duration = 0;
 
 static void playback_empty_cb() {
   if (entuned) {
-    playback_queue_add(&(playback_cfg_t){
-        .path = numbers_file,
+    playback_queue_entry_t cfg = {
         .tuned = true,
-    });
+    };
+    strncpy(cfg.path, numbers_file, sizeof(cfg.path));
+    playback_queue_add(&cfg);
   }
 }
 
@@ -49,11 +51,12 @@ static void start_playback() {
     skip = ((ts * 48000) / 1000000) % numbers_duration;
   }
 
-  playback_queue_add(&(playback_cfg_t){
-      .path = numbers_file,
+  playback_queue_entry_t cfg = {
       .tuned = true,
       .skip_samples = skip,
-  });
+  };
+  strncpy(cfg.path, numbers_file, sizeof(cfg.path));
+  playback_queue_add(&cfg);
 }
 
 static void entune(void *arg) {

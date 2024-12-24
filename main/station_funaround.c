@@ -44,15 +44,14 @@ static esp_err_t set_ratchet(uint16_t new_ratchet) {
 }
 
 static void play_current_beacon() {
-  char path[sizeof("dimpled-star/waypoint00000.opus")];
-  snprintf(path, sizeof(path), "dimpled-star/waypoint%" PRIu16 ".opus",
+  playback_queue_entry_t cfg = {
+      .tuned = true,
+  };
+  snprintf(cfg.path, sizeof(cfg.path), "dimpled-star/waypoint%" PRIu16 ".opus",
            ratchet);
 
   ESP_ERROR_CHECK_WITHOUT_ABORT(playback_queue_drain());
-  ESP_ERROR_CHECK_WITHOUT_ABORT(playback_queue_add(&(playback_cfg_t){
-      .path = path,
-      .tuned = true,
-  }));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(playback_queue_add(&cfg));
 }
 
 static void update(bool force_playback) {

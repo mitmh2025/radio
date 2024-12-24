@@ -8,6 +8,7 @@
 #include "tuner.h"
 
 #include <math.h>
+#include <string.h>
 #include <sys/time.h>
 
 #include "esp_check.h"
@@ -82,10 +83,11 @@ static void timer_cb(void *arg) {
 
 static void playback_empty_cb() {
   if (entuned && current_strongest_minor) {
-    playback_queue_add(&(playback_cfg_t){
-        .path = rickroll_file,
+    playback_queue_entry_t cfg = {
         .tuned = true,
-    });
+    };
+    strncpy(cfg.path, rickroll_file, sizeof(cfg.path));
+    playback_queue_add(&cfg);
   }
 }
 
@@ -119,11 +121,12 @@ static void start_playback() {
     skip = ((ts * 48000) / 1000000) % rickroll_duration;
   }
 
-  playback_queue_add(&(playback_cfg_t){
-      .path = rickroll_file,
+  playback_queue_entry_t cfg = {
       .tuned = true,
       .skip_samples = skip,
-  });
+  };
+  strncpy(cfg.path, rickroll_file, sizeof(cfg.path));
+  playback_queue_add(&cfg);
 
   uint64_t delay = 30000000 - (ts % 30000000);
   esp_timer_start_once(interrupt_timer, delay);

@@ -296,11 +296,11 @@ static void enqueue_playback(const char *path) {
   xTaskNotify(pi_task, 0, eNoAction);
   update_led();
 
-  playback_queue_add(&(playback_cfg_t){
-      .path = path,
-      .duck_others = true,
+  playback_queue_entry_t cfg = {
       .tuned = true,
-  });
+  };
+  strncpy(cfg.path, path, sizeof(cfg.path));
+  playback_queue_add(&cfg);
 }
 
 static void playback_empty_cb() {

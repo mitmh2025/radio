@@ -17,11 +17,18 @@ static playback_queue_empty_cb_t empty_cb = NULL;
 
 static void playback_task(void *ctx) {
   while (true) {
-    playback_cfg_t cfg;
+    playback_queue_entry_t cfg;
     xQueueReceive(playback_queue, &cfg, portMAX_DELAY);
 
     xSemaphoreTake(current_playback_mutex, portMAX_DELAY);
-    esp_err_t err = playback_file(&cfg, &current_playback);
+    esp_err_t err = playback_file(
+        &(playback_cfg_t){
+            .path = cfg.path,
+            .duck_others = cfg.duck_others,
+            .tuned = cfg.tuned,
+            .skip_samples = cfg.skip_samples,
+        },
+        &current_playback);
     xSemaphoreGive(current_playback_mutex);
     if (err != ESP_OK) {
       ESP_LOGE(RADIO_TAG, "Failed to play file: %d", err);
@@ -48,7 +55,7 @@ static void playback_task(void *ctx) {
   }
 }
 
-esp_err_t playback_queue_add(playback_cfg_t *cfg) {
+esp_err_t playback_queue_add(playback_queue_entry_t *cfg) {
   ESP_RETURN_ON_FALSE(playback_queue, ESP_ERR_INVALID_STATE, RADIO_TAG,
                       "Playback queue not initialized");
 
@@ -93,7 +100,7 @@ esp_err_t playback_queue_drain() {
   ESP_RETURN_ON_FALSE(playback_queue, ESP_ERR_INVALID_STATE, RADIO_TAG,
                       "Playback queue not initialized");
 
-  playback_cfg_t cfg;
+  playback_queue_entry_t cfg;
   while (xQueueReceive(playback_queue, &cfg, 0) == pdTRUE) {
     // Drain the queue
   }
@@ -134,7 +141,7 @@ esp_err_t playback_queue_pause_toggle() {
 }
 
 esp_err_t playback_queue_init() {
-  playback_queue = xQueueCreate(4, sizeof(playback_cfg_t));
+  playback_queue = xQueueCreate(4, sizeof(playback_queue_entry_t));
   ESP_RETURN_ON_FALSE(playback_queue, ESP_ERR_NO_MEM, RADIO_TAG,
                       "Failed to create playback queue");
 
