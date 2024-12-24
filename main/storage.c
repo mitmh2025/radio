@@ -105,53 +105,6 @@ typedef struct {
 static block_flash_t block_flash[BLOCK_FLASH_COUNT] = {};
 static sdmmc_card_t block_sdmmc_card;
 
-static int64_t directory_size(const char *path) {
-  DIR *dir = opendir(path);
-  if (!dir) {
-    return -1;
-  }
-
-  char *path_buffer = NULL;
-
-  int64_t size = 0;
-  struct dirent *entry;
-  while ((entry = readdir(dir))) {
-    if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
-      continue;
-    }
-
-    if (path_buffer) {
-      free(path_buffer);
-    }
-    path_buffer = malloc(PATH_MAX);
-    snprintf(path_buffer, PATH_MAX, "%s/%s", path, entry->d_name);
-
-    if (entry->d_type == DT_REG) {
-      struct stat st;
-      if (stat(path_buffer, &st) < 0) {
-        size = -1;
-        break;
-      }
-
-      size += st.st_size;
-    } else if (entry->d_type == DT_DIR) {
-      int64_t subdirectory_size = directory_size(path_buffer);
-      if (subdirectory_size < 0) {
-        size = -1;
-        break;
-      }
-      size += subdirectory_size;
-    }
-  }
-
-  closedir(dir);
-  if (path_buffer) {
-    free(path_buffer);
-  }
-
-  return size;
-}
-
 static void storage_telemetry_generator() {
   if (block_type == BLOCK_FLASH) {
     int64_t total_read_ops = 0;
@@ -182,11 +135,6 @@ static void storage_telemetry_generator() {
       esp_littlefs_mountpoint_info(STORAGE_MOUNTPOINT, &total_bytes, NULL);
   if (err == ESP_OK) {
     things_send_telemetry_int("storage_total_bytes", total_bytes);
-  }
-
-  int64_t used_bytes = directory_size(STORAGE_MOUNTPOINT);
-  if (used_bytes >= 0) {
-    things_send_telemetry_int("storage_used_bytes", used_bytes);
   }
 }
 
