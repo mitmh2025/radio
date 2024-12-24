@@ -18,6 +18,8 @@
 #include "opus_decoder.h"
 #include "wav_decoder.h"
 
+#define PLAYBACK_PAUSE_TOGGLE (INT_MAX)
+
 struct playback_handle {
   char *path;
   bool duck_others;
@@ -142,46 +144,46 @@ esp_err_t playback_wait_for_completion(playback_handle_t handle) {
   ESP_RETURN_ON_FALSE(handle, ESP_ERR_INVALID_ARG, RADIO_TAG,
                       "Invalid playback handle");
 
-  bool stopped = false;
+  bool finished = false;
 
   while (1) {
     audio_event_iface_msg_t msg;
-    esp_err_t ret = audio_event_iface_listen(handle->evt, &msg, portMAX_DELAY);
-    if (ret != ESP_OK) {
-      ESP_LOGW(RADIO_TAG, "Error listening to event during playback: %d", ret);
-      continue;
-    }
-
-    if (msg.source_type == AUDIO_ELEMENT_TYPE_PLAYER &&
-        msg.source == (void *)handle) {
-      if (msg.cmd == AEL_MSG_CMD_PAUSE) {
-        handle->tuned = false;
-      } else if (msg.cmd == AEL_MSG_CMD_RESUME) {
-        handle->tuned = true;
-      } else if (msg.cmd == AEL_MSG_CMD_STOP) {
-        ESP_LOGD(RADIO_TAG, "Playback stopped");
-        stopped = true;
-        break;
-      }
-    }
-
-    if (msg.source_type == AUDIO_ELEMENT_TYPE_ELEMENT &&
-        msg.source == (void *)handle->decoder) {
-      // Don't plug into mixer until we get a REPORT_MUSIC_INFO event, since
-      // that tells us the audio format
-      if (msg.cmd == AEL_MSG_CMD_REPORT_MUSIC_INFO) {
-        ESP_RETURN_ON_ERROR(
-            audio_element_getinfo(handle->decoder, &handle->info), RADIO_TAG,
-            "Failed to get decoder info");
-        ESP_LOGD(RADIO_TAG, "Playback audio format (%s): %d Hz, %d bits, %s",
-                 handle->path, handle->info.sample_rates, handle->info.bits,
-                 handle->info.channels == 1 ? "mono" : "stereo");
+    esp_err_t ret = audio_event_iface_listen(
+        handle->evt, &msg,
+        finished && handle->tuned ? pdMS_TO_TICKS(20) : portMAX_DELAY);
+    if (ret == ESP_OK) {
+      if (msg.source_type == AUDIO_ELEMENT_TYPE_PLAYER &&
+          msg.source == (void *)handle) {
+        if (msg.cmd == AEL_MSG_CMD_PAUSE) {
+          handle->tuned = false;
+        } else if (msg.cmd == AEL_MSG_CMD_RESUME) {
+          handle->tuned = true;
+        } else if (msg.cmd == AEL_MSG_CMD_STOP) {
+          ESP_LOGD(RADIO_TAG, "Playback interrupted");
+          break;
+        } else if (msg.cmd == PLAYBACK_PAUSE_TOGGLE) {
+          handle->tuned = !handle->tuned;
+        }
       }
 
-      if (msg.cmd == AEL_MSG_CMD_REPORT_STATUS &&
-          ((int)msg.data == AEL_STATUS_STATE_FINISHED ||
-           (int)msg.data == AEL_STATUS_STATE_STOPPED)) {
-        break;
+      if (msg.source_type == AUDIO_ELEMENT_TYPE_ELEMENT &&
+          msg.source == (void *)handle->decoder) {
+        // Don't plug into mixer until we get a REPORT_MUSIC_INFO event, since
+        // that tells us the audio format
+        if (msg.cmd == AEL_MSG_CMD_REPORT_MUSIC_INFO) {
+          ESP_RETURN_ON_ERROR(
+              audio_element_getinfo(handle->decoder, &handle->info), RADIO_TAG,
+              "Failed to get decoder info");
+          ESP_LOGD(RADIO_TAG, "Playback audio format (%s): %d Hz, %d bits, %s",
+                   handle->path, handle->info.sample_rates, handle->info.bits,
+                   handle->info.channels == 1 ? "mono" : "stereo");
+        }
+
+        if (msg.cmd == AEL_MSG_CMD_REPORT_STATUS &&
+            ((int)msg.data == AEL_STATUS_STATE_FINISHED ||
+             (int)msg.data == AEL_STATUS_STATE_STOPPED)) {
+          finished = true;
+        }
       }
     }
 
@@ -198,13 +200,12 @@ esp_err_t playback_wait_for_completion(playback_handle_t handle) {
                            &handle->channel),
           RADIO_TAG, "Failed to add audio to mixer");
     }
-  }
 
-  // Wait for the output ringbuffer to drain
-  while (!stopped && handle->channel &&
-         rb_bytes_filled(handle->output) >
-             960 * handle->info.channels * handle->info.bits / 8) {
-    vTaskDelay(pdMS_TO_TICKS(20));
+    if (finished && rb_bytes_filled(handle->output) <
+                        960 * handle->info.channels * handle->info.bits / 8) {
+      ESP_LOGD(RADIO_TAG, "Playback finished");
+      break;
+    }
   }
 
   if (handle->channel) {
@@ -247,11 +248,16 @@ esp_err_t playback_resume(playback_handle_t handle) {
 esp_err_t playback_pause_toggle(playback_handle_t handle) {
   ESP_RETURN_ON_FALSE(handle, ESP_ERR_INVALID_ARG, RADIO_TAG,
                       "Invalid playback handle");
-  if (handle->tuned) {
-    return playback_pause(handle);
-  } else {
-    return playback_resume(handle);
-  }
+
+  ESP_RETURN_ON_ERROR(
+      audio_event_iface_sendout(handle->evt,
+                                &(audio_event_iface_msg_t){
+                                    .source = handle,
+                                    .source_type = AUDIO_ELEMENT_TYPE_PLAYER,
+                                    .cmd = PLAYBACK_PAUSE_TOGGLE,
+                                }),
+      RADIO_TAG, "Failed to entune playback");
+  return ESP_OK;
 }
 
 esp_err_t playback_stop(playback_handle_t handle) {
