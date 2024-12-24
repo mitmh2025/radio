@@ -12,7 +12,6 @@ static const char *TAG = "radio:tas2505";
 static i2c_master_dev_handle_t i2c_device;
 static size_t telemetry_index = 0;
 
-// TODO: These should potentially be atomics
 static tas2505_output_t current_output = TAS2505_OUTPUT_SPEAKER;
 static tas2505_input_t current_input = TAS2505_INPUT_DAC;
 static uint8_t current_volume = 0xff;

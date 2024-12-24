@@ -56,7 +56,6 @@ static struct color discharging_color = {
     .blue = 0,
 };
 
-// TODO: these should be atomics
 static uint32_t battery_average = 0;
 static bool battery_low = false;
 static battery_status_t battery_status = BATTERY_DISCHARGING;

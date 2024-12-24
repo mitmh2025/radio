@@ -159,7 +159,9 @@ static accelerometer_data_callback_t data_callback;
 static void *data_arg;
 
 static void telemetry_generator() {
-  // TODO
+  things_send_telemetry_bool("accel_active", active);
+  things_send_telemetry_bool("accel_pulse_active", pulse_callback != NULL);
+  things_send_telemetry_bool("accel_data_active", data_callback != NULL);
 }
 
 static void accelerometer_task(void *ctx) {

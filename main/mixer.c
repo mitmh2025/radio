@@ -1,6 +1,7 @@
 #include "mixer.h"
 #include "main.h"
 #include "static.h"
+#include "things.h"
 
 #include "audio_pipeline.h"
 #include "esp_check.h"
@@ -68,7 +69,12 @@ int mixer_channel_count = 0;
 static struct mixer_channel_list mixer_channels =
     TAILQ_HEAD_INITIALIZER(mixer_channels);
 
-// TODO: add telemetry
+static void telemetry_generator() {
+  things_send_telemetry_int("mixer_channels", mixer_channel_count);
+  things_send_telemetry_string(
+      "mixer_static_mode", (const char *[]){"default", "comfort",
+                                            "none"}[atomic_load(&static_mode)]);
+}
 
 // Must be called while holding mixer_mutex
 static esp_err_t mixer_reopen() {
@@ -218,7 +224,6 @@ esp_err_t mixer_init() {
   i2s_stream_cfg_t i2s_cfg = I2S_STREAM_CFG_DEFAULT_WITH_PARA(
       I2S_NUM_0, 48000, 16, AUDIO_STREAM_WRITER);
   // Need space for 20ms of audio at 48kHz, 16-bit, mono
-  // TODO: adapt to packet sizes?
   i2s_cfg.buffer_len = MIXER_BUFFER_SIZE;
   i2s_cfg.chan_cfg.dma_frame_num = MIXER_SAMPLE_SIZE; // 20ms of audio
   i2s_cfg.task_core = 1;
@@ -236,6 +241,10 @@ esp_err_t mixer_init() {
                       RADIO_TAG, "Failed to link I2S stream to pipeline");
   ESP_RETURN_ON_ERROR(audio_pipeline_run(pipeline), RADIO_TAG,
                       "Failed to start audio pipeline");
+
+  ESP_RETURN_ON_ERROR(
+      things_register_telemetry_generator(telemetry_generator, "mixer", NULL),
+      RADIO_TAG, "Failed to register mixer telemetry generator");
 
   return ESP_OK;
 }
