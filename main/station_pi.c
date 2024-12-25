@@ -316,6 +316,8 @@ static void play_on_success(uint8_t stage) {
     enqueue_playback(completion);
   }
 
+  // TODO: adaptive difficulty mode
+
   // intro and example are from the next stage
   stage++;
 
