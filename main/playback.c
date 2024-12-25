@@ -49,7 +49,7 @@ esp_err_t playback_file(const playback_cfg_t *cfg,
 
   handle->fd = file_cache_open_file(handle->path, NULL);
   ESP_RETURN_ON_FALSE(handle->fd >= 0, ESP_FAIL, RADIO_TAG,
-                      "Failed to open file: %d", errno);
+                      "Failed to open file \"%s\": %d", handle->path, errno);
 
   audio_pipeline_cfg_t pipeline_cfg = {};
   handle->pipeline = audio_pipeline_init(&pipeline_cfg);

@@ -141,7 +141,7 @@ esp_err_t playback_queue_pause_toggle() {
 }
 
 esp_err_t playback_queue_init() {
-  playback_queue = xQueueCreate(4, sizeof(playback_queue_entry_t));
+  playback_queue = xQueueCreate(8, sizeof(playback_queue_entry_t));
   ESP_RETURN_ON_FALSE(playback_queue, ESP_ERR_NO_MEM, RADIO_TAG,
                       "Failed to create playback queue");
 
