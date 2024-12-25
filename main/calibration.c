@@ -55,7 +55,7 @@ cleanup:
 
 static uint32_t adc_value = UINT32_MAX;
 
-static void IRAM_ATTR button_callback(void *user_data, bool state) {
+static void button_callback(void *user_data, bool state) {
   TaskHandle_t task = (TaskHandle_t)user_data;
   vTaskNotifyGiveIndexedFromISR(task, BUTTON_NOTIFY_INDEX, NULL);
 }
@@ -70,7 +70,7 @@ static void adc_callback(void *user_data, adc_digi_output_data_t *result) {
   xTaskNotifyIndexed(task, ADC_NOTIFY_INDEX, adc_value, eSetValueWithOverwrite);
 }
 
-static void IRAM_ATTR touch_callback(void *user_data) {
+static void touch_callback(void *user_data) {
   uint32_t touch_status = touch_pad_read_intr_status_mask();
   if (!(touch_status & TOUCH_PAD_INTR_MASK_ACTIVE)) {
     return;

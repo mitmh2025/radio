@@ -70,11 +70,11 @@ static void update(bool force_playback) {
   }
 }
 
-static void IRAM_ATTR triangle_button_intr(void *ctx, bool state) {
+static void triangle_button_intr(void *ctx, bool state) {
   ESP_ERROR_CHECK_WITHOUT_ABORT(playback_queue_pause_toggle());
 }
 
-static void IRAM_ATTR circle_button_intr(void *ctx, bool state) {
+static void circle_button_intr(void *ctx, bool state) {
   ESP_ERROR_CHECK_WITHOUT_ABORT(playback_queue_drain());
   play_current_beacon();
 }

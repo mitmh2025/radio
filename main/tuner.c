@@ -116,7 +116,7 @@ static void entune_fm_channel(void *ctx) {
   ESP_ERROR_CHECK_WITHOUT_ABORT(fm_tune((uint16_t)(uintptr_t)ctx));
 }
 
-static void IRAM_ATTR modulation_callback(void *user_data, bool state) {
+static void modulation_callback(void *user_data, bool state) {
   desired_radio_mode = gpio_to_tuner_mode(state);
   if (tuner_task_handle) {
     xTaskNotifyFromISR(tuner_task_handle, 0, eNoAction, NULL);

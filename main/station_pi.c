@@ -846,7 +846,7 @@ static void IRAM_ATTR touch_intr(void *ctx) {
   portYIELD_FROM_ISR(higher_priority_task_woken);
 }
 
-static void IRAM_ATTR triangle_button_intr(void *ctx, bool state) {
+static void triangle_button_intr(void *ctx, bool state) {
   TaskHandle_t task_handle = (TaskHandle_t)ctx;
   BaseType_t higher_priority_task_woken = pdFALSE;
   xTaskNotifyFromISR(task_handle, NOTIFY_TRIANGLE_BUTTON_TRIGGERED, eSetBits,
@@ -854,7 +854,7 @@ static void IRAM_ATTR triangle_button_intr(void *ctx, bool state) {
   portYIELD_FROM_ISR(higher_priority_task_woken);
 }
 
-static void IRAM_ATTR circle_button_intr(void *ctx, bool state) {
+static void circle_button_intr(void *ctx, bool state) {
   TaskHandle_t task_handle = (TaskHandle_t)ctx;
   BaseType_t higher_priority_task_woken = pdFALSE;
   xTaskNotifyFromISR(task_handle, NOTIFY_CIRCLE_BUTTON_TRIGGERED, eSetBits,
