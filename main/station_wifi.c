@@ -21,7 +21,7 @@ static esp_timer_handle_t ap_start_timer = NULL;
 
 static void trigger_audio(void) {
   uint8_t mac[6];
-  ESP_ERROR_CHECK_WITHOUT_ABORT(wifi_get_mac(mac));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(wifi_get_ap_network_mac(mac));
 
   ESP_ERROR_CHECK_WITHOUT_ABORT(playback_queue_add(&(playback_queue_entry_t){
       .path = "wifi-config-first.opus",

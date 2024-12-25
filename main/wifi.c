@@ -72,6 +72,10 @@ esp_err_t wifi_get_mac(uint8_t *mac) {
   return esp_read_mac(mac, ESP_MAC_WIFI_STA);
 }
 
+esp_err_t wifi_get_ap_network_mac(uint8_t *mac) {
+  return esp_read_mac(mac, ESP_MAC_WIFI_STA);
+}
+
 static void wifi_event_handler(void *arg, esp_event_base_t event_base,
                                int32_t event_id, void *event_data) {
   if (event_base == WIFI_EVENT) {
@@ -476,7 +480,7 @@ esp_err_t wifi_force_scan() {
 
 esp_err_t wifi_enable_ap() {
   uint8_t wifi_mac[6];
-  esp_err_t err = esp_read_mac(wifi_mac, ESP_MAC_WIFI_STA);
+  esp_err_t err = wifi_get_ap_network_mac(wifi_mac);
   ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to read wifi mac: %d", err);
 
   wifi_mode_t mode;
