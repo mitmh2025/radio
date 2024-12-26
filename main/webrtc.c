@@ -96,6 +96,14 @@ static VOID webrtc_logger(UINT32 level, const PCHAR tag, const PCHAR fmt, ...) {
     break;
   }
 
+  if (esp_log_get_level_master() < esp_log_level) {
+    return;
+  }
+
+  if (esp_log_level_get("kvswebrtc") < esp_log_level) {
+    return;
+  }
+
   va_list args;
   va_start(args, fmt);
   int len = vsnprintf(NULL, 0, fmt, args);
