@@ -67,8 +67,9 @@ void webrtc_free_connection(webrtc_connection_t connection) {
     free(connection->pending_candidates[i]);
   }
 
-  freeTransceiver(&connection->transceiver);
+  closePeerConnection(connection->peer_connection);
 
+  freeTransceiver(&connection->transceiver);
   freePeerConnection(&connection->peer_connection);
 
   free(connection);
