@@ -35,6 +35,7 @@
 #include "webrtc_manager.h"
 #include "wifi.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -60,8 +61,8 @@ static SemaphoreHandle_t giant_switch_file_mutex = NULL;
 static TaskHandle_t giant_switch_task = NULL;
 static char *giant_switch_file = NULL;
 
-static void giant_switch_attr_cb(const char *key,
-                                 const things_attribute_t *value) {
+static void giant_switch_audio_file_attr_cb(const char *key,
+                                            const things_attribute_t *value) {
   xSemaphoreTake(giant_switch_file_mutex, portMAX_DELAY);
   if (giant_switch_file) {
     free(giant_switch_file);
@@ -75,6 +76,31 @@ static void giant_switch_attr_cb(const char *key,
   xTaskNotifyGive(giant_switch_task);
 }
 
+static void giant_switch_frequency_attr_cb(const char *key,
+                                           const things_attribute_t *value) {
+  long long frequency;
+  switch (value->type) {
+  case THINGS_ATTRIBUTE_TYPE_FLOAT:
+    frequency = lroundf(value->value.f * 1000);
+    break;
+  case THINGS_ATTRIBUTE_TYPE_INT:
+    frequency = value->value.i * 1000;
+    break;
+  default:
+    frequency = 0;
+    break;
+  }
+
+  if (frequency == 0) {
+    ESP_ERROR_CHECK_WITHOUT_ABORT(fm_disable());
+  } else {
+    uint16_t channel;
+    ESP_ERROR_CHECK_WITHOUT_ABORT(fm_enable());
+    ESP_ERROR_CHECK_WITHOUT_ABORT(fm_frequency_to_channel(frequency, &channel));
+    ESP_ERROR_CHECK_WITHOUT_ABORT(fm_tune(channel));
+  }
+}
+
 static void giant_switch_main() {
   ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_static(MIXER_STATIC_MODE_NONE));
   ESP_ERROR_CHECK_WITHOUT_ABORT(bluetooth_set_mode(BLUETOOTH_MODE_AGGRESSIVE));
@@ -85,8 +111,10 @@ static void giant_switch_main() {
   ESP_ERROR_CHECK_WITHOUT_ABORT(tas2505_set_volume(255));
   ESP_ERROR_CHECK_WITHOUT_ABORT(tas2505_set_output(TAS2505_OUTPUT_HEADPHONE));
 
-  ESP_ERROR_CHECK_WITHOUT_ABORT(
-      things_subscribe_attribute("audio_file", giant_switch_attr_cb));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(things_subscribe_attribute(
+      "audio_file", giant_switch_audio_file_attr_cb));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(things_subscribe_attribute(
+      "fm_frequency", giant_switch_frequency_attr_cb));
 
   while (true) {
     xSemaphoreTake(giant_switch_file_mutex, portMAX_DELAY);
