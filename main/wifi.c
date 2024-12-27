@@ -132,8 +132,6 @@ static void set_state(wifi_state_t new_state) {
       xTaskNotify(test_connection_task, 1, eSetValueWithOverwrite);
       test_connection_task = NULL;
     }
-
-    // TODO: Do a periodic scan just for fun
     break;
   case WIFI_STATE_FAILED:
     // TODO: trigger voice announcement
