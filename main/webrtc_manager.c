@@ -138,6 +138,9 @@ static void webrtc_loop() {
       switch (state) {
       case WEBRTC_CONNECTION_STATE_CONNECTED: {
         float rtt = webrtc_get_ice_rtt_ms(connection);
+        if (rtt < 0) {
+          rtt = 0;
+        }
         target_buffer_duration = rtt * 4 * /* scale from ms to 48000 hz */ 48;
         if (target_buffer_duration < 48000) {
           target_buffer_duration = 48000;
