@@ -15,18 +15,27 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 
-// TODO: telemetry
-
 static StaticTask_t webrtc_manager_task_buffer;
 // 6KB stack size - kvswebrtc needs a lot of stack space
 static EXT_RAM_BSS_ATTR StackType_t
     webrtc_manager_task_stack[6 * 1024 / sizeof(StackType_t)];
 static TaskHandle_t webrtc_manager_task_handle = NULL;
 static atomic_bool webrtc_entuned = false;
+static atomic_int webrtc_latest_state = WEBRTC_CONNECTION_STATE_NONE;
 
 static SemaphoreHandle_t webrtc_manager_lock = NULL;
 static char *webrtc_current_url = NULL;
 static atomic_uint_least32_t webrtc_buffer_duration = 0;
+
+static size_t telemetry_index = 0;
+
+static void telemetry_generator() {
+  things_send_telemetry_string(
+      "webrtc_state",
+      webrtc_connection_state_to_string(atomic_load(&webrtc_latest_state)));
+
+  // TODO: telemetry
+}
 
 #define NOTIFY_URL_CHANGED BIT(1)
 #define NOTIFY_STATE_CHANGED BIT(2)
@@ -76,6 +85,9 @@ static void on_state_change(webrtc_connection_t conn, void *context,
   // state is
   TaskHandle_t task = (TaskHandle_t)context;
   xTaskNotify(task, NOTIFY_STATE_CHANGED, eSetBits);
+
+  atomic_store(&webrtc_latest_state, state);
+  things_force_telemetry(telemetry_index);
 }
 
 static void on_buffer_duration(webrtc_connection_t conn, void *context,
@@ -203,6 +215,7 @@ cleanup:
   if (connection) {
     webrtc_free_connection(connection);
     atomic_store(&webrtc_buffer_duration, 0);
+    atomic_store(&webrtc_latest_state, WEBRTC_CONNECTION_STATE_NONE);
   }
   free(url);
 
@@ -228,6 +241,10 @@ esp_err_t webrtc_manager_init() {
       webrtc_manager_task_stack, &webrtc_manager_task_buffer, 1);
   ESP_RETURN_ON_FALSE(webrtc_manager_task_handle != NULL, ESP_FAIL, RADIO_TAG,
                       "Failed to create WebRTC manager task");
+
+  esp_err_t ret = things_register_telemetry_generator(
+      telemetry_generator, "webrtc", &telemetry_index);
+  ESP_RETURN_ON_ERROR(ret, RADIO_TAG, "Failed to register telemetry generator");
 
   return ESP_OK;
 }

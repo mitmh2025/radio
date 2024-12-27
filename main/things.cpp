@@ -375,7 +375,7 @@ static void things_telemetry_generator() {
 
 static void things_progress_callback(const size_t &currentChunk,
                                      const size_t &totalChuncks) {
-  ESP_LOGV(RADIO_TAG, "Firmware update progress %d/%d chunks (%.2f%%)",
+  ESP_LOGD(RADIO_TAG, "Firmware update progress %d/%d chunks (%.2f%%)",
            currentChunk, totalChuncks,
            static_cast<float>(100 * currentChunk) / totalChuncks);
 }
