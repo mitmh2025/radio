@@ -153,6 +153,18 @@ static void radio_main() {
 
 #endif
 
+#define RADIO_HARDWARE_ERROR_CHECK(err)                                        \
+  do {                                                                         \
+    esp_err_t rc = (err);                                                      \
+    if (unlikely((rc) != ESP_OK)) {                                            \
+      ESP_LOGE(RADIO_TAG, "Hardware error: %d", (rc));                         \
+      led_set_pixel(1, 255, 0, 0);                                             \
+      /* 4000 ms + 1000 ms of panic delay */                                   \
+      vTaskDelay(pdMS_TO_TICKS(4000));                                         \
+      ESP_ERROR_CHECK(rc);                                                     \
+    }                                                                          \
+  } while (0)
+
 void app_main(void) {
   esp_log_set_level_master(ESP_LOG_DEBUG);
   esp_log_level_set("*", ESP_LOG_WARN);
@@ -178,24 +190,25 @@ void app_main(void) {
     return;
   }
 
-  ESP_ERROR_CHECK(debounce_init());
-  ESP_ERROR_CHECK(adc_init());
-  ESP_ERROR_CHECK(touch_init());
   ESP_ERROR_CHECK(led_init());
-  ESP_ERROR_CHECK(wifi_init());
-  ESP_ERROR_CHECK(bluetooth_init());
-  ESP_ERROR_CHECK(board_i2c_init());
-  ESP_ERROR_CHECK(battery_init());
-  ESP_ERROR_CHECK(tas2505_init());
-  ESP_ERROR_CHECK(storage_init());
-  ESP_ERROR_CHECK(mixer_init());
-  ESP_ERROR_CHECK(console_init());
-  ESP_ERROR_CHECK(playback_queue_init());
 
+  RADIO_HARDWARE_ERROR_CHECK(debounce_init());
+  RADIO_HARDWARE_ERROR_CHECK(adc_init());
+  RADIO_HARDWARE_ERROR_CHECK(touch_init());
+  RADIO_HARDWARE_ERROR_CHECK(wifi_init());
+  RADIO_HARDWARE_ERROR_CHECK(bluetooth_init());
+  RADIO_HARDWARE_ERROR_CHECK(board_i2c_init());
+  RADIO_HARDWARE_ERROR_CHECK(battery_init());
+  RADIO_HARDWARE_ERROR_CHECK(tas2505_init());
+  RADIO_HARDWARE_ERROR_CHECK(storage_init());
+  RADIO_HARDWARE_ERROR_CHECK(mixer_init());
+  RADIO_HARDWARE_ERROR_CHECK(console_init());
+  RADIO_HARDWARE_ERROR_CHECK(playback_queue_init());
+
+  RADIO_HARDWARE_ERROR_CHECK(fm_init());
 #ifndef CONFIG_RADIO_GIANT_SWITCH
-  ESP_ERROR_CHECK(fm_init());
-  ESP_ERROR_CHECK(accelerometer_init());
-  ESP_ERROR_CHECK(magnet_init());
+  RADIO_HARDWARE_ERROR_CHECK(accelerometer_init());
+  RADIO_HARDWARE_ERROR_CHECK(magnet_init());
 #endif
 
   // We want to mark the firmware as good fast enough that we're not likely to
