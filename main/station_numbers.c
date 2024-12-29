@@ -91,7 +91,9 @@ static void things_cb(const char *key, const things_attribute_t *value) {
   }
 
   if (enabled) {
-    ESP_ERROR_CHECK(tuner_enable_pm_frequency(freq_handle));
+    ESP_ERROR_CHECK(tuner_enable_frequency(freq_handle));
+  } else {
+    ESP_ERROR_CHECK(tuner_disable_frequency(freq_handle));
   }
 }
 

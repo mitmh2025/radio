@@ -138,7 +138,9 @@ static void things_cb(const char *key, const things_attribute_t *value) {
   }
 
   if (enabled) {
-    ESP_ERROR_CHECK_WITHOUT_ABORT(tuner_enable_pm_frequency(freq_handle));
+    ESP_ERROR_CHECK_WITHOUT_ABORT(tuner_enable_frequency(freq_handle));
+  } else {
+    ESP_ERROR_CHECK_WITHOUT_ABORT(tuner_disable_frequency(freq_handle));
   }
 }
 

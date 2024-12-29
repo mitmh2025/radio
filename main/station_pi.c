@@ -1047,7 +1047,7 @@ esp_err_t station_pi_enable() {
   ESP_RETURN_ON_ERROR(nvs_set_u8(pi_nvs_handle, "enabled", 1), RADIO_TAG,
                       "Failed to set enabled in NVS");
 
-  ESP_RETURN_ON_ERROR(tuner_enable_pm_frequency(freq_handle), RADIO_TAG,
+  ESP_RETURN_ON_ERROR(tuner_enable_frequency(freq_handle), RADIO_TAG,
                       "Failed to enable pi frequency");
 
   force_telemetry();

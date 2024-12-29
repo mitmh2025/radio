@@ -2,6 +2,7 @@
 #include "main.h"
 
 #include "adc.h"
+#include "bluetooth.h"
 #include "board.h"
 #include "debounce.h"
 #include "fm.h"
@@ -10,6 +11,8 @@
 #include "things.h"
 
 #include "esp_check.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 
 #include <math.h>
 #include <stdatomic.h>
@@ -59,6 +62,9 @@ static TaskHandle_t tuner_task_handle = NULL;
 static radio_calibration_t *tuner_calibration = NULL;
 static size_t telemetry_index = 0;
 
+static SemaphoreHandle_t giant_switch_mutex = NULL;
+static uint16_t current_giant_switch_minor = 0;
+
 static inline bool gpio_to_tuner_mode(bool state) {
   return state ? TUNER_MODE_PM : TUNER_MODE_FM;
 }
@@ -92,11 +98,15 @@ static void detune_pm() {
 }
 
 static void entune_fm() {
+  ESP_ERROR_CHECK_WITHOUT_ABORT(bluetooth_set_mode(BLUETOOTH_MODE_AGGRESSIVE));
   ESP_ERROR_CHECK_WITHOUT_ABORT(tas2505_set_input(TAS2505_INPUT_BOTH));
   ESP_ERROR_CHECK_WITHOUT_ABORT(fm_enable());
 }
 
-static void detune_fm() { ESP_ERROR_CHECK_WITHOUT_ABORT(fm_disable()); }
+static void detune_fm() {
+  ESP_ERROR_CHECK_WITHOUT_ABORT(fm_disable());
+  bluetooth_set_mode(BLUETOOTH_MODE_DEFAULT);
+}
 
 static struct {
   void (*entune)();
@@ -170,6 +180,7 @@ static void tuner_task(void *ctx) {
     uint16_t frequency_raw = atomic_load(&current_raw_frequency);
 
     if (desired_radio_mode == current_radio_mode && current_frequency &&
+        current_frequency->enabled &&
         frequency_raw >= current_frequency->frequency_low &&
         frequency_raw < current_frequency->frequency_high) {
       goto next;
@@ -221,6 +232,54 @@ static void tuner_task(void *ctx) {
   }
 }
 
+static void beacon_callback(bluetooth_beacon_t *newest,
+                            bluetooth_beacon_t *strongest, void *arg) {
+  xSemaphoreTake(giant_switch_mutex, portMAX_DELAY);
+
+  uint16_t new_minor = strongest ? strongest->minor : 0;
+  if (new_minor == current_giant_switch_minor) {
+    goto cleanup;
+  }
+
+  // Re-enable any disabled FM frequencies
+  struct frequency_handle *handle;
+  TAILQ_FOREACH(handle, &fm_frequencies, next) {
+    if (!handle->enabled) {
+      ESP_LOGD(RADIO_TAG, "Re-enabling FM frequency %0.1f", handle->frequency);
+      ESP_ERROR_CHECK_WITHOUT_ABORT(tuner_enable_frequency(handle));
+    }
+  }
+
+  if (new_minor != 0) {
+    float low_frequency = ((float)newest->minor / 10.0) - 12.0f;
+    float high_frequency = ((float)newest->minor / 10.0) + 12.0f;
+
+    TAILQ_FOREACH(handle, &fm_frequencies, next) {
+      if (fabsf(handle->frequency - high_frequency) < 0.1f ||
+          fabsf(handle->frequency - low_frequency) < 0.1f) {
+        ESP_LOGD(RADIO_TAG, "Disabling FM frequency %0.1f due to nearby beacon",
+                 handle->frequency);
+        ESP_ERROR_CHECK_WITHOUT_ABORT(tuner_disable_frequency(handle));
+      }
+    }
+  }
+
+  current_giant_switch_minor = new_minor;
+
+  struct frequency_handle *new_frequency = NULL;
+  if (strongest) {
+    float frequency = ((float)strongest->minor) / 10.0f;
+    TAILQ_FOREACH(new_frequency, &fm_frequencies, next) {
+      if (fabsf(new_frequency->frequency - frequency) < 0.1f) {
+        break;
+      }
+    }
+  }
+
+cleanup:
+  xSemaphoreGive(giant_switch_mutex);
+}
+
 esp_err_t tuner_register_pm_frequency(frequency_config_t *config,
                                       frequency_handle_t *handle) {
   ESP_RETURN_ON_FALSE(config, ESP_ERR_INVALID_ARG, RADIO_TAG, "Config is NULL");
@@ -256,6 +315,10 @@ esp_err_t tuner_register_pm_frequency(frequency_config_t *config,
 
 esp_err_t tuner_init(radio_calibration_t *calibration) {
   tuner_calibration = calibration;
+
+  giant_switch_mutex = xSemaphoreCreateMutex();
+  ESP_RETURN_ON_FALSE(giant_switch_mutex, ESP_ERR_NO_MEM, RADIO_TAG,
+                      "Failed to create giant switch mutex");
 
   // Populate FM frequencies
   for (float frequency = FREQUENCY_FM_CHAN_MIN; frequency < FREQUENCY_FM_MAX;
@@ -391,6 +454,10 @@ esp_err_t tuner_init(radio_calibration_t *calibration) {
                           adc_callback, NULL),
                       RADIO_TAG, "Failed to subscribe to ADC channel");
 
+  ESP_RETURN_ON_ERROR(bluetooth_subscribe_beacon(BLUETOOTH_MAJOR_RICKROLL,
+                                                 beacon_callback, NULL),
+                      RADIO_TAG, "Failed to subscribe to bluetooth beacon");
+
   ESP_RETURN_ON_ERROR(things_register_telemetry_generator(
                           telemetry_generator, "tuner", &telemetry_index),
                       RADIO_TAG, "Failed to register telemetry generator");
@@ -398,10 +465,21 @@ esp_err_t tuner_init(radio_calibration_t *calibration) {
   return ESP_OK;
 }
 
-esp_err_t tuner_enable_pm_frequency(frequency_handle_t handle) {
+esp_err_t tuner_enable_frequency(frequency_handle_t handle) {
   ESP_RETURN_ON_FALSE(handle, ESP_ERR_INVALID_ARG, RADIO_TAG,
                       "Invalid frequency handle");
   handle->enabled = true;
+  // Wake up the tuner just in case
+  if (tuner_task_handle) {
+    xTaskNotifyGive(tuner_task_handle);
+  }
+  return ESP_OK;
+}
+
+esp_err_t tuner_disable_frequency(frequency_handle_t handle) {
+  ESP_RETURN_ON_FALSE(handle, ESP_ERR_INVALID_ARG, RADIO_TAG,
+                      "Invalid frequency handle");
+  handle->enabled = false;
   // Wake up the tuner just in case
   if (tuner_task_handle) {
     xTaskNotifyGive(tuner_task_handle);
