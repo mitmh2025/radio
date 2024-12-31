@@ -373,6 +373,25 @@ static void things_telemetry_generator() {
       "dram_lwm", heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL));
 }
 
+static void things_log_level_attr_cb(const char *key,
+                                     const things_attribute_t *value) {
+  esp_log_level_t level = ESP_LOG_WARN;
+  if (value->type == THINGS_ATTRIBUTE_TYPE_STRING) {
+    if (strcmp(value->value.string, "debug") == 0) {
+      level = ESP_LOG_DEBUG;
+    } else if (strcmp(value->value.string, "info") == 0) {
+      level = ESP_LOG_INFO;
+    } else if (strcmp(value->value.string, "warn") == 0) {
+      level = ESP_LOG_WARN;
+    } else {
+      ESP_LOGE(RADIO_TAG, "Unknown log level %s", value->value.string);
+    }
+  }
+
+  esp_log_set_level_master(level);
+  esp_log_default_level = level;
+}
+
 static void things_progress_callback(const size_t &currentChunk,
                                      const size_t &totalChuncks) {
   ESP_LOGD(RADIO_TAG, "Firmware update progress %d/%d chunks (%.2f%%)",
@@ -868,6 +887,7 @@ esp_err_t things_init() {
     xEventGroupSetBits(radio_event_group, RADIO_EVENT_GROUP_THINGS_PROVISIONED);
   }
 
+  things_subscribe_attribute("log_level", things_log_level_attr_cb);
   things_register_telemetry_generator(things_telemetry_generator, "things",
                                       NULL);
 

@@ -194,12 +194,11 @@ static void radio_main() {
   } while (0)
 
 void app_main(void) {
-  esp_log_set_level_master(ESP_LOG_DEBUG);
+  esp_log_set_level_master(ESP_LOG_WARN);
   esp_log_level_set("*", ESP_LOG_WARN);
   esp_log_level_set("AUDIO_PIPELINE", ESP_LOG_ERROR);
   esp_log_level_set("AUDIO_ELEMENT", ESP_LOG_ERROR);
   esp_log_level_set(RADIO_TAG, ESP_LOG_DEBUG);
-  esp_log_level_set("kvswebrtc", ESP_LOG_WARN);
 
   esp_err_t err = nvs_flash_init();
   if (err == ESP_ERR_NVS_NO_FREE_PAGES ||

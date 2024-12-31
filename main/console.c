@@ -4,12 +4,15 @@
 
 #include "calibration.h"
 #include "console.h"
+#include "led.h"
 #include "main.h"
 #include "station_funaround.h"
 #include "station_pi.h"
 #include "storage.h"
 #include "things.h"
 #include "wifi.h"
+
+#include "board.h"
 
 #include <fcntl.h>
 
@@ -25,19 +28,87 @@
 #include "freertos/FreeRTOS.h"
 #include "linenoise/linenoise.h"
 #include "lwip/stats.h"
+#include "soc/usb_serial_jtag_reg.h"
 
 #include "esp_littlefs.h"
 
+static TaskHandle_t console_task_handle = NULL;
+static bool force_console = false;
+
+static bool warning_required = true;
+
+static void jtag_poll_timer_cb() {
+  if (!usb_serial_jtag_is_connected()) {
+    // print a warning the next time we receive a command
+    warning_required = true;
+  }
+}
+
+static void disable_console() {
+  REG_SET_BIT(USB_SERIAL_JTAG_CONF0_REG, USB_SERIAL_JTAG_PHY_SEL);
+}
+
+static void enable_console() {
+  REG_CLR_BIT(USB_SERIAL_JTAG_CONF0_REG, USB_SERIAL_JTAG_PHY_SEL);
+}
+
+static void things_en_console_cb(const char *key,
+                                 const things_attribute_t *attr) {
+  bool enable = false;
+  switch (attr->type) {
+  case THINGS_ATTRIBUTE_TYPE_UNSET:
+    break;
+  case THINGS_ATTRIBUTE_TYPE_BOOL:
+    enable = attr->value.b;
+    break;
+  default:
+    ESP_LOGW(RADIO_TAG, "Invalid type for en_console (defaulting to false): %d",
+             attr->type);
+  }
+
+  if (enable) {
+    enable_console();
+  } else if (!force_console) {
+    disable_console();
+  }
+}
+
+static const char *WARNING_MESSAGE[] = {
+    "=========================================================================="
+    "======",
+    "This is the USB serial console for the 2025 MIT Mystery Hunt radio. We "
+    "have left",
+    "it possible to enable and access this serial console exclusively for "
+    "Death &",
+    "Mayhem to be able to debug the radio. If you are participating in the "
+    "Hunt and",
+    "seeing this message, you have likely enabled it by accident. Please do "
+    "not",
+    "use it, and instead contact HQ for further instructions.",
+    "=========================================================================="
+    "======",
+};
+
 static void console_task(void *arg) {
-  // TODO: support starting/stopping the console when radio is in/out of debug
-  // mode by dup'ing stdin and closing/reopening the original fd as needed
-
-  // TODO: Also detect when USB gets connected by polling
-  // usb_serial_jtag_is_connected and print a warning message when first
-  // connected
-
   const char *prompt = LOG_COLOR_I "radio> " LOG_RESET_COLOR;
+
+  if (!force_console) {
+    disable_console();
+  }
+
   while (true) {
+    if (warning_required) {
+      usb_serial_jtag_write_bytes("\n", 1, portMAX_DELAY);
+      for (size_t i = 0;
+           i < sizeof(WARNING_MESSAGE) / sizeof(WARNING_MESSAGE[0]); i++) {
+        usb_serial_jtag_write_bytes(WARNING_MESSAGE[i],
+                                    strlen(WARNING_MESSAGE[i]), portMAX_DELAY);
+        usb_serial_jtag_write_bytes("\n", 1, portMAX_DELAY);
+      }
+      usb_serial_jtag_write_bytes("\n", 1, portMAX_DELAY);
+      warning_required = false;
+    }
+
     linenoiseSetDumbMode(linenoiseProbe() < 0);
 
     char *line = linenoise(prompt);
@@ -738,8 +809,31 @@ static int wifi_set_alt_network_cmd(int argc, char **argv) {
 }
 
 esp_err_t console_init() {
+  // Check for debug mode (forced console)
+#ifdef CONFIG_RADIO_GIANT_SWITCH
+  force_console = true;
+#else
+  gpio_config_t button_config = {
+      .pin_bit_mask = BIT64(BUTTON_CIRCLE_PIN) | BIT64(BUTTON_TRIANGLE_PIN),
+      .mode = GPIO_MODE_INPUT,
+      .pull_up_en = GPIO_PULLUP_ENABLE,
+      .pull_down_en = GPIO_PULLDOWN_DISABLE,
+      .intr_type = GPIO_INTR_DISABLE,
+  };
+  ESP_RETURN_ON_ERROR(gpio_config(&button_config), RADIO_TAG,
+                      "Failed to configure buttons");
+  if (gpio_get_level(BUTTON_CIRCLE_PIN) == 0 &&
+      gpio_get_level(BUTTON_TRIANGLE_PIN) == 0) {
+    led_set_pixel(1, 255, 100, 0);
+    vTaskDelay(pdMS_TO_TICKS(500));
+    led_set_pixel(1, 0, 0, 0);
+    force_console = true;
+  }
+#endif
+
   usb_serial_jtag_driver_config_t usb_serial_jtag_config =
       USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
+  usb_serial_jtag_config.tx_buffer_size = 1024;
   esp_err_t err = usb_serial_jtag_driver_install(&usb_serial_jtag_config);
   ESP_RETURN_ON_ERROR(err, RADIO_TAG,
                       "Failed to install USB serial JTAG driver: %d", err);
@@ -1029,9 +1123,26 @@ esp_err_t console_init() {
                       "Failed to register wifi-set-alt-network command: %d",
                       err);
 
-  ESP_RETURN_ON_FALSE(
-      pdPASS == xTaskCreate(console_task, "console", 6144, NULL, 21, NULL),
-      ESP_FAIL, RADIO_TAG, "Failed to create console task");
+  ESP_RETURN_ON_FALSE(pdPASS == xTaskCreate(console_task, "console", 6144, NULL,
+                                            21, &console_task_handle),
+                      ESP_FAIL, RADIO_TAG, "Failed to create console task");
+
+  ESP_RETURN_ON_ERROR(
+      things_subscribe_attribute("en_console", things_en_console_cb), RADIO_TAG,
+      "Failed to subscribe to en_console attribute: %d", err);
+
+  esp_timer_handle_t timer = NULL;
+  ESP_RETURN_ON_ERROR(esp_timer_create(
+                          &(esp_timer_create_args_t){
+                              .callback = jtag_poll_timer_cb,
+                              .name = "jtag_poll_timer",
+                              .dispatch_method = ESP_TIMER_TASK,
+                          },
+                          &timer),
+                      RADIO_TAG, "Failed to create JTAG poll timer: %d", err);
+  jtag_poll_timer_cb();
+  ESP_RETURN_ON_ERROR(esp_timer_start_periodic(timer, 500 * 1000), RADIO_TAG,
+                      "Failed to start JTAG poll timer: %d", err);
 
   return ESP_OK;
 }
