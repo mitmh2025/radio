@@ -125,6 +125,7 @@ static esp_timer_handle_t sequence_check_timer = NULL;
 static uint8_t current_stage = 0;
 static bool alt_mode = false;
 #define STAGE_COUNT 5
+#define ALT_MODE_THRESHOLD (40ULL * 60ULL * 1000ULL * 1000ULL)
 
 static const char *intros[STAGE_COUNT] = {
     [0] = "practical-fighter/stage-0-intro.opus",
@@ -142,6 +143,14 @@ static const char *examples[STAGE_COUNT] = {
     [4] = "practical-fighter/stage-4-example.opus",
 };
 
+static const char *alt_examples[STAGE_COUNT] = {
+    [0] = "practical-fighter/stage-0-example.opus",
+    [1] = "practical-fighter/stage-1-example.opus",
+    [2] = "practical-fighter/stage-2-example.opus",
+    [3] = "practical-fighter/stage-3-example.opus",
+    [4] = "practical-fighter/stage-4-example-alt.opus",
+};
+
 static const char *completions[STAGE_COUNT] = {
     [0] = "practical-fighter/stage-0-completion.opus",
     [1] = "practical-fighter/stage-1-completion.opus",
@@ -150,7 +159,17 @@ static const char *completions[STAGE_COUNT] = {
     [4] = "practical-fighter/stage-4-completion.opus",
 };
 
+static const char *alt_completions[STAGE_COUNT] = {
+    [0] = "practical-fighter/stage-0-completion.opus",
+    [1] = "practical-fighter/stage-1-completion.opus",
+    [2] = "practical-fighter/stage-2-completion.opus",
+    [3] = "practical-fighter/stage-3-completion.opus",
+    [4] = "practical-fighter/stage-4-completion-alt.opus",
+};
+
 static const char *final_completion = "practical-fighter/completion.opus";
+static const char *final_alt_completion =
+    "practical-fighter/completion-alt.opus";
 
 // Mary Had a Little Lamb - 7 notes
 static const float note_sequence_0[] = {
@@ -182,6 +201,11 @@ static const float note_sequence_4[] = {
     FREQUENCY_A_4, FREQUENCY_C_5,       FREQUENCY_B_4, FREQUENCY_C_5,
     FREQUENCY_E_4, FREQUENCY_A_4,       FREQUENCY_G_4, FREQUENCY_A_4,
     FREQUENCY_G_4, FREQUENCY_F_SHARP_4, FREQUENCY_A_4, FREQUENCY_G_4,
+};
+// Final Countdown alt - 9 notes
+static const float note_sequence_4_alt[] = {
+    FREQUENCY_B_4, FREQUENCY_A_4, FREQUENCY_B_4, FREQUENCY_E_4, FREQUENCY_C_5,
+    FREQUENCY_B_4, FREQUENCY_C_5, FREQUENCY_B_4, FREQUENCY_A_4,
 };
 
 static void telemetry_generator() {
@@ -313,22 +337,19 @@ static void playback_empty_cb() {
 
 static void play_on_success(uint8_t stage) {
   if (stage < STAGE_COUNT) {
-    const char *completion = completions[stage];
+    const char *completion = (alt_mode ? alt_completions : completions)[stage];
     enqueue_playback(completion);
   }
+}
 
-  // TODO: adaptive difficulty mode
-
-  // intro and example are from the next stage
-  stage++;
-
+static void play_on_start_new_stage(uint8_t stage) {
   if (stage < STAGE_COUNT) {
     const char *intro = intros[stage];
     enqueue_playback(intro);
-    const char *example = examples[stage];
+    const char *example = (alt_mode ? alt_examples : examples)[stage];
     enqueue_playback(example);
   } else {
-    enqueue_playback(final_completion);
+    enqueue_playback(alt_mode ? final_alt_completion : final_completion);
   }
 }
 
@@ -336,7 +357,7 @@ static void play_on_entune(uint8_t stage) {
   if (stage < STAGE_COUNT) {
     const char *intro = intros[stage];
     enqueue_playback(intro);
-    const char *example = examples[stage];
+    const char *example = (alt_mode ? alt_examples : examples)[stage];
     enqueue_playback(example);
   }
 }
@@ -345,10 +366,10 @@ static void play_on_button(uint8_t stage) {
   if (stage < STAGE_COUNT) {
     const char *intro = intros[stage];
     enqueue_playback(intro);
-    const char *example = examples[stage];
+    const char *example = (alt_mode ? alt_examples : examples)[stage];
     enqueue_playback(example);
   } else {
-    enqueue_playback(final_completion);
+    enqueue_playback(alt_mode ? final_alt_completion : final_completion);
   }
 }
 
@@ -387,8 +408,14 @@ static void check_sequence(void *arg) {
     sequence_size = sizeof(note_sequence_3) / sizeof(note_sequence_3[0]);
     break;
   case 4:
-    sequence = &note_sequence_4[0];
-    sequence_size = sizeof(note_sequence_4) / sizeof(note_sequence_4[0]);
+    if (alt_mode) {
+      sequence = &note_sequence_4_alt[0];
+      sequence_size =
+          sizeof(note_sequence_4_alt) / sizeof(note_sequence_4_alt[0]);
+    } else {
+      sequence = &note_sequence_4[0];
+      sequence_size = sizeof(note_sequence_4) / sizeof(note_sequence_4[0]);
+    }
     break;
   default:
     return;
@@ -407,12 +434,6 @@ static void check_sequence(void *arg) {
 
   ESP_LOGI(RADIO_TAG, "Sequence matched for stage %d", current_stage);
   play_on_success(current_stage);
-  current_stage++;
-  esp_err_t err = nvs_set_u8(pi_nvs_handle, "stage", current_stage);
-  if (err != ESP_OK) {
-    ESP_LOGE(RADIO_TAG, "Failed to save stage: %d", err);
-  }
-  play_flush_timer_cb(NULL);
 
   int64_t completion_total_play_time = 0;
   xSemaphoreTake(play_time_mutex, portMAX_DELAY);
@@ -420,11 +441,29 @@ static void check_sequence(void *arg) {
   xSemaphoreGive(play_time_mutex);
 
   char key[sizeof("stage_000_time")];
-  snprintf(key, sizeof(key), "stage_%d_time", current_stage - 1);
-  err = nvs_set_i64(pi_nvs_handle, key, completion_total_play_time);
+  snprintf(key, sizeof(key), "stage_%d_time", current_stage);
+  esp_err_t err = nvs_set_i64(pi_nvs_handle, key, completion_total_play_time);
   if (err != ESP_OK) {
     ESP_LOGE(RADIO_TAG, "Failed to save stage time: %d", err);
   }
+
+  // Check for alt/adaptive difficulty mode - trigger if stage 1 takes more than
+  // 40 minutes
+  if (current_stage == 1 && completion_total_play_time > ALT_MODE_THRESHOLD) {
+    alt_mode = true;
+    ESP_LOGI(RADIO_TAG, "Entering alt mode");
+    current_stage = 4;
+  } else {
+    current_stage++;
+  }
+
+  err = nvs_set_u8(pi_nvs_handle, "stage", current_stage);
+  if (err != ESP_OK) {
+    ESP_LOGE(RADIO_TAG, "Failed to save stage: %d", err);
+  }
+  play_flush_timer_cb(NULL);
+
+  play_on_start_new_stage(current_stage);
 
   force_telemetry();
 }
@@ -723,7 +762,8 @@ static void station_pi_task(void *ctx) {
       last_headphone_state = gpio;
       last_headphone_change = esp_timer_get_time();
     }
-    if (gpio || current_stage < 2) {
+    if (gpio || current_stage < 2 ||
+        (current_stage < STAGE_COUNT && alt_mode)) {
       shift_state &= ~SHIFT_HEADPHONE;
     } else {
       shift_state |= SHIFT_HEADPHONE;
@@ -1030,6 +1070,17 @@ esp_err_t station_pi_init() {
     ESP_RETURN_ON_ERROR(ret, RADIO_TAG, "Failed to get stage from NVS");
   }
 
+  // Check if we need to enable alt mode
+  if (current_stage > 1) {
+    int64_t stage_1_time = 0;
+    ret = nvs_get_i64(pi_nvs_handle, "stage_1_time", &stage_1_time);
+    if (ret != ESP_OK) {
+      ESP_LOGW(RADIO_TAG, "Failed to get stage 1 time: %d", ret);
+    } else if (stage_1_time > ALT_MODE_THRESHOLD) {
+      alt_mode = true;
+    }
+  }
+
   frequency_config_t config = {
       .frequency = M_PI,
       .enabled = frequency_enabled,
@@ -1096,6 +1147,10 @@ esp_err_t station_pi_set_stage(uint8_t stage) {
         ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to erase stage time: %d",
                             err_rc_);
       }
+    }
+
+    if (stage <= 1) {
+      alt_mode = false;
     }
   } else {
     // backfill
