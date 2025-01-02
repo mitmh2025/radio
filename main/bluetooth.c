@@ -137,12 +137,15 @@ static void notify_subscribers(struct bt_beacon *newest) {
 }
 
 static void beacon_cleanup(void *arg) {
-  // Remove any beacon we haven't seen in the last 30 seconds
+  // Remove any beacon we haven't seen in the last 30 seconds (or 5, if we're in
+  // aggressive mode)
   int64_t now = esp_timer_get_time();
+  int64_t timeout = (current_mode == BLUETOOTH_MODE_AGGRESSIVE ? 5ULL : 30ULL) *
+                    1000ULL * 1000ULL;
   xSemaphoreTake(beacon_mutex, portMAX_DELAY);
   struct bt_beacon *beacon, *tmp;
   TAILQ_FOREACH_SAFE(beacon, &beacons, entries, tmp) {
-    if (now - beacon->beacon.last_seen > 30 * 1000 * 1000) {
+    if (now - beacon->beacon.last_seen > timeout) {
       ESP_LOGD(RADIO_TAG, "Removing beacon: major=%" PRIu16 ", minor=%" PRIu16,
                beacon->beacon.major, beacon->beacon.minor);
       beacon->beacon.last_seen = 0;
@@ -396,7 +399,7 @@ esp_err_t bluetooth_init(void) {
                       RADIO_TAG, "Failed to create beacon cleanup timer: %d",
                       err_rc_);
   ESP_RETURN_ON_ERROR(
-      esp_timer_start_periodic(beacon_cleanup_timer, 5 * 1000 * 1000),
+      esp_timer_start_periodic(beacon_cleanup_timer, 1 * 1000 * 1000),
       RADIO_TAG, "Failed to start beacon cleanup timer: %d", err_rc_);
 
   ESP_RETURN_ON_ERROR(nimble_port_init(), RADIO_TAG,
