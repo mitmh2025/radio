@@ -113,11 +113,13 @@ static void entune_funaround(void *ctx) {
   ESP_ERROR_CHECK_WITHOUT_ABORT(
       debounce_handler_add(BUTTON_CIRCLE_PIN, GPIO_INTR_POSEDGE,
                            circle_button_intr, NULL, pdMS_TO_TICKS(10)));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(led_set_pixel(1, 64, 25, 0));
   tuned = true;
   update(true);
 }
 
 static void detune_funaround(void *ctx) {
+  ESP_ERROR_CHECK_WITHOUT_ABORT(led_set_pixel(1, 0, 0, 0));
   tuned = false;
   ESP_ERROR_CHECK_WITHOUT_ABORT(debounce_handler_remove(BUTTON_CIRCLE_PIN));
   ESP_ERROR_CHECK_WITHOUT_ABORT(debounce_handler_remove(BUTTON_TRIANGLE_PIN));

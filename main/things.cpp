@@ -2,7 +2,9 @@
 
 #include "../config.h"
 #include "main.h"
+#include "playback.h"
 #include "things.h"
+#include "tuner.h"
 
 #include <algorithm>
 #include <map>
@@ -99,6 +101,23 @@ static std::multimap<std::string, things_attribute_callback_t>
 
 static std::mutex things_rpc_mutex;
 static std::map<std::string, things_rpc_handler_t> things_rpc_handlers;
+
+static std::recursive_mutex things_update_mutex;
+typedef enum {
+  THINGS_UPDATE_NONE,
+  THINGS_UPDATE_AVAILABLE,
+  THINGS_UPDATE_STARTED,
+  THINGS_UPDATE_APPLIED,
+} things_update_t;
+static things_update_t things_update_state = THINGS_UPDATE_NONE;
+static bool things_update_blocked =
+#ifdef CONFIG_RADIO_GIANT_SWITCH
+    false
+#else
+    true
+#endif
+    ;
+static bool things_update_external_blocked = false;
 
 // Must be called while holding things_attribute_mutex
 static void update_attr_cache(std::string key,
@@ -380,15 +399,159 @@ static void things_progress_callback(const size_t &currentChunk,
            static_cast<float>(100 * currentChunk) / totalChuncks);
 }
 
-static void things_updated_callback(const bool &success) {
-  if (!success) {
-    ESP_LOGE(RADIO_TAG, "Failed to update firmware");
-    abort();
+static void things_update_warning() {
+  playback_cfg_t cfg = {
+      .path = "firmware-update.opus",
+      .duck_others = true,
+      .tuned = true,
+      .skip_samples = 0,
+  };
+  playback_handle_t handle;
+  esp_err_t err = playback_file(&cfg, &handle);
+  if (err != ESP_OK) {
+    ESP_LOGE(RADIO_TAG, "Failed to play firmware update warning: %d", err);
+    return;
   }
 
-  // TODO: setup r/w lock to allow blocking updates
-  ESP_LOGI(RADIO_TAG, "Successfully updated firmware; restarting now");
+  err = playback_wait_for_completion(handle);
+  if (err != ESP_OK) {
+    ESP_LOGE(RADIO_TAG, "Failed to wait for firmware update warning: %d", err);
+  }
+
+  playback_free(handle);
+}
+
+static void things_updated_callback(const bool &success) {
+  std::lock_guard<std::recursive_mutex> lock(things_update_mutex);
+
+  if (!success) {
+    ESP_LOGE(RADIO_TAG, "Failed to update firmware");
+    things_update_state = THINGS_UPDATE_NONE;
+  }
+
+  things_update_state = THINGS_UPDATE_APPLIED;
+  if (things_update_blocked || things_update_external_blocked) {
+    ESP_LOGI(RADIO_TAG, "Successfully updated firmware; deferring restart "
+                        "until update is unblocked");
+    return;
+  }
+
+  ESP_LOGI(RADIO_TAG, "Firmware update applied; restarting");
+  things_update_warning();
   esp_restart();
+}
+
+Espressif_Updater updater;
+
+static void things_start_update() {
+  const esp_app_desc_t *app = esp_app_get_description();
+
+  auto conn = tb.lock();
+  if (!conn) {
+    ESP_LOGE(RADIO_TAG, "Failed to get ThingsBoard connection");
+    return;
+  }
+
+  things_update_warning();
+
+  const OTA_Update_Callback ota_callback(
+      things_progress_callback, things_updated_callback, app->project_name,
+      app->version, &updater, FIRMWARE_FAILURE_RETRIES, FIRMWARE_PACKET_SIZE);
+
+  bool success = conn->Start_Firmware_Update(ota_callback);
+  if (!success) {
+    ESP_LOGE(RADIO_TAG, "Failed to request an immediate firmware updates "
+                        "from ThingsBoard. Disconnecting to try again");
+    conn->disconnect();
+  }
+
+  std::lock_guard<std::recursive_mutex> lock(things_update_mutex);
+  things_update_state = THINGS_UPDATE_STARTED;
+}
+
+static void things_fw_version_callback(const char *key,
+                                       const things_attribute_t *attr) {
+  if (attr->type == THINGS_ATTRIBUTE_TYPE_UNSET) {
+    std::lock_guard<std::recursive_mutex> lock(things_update_mutex);
+    things_update_state = THINGS_UPDATE_NONE;
+    return;
+  }
+
+  if (attr->type != THINGS_ATTRIBUTE_TYPE_STRING) {
+    ESP_LOGE(RADIO_TAG, "Invalid firmware version type");
+    return;
+  }
+
+  const esp_app_desc_t *app = esp_app_get_description();
+  if (strncmp(attr->value.string, app->version, sizeof(app->version)) == 0) {
+    ESP_LOGD(RADIO_TAG, "Firmware version matches, no update required");
+    std::lock_guard<std::recursive_mutex> lock(things_update_mutex);
+    things_update_state = THINGS_UPDATE_NONE;
+    return;
+  }
+
+  std::lock_guard<std::recursive_mutex> lock(things_update_mutex);
+  if (things_update_state == THINGS_UPDATE_NONE) {
+    ESP_LOGI(RADIO_TAG, "Firmware update available");
+    things_update_state = THINGS_UPDATE_AVAILABLE;
+  }
+
+  if (things_update_blocked || things_update_external_blocked) {
+    ESP_LOGD(RADIO_TAG, "Firmware update blocked");
+    return;
+  }
+
+  things_start_update();
+}
+
+static esp_err_t block_changed() {
+  if (things_update_blocked || things_update_external_blocked) {
+    return ESP_OK;
+  }
+
+  switch (things_update_state) {
+  case THINGS_UPDATE_NONE:
+    return ESP_OK;
+  case THINGS_UPDATE_AVAILABLE:
+    things_start_update();
+    return ESP_OK;
+  case THINGS_UPDATE_STARTED:
+    return ESP_OK;
+  case THINGS_UPDATE_APPLIED:
+    things_updated_callback(true);
+    return ESP_OK;
+  default:
+    ESP_LOGE(RADIO_TAG, "Invalid update state");
+    return ESP_ERR_INVALID_STATE;
+  }
+}
+
+esp_err_t things_set_updates_blocked(bool blocked) {
+  std::lock_guard<std::recursive_mutex> lock(things_update_mutex);
+
+  things_update_blocked = blocked;
+  return block_changed();
+}
+
+static void things_block_updates_cb(const char *key,
+                                    const things_attribute_t *attr) {
+  bool blocked = false;
+  switch (attr->type) {
+  case THINGS_ATTRIBUTE_TYPE_BOOL:
+    blocked = attr->value.b;
+    break;
+  case THINGS_ATTRIBUTE_TYPE_UNSET:
+    blocked = false;
+    break;
+  default:
+    ESP_LOGE(RADIO_TAG, "Invalid type for block_updates attribute");
+    return;
+  }
+
+  std::lock_guard<std::recursive_mutex> lock(things_update_mutex);
+  things_update_external_blocked = blocked;
+
+  ESP_ERROR_CHECK_WITHOUT_ABORT(block_changed());
 }
 
 static void things_upload_coredump(RadioThingsBoard *conn, size_t core_size) {
@@ -730,30 +893,6 @@ static void things_task(void *arg) {
       continue;
     }
 
-    Espressif_Updater updater;
-    const OTA_Update_Callback ota_callback(
-        things_progress_callback, things_updated_callback, app->project_name,
-        app->version, &updater, FIRMWARE_FAILURE_RETRIES, FIRMWARE_PACKET_SIZE);
-
-    // First subscribe to updates, in case there's not one already pending
-    success = conn->Subscribe_Firmware_Update(ota_callback);
-    if (!success) {
-      ESP_LOGE(RADIO_TAG, "Failed to subscribe to firmware updates from "
-                          "ThingsBoard. Waiting and trying again...");
-      vTaskDelay(pdMS_TO_TICKS(wait));
-      continue;
-    }
-
-    // Then manually request an update, since Subscribe_Firmware_Update is
-    // edge-triggered not level-triggered
-    success = conn->Start_Firmware_Update(ota_callback);
-    if (!success) {
-      ESP_LOGE(RADIO_TAG, "Failed to request an immediate firmware updates "
-                          "from ThingsBoard. Waiting and trying again...");
-      vTaskDelay(pdMS_TO_TICKS(wait));
-      continue;
-    }
-
     // Same with shared attributes - first subscribe, then request an update
     const Shared_Attribute_Callback attr_sub_callback(
         [](JsonObjectConst const &attrs) { things_attribute_callback(attrs); });
@@ -870,6 +1009,15 @@ esp_err_t things_init() {
 
   things_register_telemetry_generator(things_telemetry_generator, "things",
                                       NULL);
+
+  err = things_subscribe_attribute(FW_VER_KEY, things_fw_version_callback);
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG,
+                      "Failed to subscribe to firmware version attribute: %d",
+                      err);
+  err = things_subscribe_attribute("block_updates", things_block_updates_cb);
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG,
+                      "Failed to subscribe to block_updates attribute: %d",
+                      err);
 
   return ESP_OK;
 }

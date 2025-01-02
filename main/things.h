@@ -46,6 +46,8 @@ things_register_telemetry_generator(things_telemetry_generator_t generator,
                                     const char *name, size_t *index);
 void things_force_telemetry(size_t index);
 
+esp_err_t things_set_updates_blocked(bool blocked);
+
 esp_err_t things_subscribe_attribute(const char *key,
                                      things_attribute_callback_t callback);
 esp_err_t things_register_rpc(const char *method, things_rpc_handler_t handler);
