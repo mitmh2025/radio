@@ -123,6 +123,7 @@ static int64_t sequence_check_timeout = 500000;
 static esp_timer_handle_t sequence_check_timer = NULL;
 
 static uint8_t current_stage = 0;
+static bool alt_mode = false;
 #define STAGE_COUNT 5
 
 static const char *intros[STAGE_COUNT] = {
@@ -1056,24 +1057,56 @@ esp_err_t station_pi_enable() {
 }
 
 esp_err_t station_pi_set_stage(uint8_t stage) {
+  uint8_t previous_stage = current_stage;
+
   current_stage = stage;
   ESP_RETURN_ON_ERROR(nvs_set_u8(pi_nvs_handle, "stage", current_stage),
                       RADIO_TAG, "Failed to save stage");
 
+  if (stage < previous_stage) {
+    int64_t previous_total_play_time = -1;
+    if (stage != 0) {
+      char key[sizeof("stage_000_time")];
+      snprintf(key, sizeof(key), "stage_%d_time", stage);
+      esp_err_t err = nvs_get_i64(pi_nvs_handle, "total_play_time",
+                                  &previous_total_play_time);
+      if (err != ESP_OK) {
+        ESP_LOGW(
+            RADIO_TAG,
+            "Failed to get total play time when manually setting stage: %d",
+            err);
+      }
+    } else {
+      previous_total_play_time = 0;
+    }
+
+    if (previous_total_play_time >= 0) {
+      esp_timer_stop(idle_timer);
+      xSemaphoreTake(play_time_mutex, portMAX_DELAY);
+      total_play_time = previous_total_play_time;
+      last_flushed_total_play_time = -1;
+      flush_total_play_time();
+      xSemaphoreGive(play_time_mutex);
+    }
+
+    for (uint8_t i = stage; i < previous_stage; i++) {
+      char key[sizeof("stage_000_time")];
+      snprintf(key, sizeof(key), "stage_%d_time", i);
+      ESP_RETURN_ON_ERROR(nvs_erase_key(pi_nvs_handle, key), RADIO_TAG,
+                          "Failed to erase stage time: %d", err_rc_);
+    }
+  } else {
+    // backfill
+    for (uint8_t i = previous_stage; i < stage; i++) {
+      char key[sizeof("stage_000_time")];
+      snprintf(key, sizeof(key), "stage_%d_time", i);
+      ESP_RETURN_ON_ERROR(nvs_set_i64(pi_nvs_handle, key, total_play_time),
+                          RADIO_TAG, "Failed to save stage time: %d", err_rc_);
+    }
+  }
+
+  ESP_RETURN_ON_ERROR(nvs_commit(pi_nvs_handle), RADIO_TAG,
+                      "Failed to commit stage");
+
   return ESP_OK;
-}
-
-esp_err_t station_pi_reset_play_time() {
-  xSemaphoreTake(play_time_mutex, portMAX_DELAY);
-  esp_err_t ret = ESP_OK;
-  total_play_time = 0;
-  last_flushed_total_play_time = 0;
-  ESP_GOTO_ON_ERROR(nvs_set_i64(pi_nvs_handle, "total_play_time", 0), cleanup,
-                    RADIO_TAG, "Failed to erase total play time");
-  ESP_GOTO_ON_ERROR(nvs_commit(pi_nvs_handle), cleanup, RADIO_TAG,
-                    "Failed to commit total play time");
-cleanup:
-  xSemaphoreGive(play_time_mutex);
-
-  return ret;
 }
