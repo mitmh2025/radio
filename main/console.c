@@ -672,6 +672,83 @@ cleanup:
 static struct {
   struct arg_str *namespace;
   struct arg_str *key;
+  struct arg_str *type;
+  struct arg_str *value;
+  struct arg_end *end;
+} nvs_set_args;
+
+static int nvs_set(int argc, char **argv) {
+  int nerrors = arg_parse(argc, argv, (void **)&nvs_set_args);
+
+  if (nerrors != 0) {
+    arg_print_errors(stderr, nvs_set_args.end, argv[0]);
+    return 1;
+  }
+
+  if (nvs_set_args.namespace->count == 0 || nvs_set_args.key->count == 0 ||
+      nvs_set_args.type->count == 0 || nvs_set_args.value->count == 0) {
+    arg_print_syntax(stderr, (void **)&nvs_set_args, argv[0]);
+    return 1;
+  }
+
+  nvs_handle_t handle;
+  esp_err_t err =
+      nvs_open(nvs_set_args.namespace->sval[0], NVS_READWRITE, &handle);
+  if (err != ESP_OK) {
+    printf("Failed to open NVS handle: %d\n", err);
+    return 1;
+  }
+
+  if (strcmp("i8", nvs_set_args.type->sval[0]) == 0) {
+    int8_t value = strtol(nvs_set_args.value->sval[0], NULL, 0);
+    err = nvs_set_i8(handle, nvs_set_args.key->sval[0], value);
+  } else if (strcmp("u8", nvs_set_args.type->sval[0]) == 0) {
+    uint8_t value = strtoul(nvs_set_args.value->sval[0], NULL, 0);
+    err = nvs_set_u8(handle, nvs_set_args.key->sval[0], value);
+  } else if (strcmp("i16", nvs_set_args.type->sval[0]) == 0) {
+    int16_t value = strtol(nvs_set_args.value->sval[0], NULL, 0);
+    err = nvs_set_i16(handle, nvs_set_args.key->sval[0], value);
+  } else if (strcmp("u16", nvs_set_args.type->sval[0]) == 0) {
+    uint16_t value = strtoul(nvs_set_args.value->sval[0], NULL, 0);
+    err = nvs_set_u16(handle, nvs_set_args.key->sval[0], value);
+  } else if (strcmp("i32", nvs_set_args.type->sval[0]) == 0) {
+    int32_t value = strtol(nvs_set_args.value->sval[0], NULL, 0);
+    err = nvs_set_i32(handle, nvs_set_args.key->sval[0], value);
+  } else if (strcmp("u32", nvs_set_args.type->sval[0]) == 0) {
+    uint32_t value = strtoul(nvs_set_args.value->sval[0], NULL, 0);
+    err = nvs_set_u32(handle, nvs_set_args.key->sval[0], value);
+  } else if (strcmp("i64", nvs_set_args.type->sval[0]) == 0) {
+    int64_t value = strtoll(nvs_set_args.value->sval[0], NULL, 0);
+    err = nvs_set_i64(handle, nvs_set_args.key->sval[0], value);
+  } else if (strcmp("str", nvs_set_args.type->sval[0]) == 0) {
+    err = nvs_set_str(handle, nvs_set_args.key->sval[0],
+                      nvs_set_args.value->sval[0]);
+  } else {
+    printf("Unsupported attribute type: %s\n", nvs_set_args.type->sval[0]);
+    nvs_close(handle);
+    return 1;
+  }
+
+  if (err != ESP_OK) {
+    printf("Failed to set value in NVS: %d\n", err);
+    nvs_close(handle);
+    return 1;
+  }
+
+  err = nvs_commit(handle);
+  if (err != ESP_OK) {
+    printf("Failed to commit NVS: %d\n", err);
+    nvs_close(handle);
+    return 1;
+  }
+
+  nvs_close(handle);
+  return 0;
+}
+
+static struct {
+  struct arg_str *namespace;
+  struct arg_str *key;
   struct arg_end *end;
 } nvs_rm_args;
 
@@ -1042,6 +1119,24 @@ esp_err_t console_init() {
   };
   err = esp_console_cmd_register(&cmd_nvs_get);
   ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register nvs-get command: %d",
+                      err);
+
+  nvs_set_args.namespace = arg_str1(NULL, NULL, "<namespace>", "NVS namespace");
+  nvs_set_args.key = arg_str1(NULL, NULL, "<key>", "NVS key");
+  nvs_set_args.type =
+      arg_str1(NULL, NULL, "<type>",
+               "NVS type (i8, u8, i16, u16, i32, u32, i64, u64, or str)");
+  nvs_set_args.value = arg_str1(NULL, NULL, "<value>", "NVS value");
+  nvs_set_args.end = arg_end(4);
+  esp_console_cmd_t cmd_nvs_set = {
+      .command = "nvs-set",
+      .help = "Set a value in NVS",
+      .hint = NULL,
+      .func = &nvs_set,
+      .argtable = &nvs_set_args,
+  };
+  err = esp_console_cmd_register(&cmd_nvs_set);
+  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to register nvs-set command: %d",
                       err);
 
   nvs_rm_args.namespace = arg_str1(NULL, NULL, "<namespace>", "NVS namespace");
