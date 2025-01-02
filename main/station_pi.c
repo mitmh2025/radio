@@ -1067,9 +1067,9 @@ esp_err_t station_pi_set_stage(uint8_t stage) {
     int64_t previous_total_play_time = -1;
     if (stage != 0) {
       char key[sizeof("stage_000_time")];
-      snprintf(key, sizeof(key), "stage_%d_time", stage);
-      esp_err_t err = nvs_get_i64(pi_nvs_handle, "total_play_time",
-                                  &previous_total_play_time);
+      snprintf(key, sizeof(key), "stage_%d_time", stage - 1);
+      esp_err_t err =
+          nvs_get_i64(pi_nvs_handle, key, &previous_total_play_time);
       if (err != ESP_OK) {
         ESP_LOGW(
             RADIO_TAG,
@@ -1081,7 +1081,6 @@ esp_err_t station_pi_set_stage(uint8_t stage) {
     }
 
     if (previous_total_play_time >= 0) {
-      esp_timer_stop(idle_timer);
       xSemaphoreTake(play_time_mutex, portMAX_DELAY);
       total_play_time = previous_total_play_time;
       last_flushed_total_play_time = -1;
@@ -1092,8 +1091,11 @@ esp_err_t station_pi_set_stage(uint8_t stage) {
     for (uint8_t i = stage; i < previous_stage; i++) {
       char key[sizeof("stage_000_time")];
       snprintf(key, sizeof(key), "stage_%d_time", i);
-      ESP_RETURN_ON_ERROR(nvs_erase_key(pi_nvs_handle, key), RADIO_TAG,
-                          "Failed to erase stage time: %d", err_rc_);
+      esp_err_t err = nvs_erase_key(pi_nvs_handle, key);
+      if (err != ESP_ERR_NVS_NOT_FOUND) {
+        ESP_RETURN_ON_ERROR(err, RADIO_TAG, "Failed to erase stage time: %d",
+                            err_rc_);
+      }
     }
   } else {
     // backfill
