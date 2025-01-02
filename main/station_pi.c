@@ -237,13 +237,13 @@ static void update_led() {
   }
 
   if (!instrument_enabled) {
-    ESP_ERROR_CHECK_WITHOUT_ABORT(led_set_pixel(1, 0, 0, 0));
+    ESP_ERROR_CHECK_WITHOUT_ABORT(led_set_pixel(1, 0, 64, 0));
     return;
   }
 
   switch (shift_state) {
   case 0:
-    ESP_ERROR_CHECK_WITHOUT_ABORT(led_set_pixel(1, 0, 0, 0));
+    ESP_ERROR_CHECK_WITHOUT_ABORT(led_set_pixel(1, 0, 64, 0));
     break;
   case SHIFT_MAGNET:
     ESP_ERROR_CHECK_WITHOUT_ABORT(led_set_pixel(1, 255, 128, 0));

@@ -1,4 +1,5 @@
 #include "webrtc_manager.h"
+#include "led.h"
 #include "main.h"
 #include "mixer.h"
 #include "things.h"
@@ -97,6 +98,33 @@ static void on_buffer_duration(webrtc_connection_t conn, void *context,
   xTaskNotify(task, NOTIFY_BUFFER_DURATION_CHANGED, eSetBits);
 }
 
+static void set_led() {
+  bool entuned = atomic_load(&webrtc_entuned);
+  if (!entuned) {
+    return;
+  }
+
+  webrtc_connection_state_t state = atomic_load(&webrtc_latest_state);
+  switch (state) {
+  case WEBRTC_CONNECTION_STATE_CONNECTED:
+    led_set_pixel(1, 0, 64, 0);
+    break;
+  case WEBRTC_CONNECTION_STATE_NONE:
+  case WEBRTC_CONNECTION_STATE_NEW:
+  case WEBRTC_CONNECTION_STATE_CONNECTING:
+    led_set_pixel(1, 64, 25, 0);
+    break;
+  case WEBRTC_CONNECTION_STATE_CLOSED:
+  case WEBRTC_CONNECTION_STATE_DISCONNECTED:
+  case WEBRTC_CONNECTION_STATE_FAILED:
+    led_set_pixel(1, 64, 0, 0);
+    break;
+  default:
+    led_set_pixel(1, 0, 0, 0);
+    break;
+  }
+}
+
 static void webrtc_loop() {
   // Wait for wifi to connect
   xEventGroupWaitBits(radio_event_group, RADIO_EVENT_GROUP_WIFI_CONNECTED,
@@ -136,6 +164,7 @@ static void webrtc_loop() {
     uint32_t notification =
         ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(900 + esp_random() % 200));
 
+    set_led();
     if (notification & NOTIFY_URL_CHANGED) {
       // URL changed, reconnect
       ESP_LOGI(RADIO_TAG, "URL changed, reconnecting");
@@ -251,6 +280,7 @@ esp_err_t webrtc_manager_init() {
 
 void webrtc_manager_entune() {
   atomic_store(&webrtc_entuned, true);
+  set_led();
   if (webrtc_manager_task_handle) {
     xTaskNotify(webrtc_manager_task_handle, NOTIFY_ENTUNE_CHANGED, eSetBits);
   }
@@ -258,6 +288,7 @@ void webrtc_manager_entune() {
 
 void webrtc_manager_detune() {
   atomic_store(&webrtc_entuned, false);
+  led_set_pixel(1, 0, 0, 0);
   if (webrtc_manager_task_handle) {
     xTaskNotify(webrtc_manager_task_handle, NOTIFY_ENTUNE_CHANGED, eSetBits);
   }

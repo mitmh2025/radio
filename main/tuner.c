@@ -6,6 +6,7 @@
 #include "board.h"
 #include "debounce.h"
 #include "fm.h"
+#include "led.h"
 #include "mixer.h"
 #include "tas2505.h"
 #include "things.h"
@@ -101,11 +102,13 @@ static void entune_fm() {
   ESP_ERROR_CHECK_WITHOUT_ABORT(bluetooth_set_mode(BLUETOOTH_MODE_AGGRESSIVE));
   ESP_ERROR_CHECK_WITHOUT_ABORT(tas2505_set_input(TAS2505_INPUT_BOTH));
   ESP_ERROR_CHECK_WITHOUT_ABORT(fm_enable());
+  led_set_pixel(1, 64, 25, 0);
 }
 
 static void detune_fm() {
   ESP_ERROR_CHECK_WITHOUT_ABORT(fm_disable());
   bluetooth_set_mode(BLUETOOTH_MODE_DEFAULT);
+  led_set_pixel(1, 0, 0, 0);
 }
 
 static struct {
@@ -124,7 +127,10 @@ static struct frequency_list fm_frequencies =
 
 static void entune_fm_channel(void *ctx) {
   ESP_ERROR_CHECK_WITHOUT_ABORT(fm_tune((uint16_t)(uintptr_t)ctx));
+  led_set_pixel(1, 0, 64, 0);
 }
+
+static void detune_fm_channel(void *ctx) { led_set_pixel(1, 64, 25, 0); }
 
 static void modulation_callback(void *user_data, bool state) {
   desired_radio_mode = gpio_to_tuner_mode(state);
@@ -332,6 +338,7 @@ esp_err_t tuner_init(radio_calibration_t *calibration) {
     handle->frequency = frequency;
     handle->enabled = true;
     handle->entune = entune_fm_channel;
+    handle->detune = detune_fm_channel;
     uint16_t channel;
     ESP_RETURN_ON_ERROR(
         fm_frequency_to_channel(lroundf(frequency * 1000), &channel), RADIO_TAG,

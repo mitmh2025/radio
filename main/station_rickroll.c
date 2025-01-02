@@ -1,5 +1,6 @@
 #include "station_rickroll.h"
 #include "bluetooth.h"
+#include "led.h"
 #include "main.h"
 #include "mixer.h"
 #include "playback.h"
@@ -94,6 +95,8 @@ static void playback_empty_cb() {
 static void stop_playback() {
   esp_timer_stop(interrupt_timer);
 
+  led_set_pixel(1, 64, 25, 0);
+
   xSemaphoreTake(interrupt_mutex, portMAX_DELAY);
   if (interrupt_playback) {
     ESP_ERROR_CHECK_WITHOUT_ABORT(playback_stop(interrupt_playback));
@@ -107,6 +110,8 @@ static void start_playback() {
   if (playback_queue_active()) {
     return;
   }
+
+  led_set_pixel(1, 0, 64, 0);
 
   struct timeval now = {};
   gettimeofday(&now, NULL);
@@ -164,6 +169,8 @@ static void entune(void *arg) {
   ESP_ERROR_CHECK_WITHOUT_ABORT(bluetooth_set_mode(BLUETOOTH_MODE_AGGRESSIVE));
   if (current_strongest_minor != 0) {
     start_playback();
+  } else {
+    led_set_pixel(1, 64, 25, 0);
   }
   ESP_ERROR_CHECK_WITHOUT_ABORT(
       playback_queue_subscribe_empty(playback_empty_cb));
@@ -173,6 +180,7 @@ static void detune(void *arg) {
   ESP_ERROR_CHECK_WITHOUT_ABORT(
       playback_queue_unsubscribe_empty(playback_empty_cb));
   stop_playback();
+  led_set_pixel(1, 0, 0, 0);
   ESP_ERROR_CHECK_WITHOUT_ABORT(bluetooth_set_mode(BLUETOOTH_MODE_DEFAULT));
   ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_static(MIXER_STATIC_MODE_DEFAULT));
   entuned = false;

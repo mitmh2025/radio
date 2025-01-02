@@ -1,5 +1,6 @@
 #include "station_wifi.h"
 #include "debounce.h"
+#include "led.h"
 #include "main.h"
 #include "mixer.h"
 #include "playback_queue.h"
@@ -75,9 +76,11 @@ static void ap_start_timer_cb(void *arg) {
 static void entune_wifi(void *ctx) {
   ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_static(MIXER_STATIC_MODE_COMFORT));
   esp_timer_start_once(ap_start_timer, 500000);
+  ESP_ERROR_CHECK_WITHOUT_ABORT(led_set_pixel(1, 0, 64, 0));
 }
 
 static void detune_wifi(void *ctx) {
+  ESP_ERROR_CHECK_WITHOUT_ABORT(led_set_pixel(1, 0, 0, 0));
   esp_timer_stop(ap_start_timer);
 
   xSemaphoreTake(ap_mode_lock, portMAX_DELAY);
