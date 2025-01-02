@@ -5,6 +5,7 @@
 #include "playback.h"
 #include "things.h"
 #include "tuner.h"
+#include "wifi.h"
 
 #include <algorithm>
 #include <map>
@@ -752,8 +753,11 @@ static bool things_healthcheck(std::shared_ptr<RadioThingsBoard> conn) {
   return pdTRUE == xTaskNotifyWait(0, ULONG_MAX, NULL, HEALTHCHECK_TIMEOUT);
 }
 
-static void things_main_loop(std::shared_ptr<RadioThingsBoard> &conn) {
+static bool things_main_loop(std::shared_ptr<RadioThingsBoard> &conn) {
+  bool successful_healthcheck = false;
   while (things_healthcheck(conn)) {
+    successful_healthcheck = true;
+
     {
       std::lock_guard<std::mutex> lock(things_telemetry_mutex);
       for (auto const &generator : things_telemetry_generators) {
@@ -773,7 +777,7 @@ static void things_main_loop(std::shared_ptr<RadioThingsBoard> &conn) {
                               pdFALSE, pdFALSE, deadline - xTaskGetTickCount());
 
       if (bits & RADIO_EVENT_GROUP_WIFI_DISCONNECTED) {
-        return;
+        return successful_healthcheck;
       }
 
       if (bits & RADIO_EVENT_GROUP_THINGS_FORCE_TELEMETRY) {
@@ -798,6 +802,8 @@ static void things_main_loop(std::shared_ptr<RadioThingsBoard> &conn) {
       }
     }
   }
+
+  return successful_healthcheck;
 }
 
 static void things_task(void *arg) {
@@ -814,10 +820,13 @@ static void things_task(void *arg) {
 
   // Main loop is around wifi connection. If we get disconnected from wifi, wait
   // until we reconnect and then reconnect to ThingsBoard too
-  //
-  // TODO: count how many times we loop without successfully connecting, and at
-  // some point force a wifi reconnect
+  int connection_attempt_count = 0;
   while (true) {
+    if (connection_attempt_count++ > 5) {
+      wifi_force_reconnect();
+      connection_attempt_count = 0;
+    }
+
     uint32_t wait = 4000 + esp_random() % 2000;
     xEventGroupWaitBits(radio_event_group, RADIO_EVENT_GROUP_WIFI_CONNECTED,
                         pdFALSE, pdTRUE, portMAX_DELAY);
@@ -952,7 +961,10 @@ static void things_task(void *arg) {
       }
     }
 
-    things_main_loop(conn);
+    bool successful_healthcheck = things_main_loop(conn);
+    if (successful_healthcheck) {
+      connection_attempt_count = 0;
+    }
 
     ESP_LOGW(RADIO_TAG, "ThingsBoard healthcheck failed. Reconnecting...");
   }
