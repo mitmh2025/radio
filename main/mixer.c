@@ -113,32 +113,32 @@ static esp_err_t mixer_reopen() {
       }
     }
 
-  bool will_duck = false;
-  mixer_channel_t chan;
-  TAILQ_FOREACH(chan, &mixer_channels, entries) {
-    if (chan->duck_others) {
-      will_duck = true;
-      break;
+    bool will_duck = false;
+    mixer_channel_t chan;
+    TAILQ_FOREACH(chan, &mixer_channels, entries) {
+      if (chan->duck_others) {
+        will_duck = true;
+        break;
+      }
     }
-  }
 
-  int i;
-  chan = TAILQ_FIRST(&mixer_channels);
-  for (i = 0; i < downmix_info.source_num && chan != NULL;
-       i++, chan = TAILQ_NEXT(chan, entries)) {
-    downmix_source_info[i].samplerate = 48000;
-    downmix_source_info[i].channel = 1;
-    downmix_source_info[i].bits_num = 16;
-    downmix_source_info[i].gain[0] =
-        was_ducked && !chan->duck_others ? MIXER_DUCK_GAIN : 0;
-    downmix_source_info[i].gain[1] =
-        will_duck && !chan->duck_others ? MIXER_DUCK_GAIN : 0;
-    downmix_source_info[i].transit_time = 250;
-  }
-  if (i != downmix_info.source_num) {
-    ESP_LOGE(RADIO_TAG, "Mismatch between source info and channels");
-    return ESP_FAIL;
-  }
+    int i;
+    chan = TAILQ_FIRST(&mixer_channels);
+    for (i = 0; i < downmix_info.source_num && chan != NULL;
+         i++, chan = TAILQ_NEXT(chan, entries)) {
+      downmix_source_info[i].samplerate = 48000;
+      downmix_source_info[i].channel = 1;
+      downmix_source_info[i].bits_num = 16;
+      downmix_source_info[i].gain[0] =
+          was_ducked && !chan->duck_others ? MIXER_DUCK_GAIN : 0;
+      downmix_source_info[i].gain[1] =
+          will_duck && !chan->duck_others ? MIXER_DUCK_GAIN : 0;
+      downmix_source_info[i].transit_time = 250;
+    }
+    if (i != downmix_info.source_num) {
+      ESP_LOGE(RADIO_TAG, "Mismatch between source info and channels");
+      return ESP_FAIL;
+    }
   }
 
   downmix_handle = esp_downmix_open(&downmix_info);

@@ -84,7 +84,7 @@ esp_err_t playback_file(const playback_cfg_t *cfg,
 
     ESP_GOTO_ON_ERROR(
         audio_pipeline_link(handle->pipeline, (const char *[]){"decoder"}, 1),
-        cleanup, RADIO_TAG, "Failed to link decoder to pipeline");  
+        cleanup, RADIO_TAG, "Failed to link decoder to pipeline");
   } else {
     ESP_GOTO_ON_FALSE(cfg->skip_samples == 0, ESP_ERR_INVALID_ARG, cleanup,
                       RADIO_TAG, "skip_samples not supported for WAV file");

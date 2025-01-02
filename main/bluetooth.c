@@ -429,8 +429,8 @@ esp_err_t bluetooth_init(void) {
 }
 
 esp_err_t bluetooth_set_mode(bluetooth_mode_t new_mode) {
-  ESP_RETURN_ON_FALSE(new_mode < BLUETOOTH_MODE_MAX, ESP_ERR_INVALID_ARG, RADIO_TAG,
-                      "Invalid Bluetooth mode: %d", new_mode);
+  ESP_RETURN_ON_FALSE(new_mode < BLUETOOTH_MODE_MAX, ESP_ERR_INVALID_ARG,
+                      RADIO_TAG, "Invalid Bluetooth mode: %d", new_mode);
   ESP_RETURN_ON_FALSE(mutex != NULL, ESP_ERR_INVALID_STATE, RADIO_TAG,
                       "Bluetooth not initialized");
 
