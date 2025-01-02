@@ -44,6 +44,10 @@ static esp_err_t set_ratchet(uint16_t new_ratchet) {
 }
 
 static void play_current_beacon() {
+  if (ratchet == 0) {
+    return;
+  }
+
   playback_queue_entry_t cfg = {
       .tuned = true,
   };
@@ -144,6 +148,26 @@ static void things_cb(const char *key, const things_attribute_t *value) {
   }
 }
 
+esp_err_t rpc_set_ratchet(const things_attribute_t *param) {
+  long long new_ratchet;
+  switch (param->type) {
+  case THINGS_ATTRIBUTE_TYPE_INT:
+    new_ratchet = param->value.i;
+    break;
+  case THINGS_ATTRIBUTE_TYPE_FLOAT:
+    new_ratchet = (uint16_t)param->value.f;
+    break;
+  default:
+    return ESP_ERR_INVALID_ARG;
+  }
+
+  if (new_ratchet > 0xffff) {
+    return ESP_ERR_INVALID_ARG;
+  }
+
+  return set_ratchet(new_ratchet);
+}
+
 esp_err_t station_funaround_init() {
   ESP_RETURN_ON_ERROR(nvs_open(STATION_FUNAROUND_NVS_NAMESPACE, NVS_READWRITE,
                                &funaround_nvs_handle),
@@ -177,6 +201,10 @@ esp_err_t station_funaround_init() {
   ESP_RETURN_ON_ERROR(things_register_telemetry_generator(
                           telemetry_generator, "funaround", &telemetry_index),
                       RADIO_TAG, "Failed to register funaround telemetry");
+
+  ESP_RETURN_ON_ERROR(
+      things_register_rpc("funaround:set_ratchet", rpc_set_ratchet), RADIO_TAG,
+      "Failed to register funaround:set_ratchet RPC");
 
   return ESP_OK;
 }
