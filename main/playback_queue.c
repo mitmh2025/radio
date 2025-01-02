@@ -32,7 +32,7 @@ static void playback_task(void *ctx) {
     xSemaphoreGive(current_playback_mutex);
     if (err != ESP_OK) {
       ESP_LOGE(RADIO_TAG, "Failed to play file: %d", err);
-      continue;
+      goto next;
     }
 
     err = playback_wait_for_completion(current_playback);
@@ -45,6 +45,7 @@ static void playback_task(void *ctx) {
     current_playback = NULL;
     xSemaphoreGive(current_playback_mutex);
 
+next:
     if (uxQueueMessagesWaiting(playback_queue) == 0) {
       xSemaphoreTake(empty_cb_mutex, portMAX_DELAY);
       if (empty_cb) {
