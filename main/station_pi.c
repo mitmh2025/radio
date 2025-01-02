@@ -971,6 +971,28 @@ static void detune(void *ctx) {
   station_pi_activation_enable(true);
 }
 
+esp_err_t rpc_set_stage(const things_attribute_t *param) {
+  uint8_t stage;
+  switch (param->type) {
+  case THINGS_ATTRIBUTE_TYPE_INT:
+    stage = param->value.i;
+    break;
+  case THINGS_ATTRIBUTE_TYPE_FLOAT:
+    stage = (uint8_t)param->value.f;
+    break;
+  default:
+    return ESP_ERR_INVALID_ARG;
+  }
+
+  if (stage > STAGE_COUNT) {
+    return ESP_ERR_INVALID_ARG;
+  }
+
+  ESP_LOGI(RADIO_TAG, "RPC: Setting stage to %d", stage);
+
+  return station_pi_set_stage(stage);
+}
+
 esp_err_t station_pi_init() {
   ESP_RETURN_ON_ERROR(things_register_telemetry_generator(
                           telemetry_generator, "pi", &telemetry_index),
@@ -1091,6 +1113,9 @@ esp_err_t station_pi_init() {
   ESP_RETURN_ON_ERROR(tuner_register_pm_frequency(&config, &freq_handle),
                       RADIO_TAG, "Failed to register pi frequency");
 
+  ESP_RETURN_ON_ERROR(things_register_rpc("pi:set_stage", rpc_set_stage),
+                      RADIO_TAG, "Failed to register pi:set_stage RPC");
+
   return ESP_OK;
 }
 
@@ -1148,10 +1173,6 @@ esp_err_t station_pi_set_stage(uint8_t stage) {
                             err_rc_);
       }
     }
-
-    if (stage <= 1) {
-      alt_mode = false;
-    }
   } else {
     // backfill
     for (uint8_t i = previous_stage; i < stage; i++) {
@@ -1162,8 +1183,13 @@ esp_err_t station_pi_set_stage(uint8_t stage) {
     }
   }
 
+  // Unset alt mode any time we're manually setting the stage
+  alt_mode = false;
+
   ESP_RETURN_ON_ERROR(nvs_commit(pi_nvs_handle), RADIO_TAG,
                       "Failed to commit stage");
+
+  force_telemetry();
 
   return ESP_OK;
 }
