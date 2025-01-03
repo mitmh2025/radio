@@ -14,6 +14,7 @@ idf_component_register(
   debounce.c
   file_cache.c
   fm.c
+  http_utils.c
   led.c
   magnet.c
   main.c

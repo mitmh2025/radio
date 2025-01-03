@@ -1,4 +1,5 @@
 #include "webrtc.h"
+#include "http_utils.h"
 #include "main.h"
 
 #include "esp_check.h"
@@ -350,6 +351,139 @@ static void webrtc_on_ice_candidate(UINT64 arg, PCHAR candidate) {
   webrtc_send_pending_candidates(connection);
 }
 
+static esp_err_t extract_stun_turn_from_link(webrtc_connection_t conn,
+                                             const char *header_value) {
+  // Header looks like:
+  //
+  // Link: <stun:stun.example.net>; rel="ice-server"
+  // Link: <turn:turn.example.net?transport=udp>; rel="ice-server";
+  //       username="user"; credential="myPassword";
+  //       credential-type="password"
+  //
+  // Parsing logic from RFC 8288 appendix B
+
+  const char *cursor = header_value;
+
+  while (*cursor != '\0') {
+    // Skip OWS
+    while (*cursor == ' ' || *cursor == '\t' || *cursor == '\n')
+      cursor++;
+
+    if (cursor[0] != '<')
+      break;
+    cursor++;
+
+    IceConfigInfo info = {
+        .uriCount = 1,
+    };
+
+    const char *target_string_start = cursor;
+    const char *target_string_end = strchr(cursor, '>');
+    if (!target_string_end)
+      break;
+    cursor = target_string_end + 1;
+    target_string_end--;
+
+    esp_err_t err = http_utils_percent_decode(
+        target_string_start, target_string_end - target_string_start,
+        info.uris[0], sizeof(info.uris[0]));
+    if (err != ESP_OK) {
+      break;
+    }
+
+    bool isIceServer = false;
+
+    // Inner loop to consume parameters
+    while (*cursor != '\0') {
+      // Skip OWS
+      while (*cursor == ' ' || *cursor == '\t' || *cursor == '\n')
+        cursor++;
+
+      if (cursor[0] != ';') {
+        break;
+      }
+      cursor++;
+
+      while (*cursor == ' ' || *cursor == '\t' || *cursor == '\n')
+        cursor++;
+
+      const char *param_name_start = cursor;
+      const char *param_name_end = strpbrk(cursor, "=;, \t\n");
+      if (!param_name_end)
+        break;
+
+      cursor = param_name_end;
+
+      // Skip BWS
+      while (*cursor == ' ' || *cursor == '\t' || *cursor == '\n')
+        cursor++;
+
+      // We don't really distinguish between "present and empty" and "not
+      // present"
+      if (*cursor != '=')
+        continue;
+
+      cursor++;
+      // Skip BWS
+      while (*cursor == ' ' || *cursor == '\t' || *cursor == '\n')
+        cursor++;
+
+      bool qs = false;
+      if (*cursor == '"') {
+        qs = true;
+        cursor++;
+      }
+
+      const char *param_value_start = cursor;
+      while (*cursor != '\0') {
+        if (qs) {
+          if (*cursor == '\\') {
+            cursor++;
+            if (*cursor == '\0')
+              break;
+          } else if (*cursor == '"') {
+            break;
+          }
+        } else {
+          if (*cursor == ';' || *cursor == ',')
+            break;
+        }
+        cursor++;
+      }
+
+      const char *param_value_end = cursor;
+
+      if (strncmp(param_name_start, "rel", param_name_end - param_name_start) ==
+          0) {
+        if (strncmp(param_value_start, "ice-server",
+                    param_value_end - param_value_start) == 0) {
+          isIceServer = true;
+        }
+      } else if (strncmp(param_name_start, "username",
+                         param_name_end - param_name_start) == 0) {
+        strncpy(info.userName, param_value_start,
+                param_value_end - param_value_start);
+      } else if (strncmp(param_name_start, "credential",
+                         param_name_end - param_name_start) == 0) {
+        strncpy(info.password, param_value_start,
+                param_value_end - param_value_start);
+      }
+    }
+
+    if (!isIceServer)
+      continue;
+
+    STATUS result = addConfigToServerList(&conn->peer_connection, &info);
+    if (result != STATUS_SUCCESS) {
+      ESP_LOGE(RADIO_TAG, "Failed to add ICE server with status code %" PRIx32,
+               result);
+      return ESP_FAIL;
+    }
+  }
+
+  return ESP_OK;
+}
+
 static esp_err_t
 webrtc_connect_http_event_handler(esp_http_client_event_t *evt) {
   struct webrtc_connect_http_data *data =
@@ -366,15 +500,11 @@ webrtc_connect_http_event_handler(esp_http_client_event_t *evt) {
     if (strcasecmp(evt->header_key, "Location") == 0) {
       data->connection->session_url = strdup(evt->header_value);
     } else if (strcasecmp(evt->header_key, "Link") == 0) {
-      // TODO: Check for rel="ice-server" and then parse out additional
-      // STUN/TURN servers to pass to addConfigToServerList
-      //
-      // Header looks like:
-      //
-      // Link: <stun:stun.example.net>; rel="ice-server"
-      // Link: <turn:turn.example.net?transport=udp>; rel="ice-server";
-      //       username="user"; credential="myPassword";
-      //       credential-type="password"
+      esp_err_t err =
+          extract_stun_turn_from_link(data->connection, evt->header_value);
+      if (err != ESP_OK) {
+        return err;
+      }
     }
   }
   return ESP_OK;

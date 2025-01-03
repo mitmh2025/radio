@@ -1,4 +1,5 @@
 #include "captive_http_server.h"
+#include "http_utils.h"
 #include "main.h"
 #include "wifi.h"
 
@@ -182,36 +183,6 @@ static esp_err_t serve_status(httpd_req_t *req) {
   return ESP_OK;
 }
 
-static esp_err_t percent_decode(const char *src, size_t src_len, char *dst,
-                                size_t dst_len) {
-  size_t pos = 0;
-  for (size_t i = 0; i < src_len; i++) {
-    if (dst_len <= pos) {
-      return ESP_ERR_NO_MEM;
-    }
-
-    if (src[i] == '+') {
-      dst[pos++] = ' ';
-      continue;
-    }
-
-    if (src[i] != '%') {
-      dst[pos++] = src[i];
-      continue;
-    }
-
-    if (i + 2 >= src_len) {
-      return ESP_ERR_INVALID_ARG;
-    }
-
-    char hex[3] = {src[i + 1], src[i + 2], 0};
-    dst[pos++] = (char)strtol(hex, NULL, 16);
-    i += 2;
-  }
-
-  return ESP_OK;
-}
-
 static esp_err_t serve_save(httpd_req_t *req) {
   size_t max_length =
       strlen("ssid=") + (32 * 3) + strlen("&password=") + (64 * 3) + 1;
@@ -243,15 +214,17 @@ static esp_err_t serve_save(httpd_req_t *req) {
   if (ssid_end == NULL) {
     ssid_end = req->content_len + buffer;
   }
-  ret = percent_decode(ssid_start, ssid_end - ssid_start, ssid, sizeof(ssid));
+  ret = http_utils_percent_decode(ssid_start, ssid_end - ssid_start, ssid,
+                                  sizeof(ssid));
   ESP_GOTO_ON_ERROR(ret, cleanup, RADIO_TAG, "Failed to decode SSID: %d", ret);
 
   char *password_start = strstr(buffer, "password=");
   if (password_start != NULL) {
     password_start += strlen("password=");
     char *password_end = req->content_len + buffer;
-    ret = percent_decode(password_start, password_end - password_start,
-                         password, sizeof(password));
+    ret =
+        http_utils_percent_decode(password_start, password_end - password_start,
+                                  password, sizeof(password));
     ESP_GOTO_ON_ERROR(ret, cleanup, RADIO_TAG, "Failed to decode password: %d",
                       ret);
   }
