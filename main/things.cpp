@@ -401,6 +401,7 @@ static void things_progress_callback(const size_t &currentChunk,
 }
 
 static void things_update_warning() {
+#ifndef CONFIG_RADIO_GIANT_SWITCH
   playback_cfg_t cfg = {
       .path = "firmware-update.opus",
       .duck_others = true,
@@ -420,6 +421,7 @@ static void things_update_warning() {
   }
 
   playback_free(handle);
+#endif
 }
 
 static void things_updated_callback(const bool &success) {
