@@ -132,6 +132,7 @@ static void battery_adc_callback(void *user_data,
     new_battery_low = false;
   }
 
+  // TODO: audio cue
   if (new_battery_low != battery_low) {
     xSemaphoreTake(status_mutex, portMAX_DELAY);
     battery_low = new_battery_low;
