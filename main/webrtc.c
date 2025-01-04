@@ -864,12 +864,12 @@ esp_err_t webrtc_get_last_packet_time(webrtc_connection_t connection,
       status == STATUS_SUCCESS, ESP_FAIL, cleanup, RADIO_TAG,
       "Failed to get inbound RTP metrics with status code %" PRIx32, status);
 
-  UINT64 last_packet_time =
+  // This is in milliseconds
+  DOMHighResTimeStamp last_packet_time =
       stats->rtcStatsObject.inboundRtpStreamStats.lastPacketReceivedTimestamp;
   if (last_packet_time > 0) {
-    tv->tv_sec = last_packet_time / HUNDREDS_OF_NANOS_IN_A_SECOND;
-    tv->tv_usec = (last_packet_time % HUNDREDS_OF_NANOS_IN_A_SECOND) /
-                  HUNDREDS_OF_NANOS_IN_A_MICROSECOND;
+    tv->tv_sec = last_packet_time / 1000;
+    tv->tv_usec = (last_packet_time % 1000) * 1000;
   } else {
     *tv = (struct timeval){0};
   }
