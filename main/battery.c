@@ -2,6 +2,7 @@
 #include "adc.h"
 #include "led.h"
 #include "main.h"
+#include "playback.h"
 #include "things.h"
 
 #include "board.h"
@@ -80,6 +81,34 @@ static i2c_master_dev_handle_t battery_i2c_device;
 static esp_timer_handle_t battery_timer = NULL;
 static size_t battery_telemetry_index = 0;
 
+static void battery_alert_task(void *ctx) {
+  playback_cfg_t cfg = {
+      .path = "battery-low.opus",
+      .duck_others = true,
+      .tuned = true,
+  };
+
+  playback_handle_t handle = NULL;
+
+  esp_err_t err = playback_file(&cfg, &handle);
+  if (err != ESP_OK) {
+    ESP_LOGE(RADIO_TAG, "Unable to play battery alert: %d", err);
+    goto cleanup;
+  }
+
+  err = playback_wait_for_completion(handle);
+  if (err != ESP_OK) {
+    ESP_LOGE(RADIO_TAG, "Error playing battery alert: %d", err);
+    goto cleanup;
+  }
+
+cleanup:
+  if (handle != NULL) {
+    playback_free(handle);
+  }
+  vTaskDelete(NULL);
+}
+
 static void battery_update_state() {
   battery_indicator_t new_indicator;
   if (battery_low) {
@@ -132,12 +161,17 @@ static void battery_adc_callback(void *user_data,
     new_battery_low = false;
   }
 
-  // TODO: audio cue
   if (new_battery_low != battery_low) {
     xSemaphoreTake(status_mutex, portMAX_DELAY);
     battery_low = new_battery_low;
     battery_update_state();
     xSemaphoreGive(status_mutex);
+
+#ifndef CONFIG_RADIO_GIANT_SWITCH
+    if (new_battery_low) {
+      xTaskCreate(battery_alert_task, "battery_alert", 4096, NULL, 10, NULL);
+    }
+#endif
   }
 }
 
