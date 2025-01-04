@@ -144,6 +144,9 @@ static void webrtc_loop() {
   ulTaskNotifyValueClear(NULL, NOTIFY_URL_CHANGED);
   xSemaphoreGive(webrtc_manager_lock);
 
+  // Allow 10 seconds to transition to connected
+  int64_t connect_deadline = esp_timer_get_time() + 10000000ULL;
+  bool got_connection = false;
   ESP_LOGI(RADIO_TAG, "Connecting to WebRTC at %s", url);
   mixer_channel_t channel = NULL;
   webrtc_connection_t connection = NULL;
@@ -178,18 +181,10 @@ static void webrtc_loop() {
 
       switch (state) {
       case WEBRTC_CONNECTION_STATE_CONNECTED: {
-        float rtt = webrtc_get_ice_rtt_ms(connection);
-        if (rtt < 0) {
-          rtt = 0;
-        }
-        target_buffer_duration = rtt * 4 * /* scale from ms to 48000 hz */ 48;
-        if (target_buffer_duration < 48000) {
-          target_buffer_duration = 48000;
-        }
+        got_connection = true;
         ESP_LOGI(RADIO_TAG,
-                 "Setting target buffer duration of %" PRIu32
-                 " samples (4 * %.2fms RTT)",
-                 target_buffer_duration, rtt);
+                 "Setting target buffer duration of %" PRIu32 " samples",
+                 target_buffer_duration);
 
         break;
       }
@@ -234,6 +229,11 @@ static void webrtc_loop() {
     }
 
     // TODO: make sure connection is still healthy
+    if (!got_connection && esp_timer_get_time() > connect_deadline) {
+      ESP_LOGW(RADIO_TAG,
+               "Timed out waiting for WebRTC connection to establish");
+      goto cleanup;
+    }
   }
 
 cleanup:
