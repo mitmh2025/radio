@@ -43,7 +43,7 @@ typedef enum {
 
 #define WIFI_DEFAULT_CONNECT_TIMEOUT (5 * 1000 * 1000)
 #define WIFI_TARGETED_CONNECT_TIMEOUT (15 * 1000 * 1000)
-#define WIFI_FAILED_RETRY_TIMEOUT (30 * 1000 * 1000)
+#define WIFI_FAILED_RETRY_TIMEOUT (5 * 1000 * 1000)
 
 static SemaphoreHandle_t mutex = NULL;
 static wifi_state_t state = WIFI_STATE_DEFAULT_CONNECTION;
