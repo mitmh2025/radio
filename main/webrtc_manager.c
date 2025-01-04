@@ -237,7 +237,8 @@ static bool webrtc_loop() {
 
     // Connection gets 5 seconds to get first packet, and then must not go more
     // than 2 seconds without a packet
-    if (now - connection_established_at > 5000000) {
+    if (connection_established_at > 0 &&
+        now - connection_established_at > 5000000) {
       // Check if we've received a packet recently
       struct timeval tv;
       esp_err_t err = webrtc_get_last_packet_time(connection, &tv);
