@@ -146,7 +146,7 @@ static void webrtc_loop() {
 
   // Allow 10 seconds to transition to connected
   int64_t connect_deadline = esp_timer_get_time() + 10000000ULL;
-  bool got_connection = false;
+  int64_t connection_established_at = 0;
   ESP_LOGI(RADIO_TAG, "Connecting to WebRTC at %s", url);
   mixer_channel_t channel = NULL;
   webrtc_connection_t connection = NULL;
@@ -167,6 +167,8 @@ static void webrtc_loop() {
     uint32_t notification =
         ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(900 + esp_random() % 200));
 
+    int64_t now = esp_timer_get_time();
+
     set_led();
     if (notification & NOTIFY_URL_CHANGED) {
       // URL changed, reconnect
@@ -181,11 +183,9 @@ static void webrtc_loop() {
 
       switch (state) {
       case WEBRTC_CONNECTION_STATE_CONNECTED: {
-        got_connection = true;
-        ESP_LOGI(RADIO_TAG,
-                 "Setting target buffer duration of %" PRIu32 " samples",
-                 target_buffer_duration);
-
+        if (connection_established_at == 0) {
+          connection_established_at = now;
+        }
         break;
       }
       case WEBRTC_CONNECTION_STATE_DISCONNECTED:
@@ -207,7 +207,7 @@ static void webrtc_loop() {
       mixer_stop_audio(channel);
       channel = NULL;
     } else if (!channel && duration > target_buffer_duration && entuned) {
-      int64_t end = esp_timer_get_time();
+      int64_t end = now;
       ESP_LOGI(RADIO_TAG,
                "Starting webrtc playback (%" PRIu32
                " samples in buffer, %" PRIu64 "ms since boot)",
@@ -228,11 +228,25 @@ static void webrtc_loop() {
       }
     }
 
-    // TODO: make sure connection is still healthy
-    if (!got_connection && esp_timer_get_time() > connect_deadline) {
+    if (connection_established_at == 0 && now > connect_deadline) {
       ESP_LOGW(RADIO_TAG,
                "Timed out waiting for WebRTC connection to establish");
       goto cleanup;
+    }
+
+    // Connection gets 5 seconds to get first packet, and then must not go more
+    // than 2 seconds without a packet
+    if (now - connection_established_at > 5000000) {
+      // Check if we've received a packet recently
+      struct timeval tv;
+      esp_err_t err = webrtc_get_last_packet_time(connection, &tv);
+      if (err == ESP_OK) {
+        int64_t last_packet = tv.tv_sec * 1000000 + tv.tv_usec;
+        if (now - last_packet > 2000000) {
+          ESP_LOGW(RADIO_TAG, "No packets received in over 2 seconds");
+          goto cleanup;
+        }
+      }
     }
   }
 

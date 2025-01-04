@@ -819,7 +819,7 @@ float webrtc_get_ice_rtt_ms(webrtc_connection_t connection) {
     return -1;
   }
 
-  int ret = -1;
+  float ret = -1;
 
   stats->requestedTypeOfStats = RTC_STATS_TYPE_ICE_SERVER;
   STATUS status =
@@ -837,6 +837,43 @@ float webrtc_get_ice_rtt_ms(webrtc_connection_t connection) {
   ret = (float)stats->rtcStatsObject.iceServerStats.totalRoundTripTime /
         stats->rtcStatsObject.iceServerStats.totalResponsesReceived;
   ret /= HUNDREDS_OF_NANOS_IN_A_MILLISECOND;
+cleanup:
+  free(stats);
+  return ret;
+}
+
+esp_err_t webrtc_get_last_packet_time(webrtc_connection_t connection,
+                                      struct timeval *tv) {
+  ESP_RETURN_ON_FALSE(connection, ESP_ERR_INVALID_ARG, RADIO_TAG,
+                      "Invalid connection");
+  ESP_RETURN_ON_FALSE(tv, ESP_ERR_INVALID_ARG, RADIO_TAG, "Invalid tv");
+
+  PRtcStats stats = calloc(1, sizeof(RtcStats));
+  if (!stats) {
+    ESP_LOGE(RADIO_TAG, "Failed to allocate memory for RTC stats");
+    return ESP_FAIL;
+  }
+
+  stats->requestedTypeOfStats = RTC_STATS_TYPE_INBOUND_RTP;
+
+  esp_err_t ret = ESP_OK;
+
+  STATUS status =
+      rtcPeerConnectionGetMetrics(connection->peer_connection, NULL, stats);
+  ESP_GOTO_ON_FALSE(
+      status == STATUS_SUCCESS, ESP_FAIL, cleanup, RADIO_TAG,
+      "Failed to get inbound RTP metrics with status code %" PRIx32, status);
+
+  UINT64 last_packet_time =
+      stats->rtcStatsObject.inboundRtpStreamStats.lastPacketReceivedTimestamp;
+  if (last_packet_time > 0) {
+    tv->tv_sec = last_packet_time / HUNDREDS_OF_NANOS_IN_A_SECOND;
+    tv->tv_usec = (last_packet_time % HUNDREDS_OF_NANOS_IN_A_SECOND) /
+                  HUNDREDS_OF_NANOS_IN_A_MICROSECOND;
+  } else {
+    *tv = (struct timeval){0};
+  }
+
 cleanup:
   free(stats);
   return ret;

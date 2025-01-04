@@ -4,6 +4,8 @@
 
 #include "audio_element.h"
 
+#include <time.h>
+
 // The KVS WebRTC client has types which conflict with some ESP-IDF types (in
 // particular, STATUS), which means we can't include the header in a file which
 // will be included in the main entry point.
@@ -60,6 +62,8 @@ esp_err_t webrtc_wait_buffer_duration(webrtc_connection_t connection,
 int webrtc_read_audio_sample(void *context, char *buf, int len,
                              TickType_t ticks_to_wait);
 float webrtc_get_ice_rtt_ms(webrtc_connection_t connection);
+esp_err_t webrtc_get_last_packet_time(webrtc_connection_t connection,
+                                      struct timeval *tv);
 
 #ifdef __cplusplus
 }
