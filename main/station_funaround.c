@@ -184,6 +184,14 @@ esp_err_t rpc_set_ratchet(const things_attribute_t *param) {
   return set_ratchet(new_ratchet);
 }
 
+esp_err_t rpc_dec_ratchet(const things_attribute_t *param) {
+  return set_ratchet(ratchet - 1);
+}
+
+esp_err_t rpc_inc_ratchet(const things_attribute_t *param) {
+  return set_ratchet(ratchet + 1);
+}
+
 esp_err_t station_funaround_init() {
   ESP_RETURN_ON_ERROR(esp_timer_create(
                           &(esp_timer_create_args_t){
@@ -231,6 +239,12 @@ esp_err_t station_funaround_init() {
   ESP_RETURN_ON_ERROR(
       things_register_rpc("funaround:set_ratchet", rpc_set_ratchet), RADIO_TAG,
       "Failed to register funaround:set_ratchet RPC");
+  ESP_RETURN_ON_ERROR(
+      things_register_rpc("funaround:dec_ratchet", rpc_dec_ratchet), RADIO_TAG,
+      "Failed to register funaround:dec_ratchet RPC");
+  ESP_RETURN_ON_ERROR(
+      things_register_rpc("funaround:inc_ratchet", rpc_inc_ratchet), RADIO_TAG,
+      "Failed to register funaround:inc_ratchet RPC");
 
   return ESP_OK;
 }
