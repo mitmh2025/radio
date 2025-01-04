@@ -4,6 +4,7 @@
 #include "mixer.h"
 #include "things.h"
 #include "webrtc.h"
+#include "wifi.h"
 
 #include <stdatomic.h>
 #include <string.h>
@@ -125,7 +126,7 @@ static void set_led() {
   }
 }
 
-static void webrtc_loop() {
+static bool webrtc_loop() {
   // Wait for wifi to connect
   xEventGroupWaitBits(radio_event_group, RADIO_EVENT_GROUP_WIFI_CONNECTED,
                       pdFALSE, pdTRUE, portMAX_DELAY);
@@ -137,7 +138,7 @@ static void webrtc_loop() {
     xSemaphoreGive(webrtc_manager_lock);
     // Wait for the next notification before looping again
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-    return;
+    return true;
   }
 
   char *url = strdup(webrtc_current_url);
@@ -266,12 +267,21 @@ cleanup:
     // Wait for a bit before trying again
     vTaskDelay(pdMS_TO_TICKS(2000 + esp_random() % 500));
   }
+
+  return ret == ESP_OK && connection_established_at > 0;
 }
 
 static void webrtc_manager_task(void *ctx) {
   things_subscribe_attribute("whep_url", whep_url_callback);
+  int attempt_count = 0;
   while (true) {
-    webrtc_loop();
+    attempt_count++;
+    bool success = webrtc_loop();
+    if (success) {
+      attempt_count = 0;
+    } else if (attempt_count > 3) {
+      wifi_force_reconnect();
+    }
   }
 }
 
