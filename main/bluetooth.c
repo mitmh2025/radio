@@ -118,6 +118,10 @@ static void telemetry_generator() {
 // Must call while holding beacon_mutex
 static void notify_subscriber(struct bt_subscriber *sub,
                               struct bt_beacon *newest) {
+  if (sub->major != newest->beacon.major) {
+    return;
+  }
+
   struct bt_beacon *strongest = NULL;
   struct bt_beacon *beacon;
   TAILQ_FOREACH(beacon, &beacons, entries) {
