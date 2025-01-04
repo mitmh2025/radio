@@ -8,6 +8,7 @@
 
 #include <stdatomic.h>
 #include <string.h>
+#include <sys/time.h>
 
 #include "esp_check.h"
 #include "esp_log.h"
@@ -248,10 +249,13 @@ static bool webrtc_loop() {
       // Check if we've received a packet recently
       struct timeval tv;
       esp_err_t err = webrtc_get_last_packet_time(connection, &tv);
-      if (err == ESP_OK) {
-        int64_t last_packet = tv.tv_sec * 1000000 + tv.tv_usec;
-        if (now - last_packet > 5000000) {
-          ESP_LOGW(RADIO_TAG, "No packets received in over 5 seconds");
+      struct timeval now_tv;
+      int timeret = gettimeofday(&now_tv, NULL);
+      if (err == ESP_OK && timeret == 0) {
+        int64_t last_packet_us = tv.tv_sec * 1000000 + tv.tv_usec;
+        int64_t now_us = now_tv.tv_sec * 1000000 + now_tv.tv_usec;
+        if (now_us - last_packet_us > 5000000) {
+          ESP_LOGW(RADIO_TAG, "No packets received in 5 seconds, reconnecting");
           goto cleanup;
         }
       }
