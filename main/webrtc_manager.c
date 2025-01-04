@@ -235,17 +235,17 @@ static bool webrtc_loop() {
       goto cleanup;
     }
 
-    // Connection gets 5 seconds to get first packet, and then must not go more
-    // than 2 seconds without a packet
+    // Connection gets 10 seconds to get first packet, and then must not go more
+    // than 5 seconds without a packet
     if (connection_established_at > 0 &&
-        now - connection_established_at > 5000000) {
+        now - connection_established_at > 10000000) {
       // Check if we've received a packet recently
       struct timeval tv;
       esp_err_t err = webrtc_get_last_packet_time(connection, &tv);
       if (err == ESP_OK) {
         int64_t last_packet = tv.tv_sec * 1000000 + tv.tv_usec;
-        if (now - last_packet > 2000000) {
-          ESP_LOGW(RADIO_TAG, "No packets received in over 2 seconds");
+        if (now - last_packet > 5000000) {
+          ESP_LOGW(RADIO_TAG, "No packets received in over 5 seconds");
           goto cleanup;
         }
       }
