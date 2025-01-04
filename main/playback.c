@@ -56,8 +56,8 @@ esp_err_t playback_file(const playback_cfg_t *cfg,
   ESP_RETURN_ON_FALSE(handle->pipeline, ESP_FAIL, RADIO_TAG,
                       "Failed to create audio pipeline");
 
-  // Buffer 2 seconds of audio
-  handle->output = rb_create(960 * 2 * 100, 1);
+  // Buffer 0.5 second of audio
+  handle->output = rb_create(960 * 2 * 25, 1);
   ESP_GOTO_ON_ERROR(handle->output == NULL, cleanup, RADIO_TAG,
                     "Failed to create output ringbuf");
 

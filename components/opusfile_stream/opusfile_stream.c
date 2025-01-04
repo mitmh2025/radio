@@ -119,18 +119,6 @@ static esp_err_t _opusfile_destroy(audio_element_handle_t self) {
   return ESP_OK;
 }
 
-static int _opusfile_process(audio_element_handle_t self, char *in_buffer,
-                             int in_len) {
-  int r_size = audio_element_input(self, in_buffer, in_len);
-  int w_size = 0;
-  if (r_size > 0) {
-    w_size = audio_element_output(self, in_buffer, r_size);
-  } else {
-    w_size = r_size;
-  }
-  return w_size;
-}
-
 static int _opusfile_read(audio_element_handle_t self, char *buffer, int len,
                           TickType_t ticks_to_wait, void *context) {
   opusfile_stream_t *file = (opusfile_stream_t *)audio_element_getdata(self);
@@ -151,6 +139,25 @@ static int _opusfile_read(audio_element_handle_t self, char *buffer, int len,
   }
 
   return rlen * 2;
+}
+
+static int _opusfile_process(audio_element_handle_t self, char *in_buffer,
+                             int in_len) {
+  // We're using ESP-ADF with opusfile_stream to spawn a "pipeline" with a
+  // single element, which triggers some latent bugs where it un-binds our read
+  // callback. So when that happens, put it back.
+  if (audio_element_get_input_ringbuf(self) != NULL) {
+    audio_element_set_read_cb(self, _opusfile_read, NULL);
+  }
+
+  int r_size = audio_element_input(self, in_buffer, in_len);
+  int w_size = 0;
+  if (r_size > 0) {
+    w_size = audio_element_output(self, in_buffer, r_size);
+  } else {
+    w_size = r_size;
+  }
+  return w_size;
 }
 
 audio_element_handle_t opusfile_stream_init(opusfile_stream_cfg_t *config) {
