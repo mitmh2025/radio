@@ -105,6 +105,12 @@ static void set_led() {
     return;
   }
 
+  if (!(xEventGroupGetBits(radio_event_group) &
+        RADIO_EVENT_GROUP_WIFI_CONNECTED)) {
+    led_set_pixel(1, 64, 0, 0);
+    return;
+  }
+
   webrtc_connection_state_t state = atomic_load(&webrtc_latest_state);
   switch (state) {
   case WEBRTC_CONNECTION_STATE_CONNECTED:
@@ -118,7 +124,7 @@ static void set_led() {
   case WEBRTC_CONNECTION_STATE_CLOSED:
   case WEBRTC_CONNECTION_STATE_DISCONNECTED:
   case WEBRTC_CONNECTION_STATE_FAILED:
-    led_set_pixel(1, 64, 0, 0);
+    led_set_pixel(1, 64, 0, 64);
     break;
   default:
     led_set_pixel(1, 0, 0, 0);
