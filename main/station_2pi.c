@@ -21,6 +21,8 @@ struct playback_entry {
 TAILQ_HEAD(playback_entry_list, playback_entry);
 
 static bool tuned = false;
+static bool need_wifi_announcement = false;
+static bool made_wifi_announcement = false;
 
 static SemaphoreHandle_t playback_mutex = NULL;
 static struct playback_entry_list playbacks = TAILQ_HEAD_INITIALIZER(playbacks);
@@ -38,43 +40,13 @@ static void playback_task(void *ctx) {
   vTaskDelete(NULL);
 }
 
-static void entune_two_pi(void *ctx) {
-  tuned = true;
-  bluetooth_set_mode(BLUETOOTH_MODE_DISABLED);
-  webrtc_manager_entune();
-  ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_static(MIXER_STATIC_MODE_COMFORT));
-  ESP_ERROR_CHECK_WITHOUT_ABORT(things_set_updates_blocked(false));
-}
-
-static void detune_two_pi(void *ctx) {
-  ESP_ERROR_CHECK_WITHOUT_ABORT(things_set_updates_blocked(true));
-  ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_static(MIXER_STATIC_MODE_DEFAULT));
-  webrtc_manager_detune();
-  bluetooth_set_mode(BLUETOOTH_MODE_DEFAULT);
-  tuned = false;
-
-  xSemaphoreTake(playback_mutex, portMAX_DELAY);
-  struct playback_entry *ent = NULL;
-  TAILQ_FOREACH(ent, &playbacks, entries) { playback_stop(ent->handle); }
-  xSemaphoreGive(playback_mutex);
-}
-
-static esp_err_t play_audio_internal(const things_attribute_t *param,
-                                     bool duck) {
-  if (!tuned) {
-    return ESP_OK;
-  }
-
-  if (param->type != THINGS_ATTRIBUTE_TYPE_STRING) {
-    return ESP_ERR_INVALID_ARG;
-  }
-
+static esp_err_t play_announcement(const char *filename, bool duck) {
   ESP_LOGI(RADIO_TAG, "Playing audio (%s ducking): %s",
-           duck ? "with" : "without", param->value.string);
+           duck ? "with" : "without", filename);
 
   bool locked = false;
   playback_cfg_t cfg = {
-      .path = param->value.string,
+      .path = filename,
       .duck_others = duck,
       .tuned = true,
   };
@@ -113,12 +85,68 @@ cleanup:
   return ret;
 }
 
+static void entune_two_pi(void *ctx) {
+  if (need_wifi_announcement && !made_wifi_announcement) {
+    made_wifi_announcement = true;
+    ESP_ERROR_CHECK_WITHOUT_ABORT(
+        play_announcement("wifi-not-connected.opus", true));
+  }
+
+  tuned = true;
+  bluetooth_set_mode(BLUETOOTH_MODE_DISABLED);
+  webrtc_manager_entune();
+  ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_static(MIXER_STATIC_MODE_COMFORT));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(things_set_updates_blocked(false));
+}
+
+static void detune_two_pi(void *ctx) {
+  ESP_ERROR_CHECK_WITHOUT_ABORT(things_set_updates_blocked(true));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_static(MIXER_STATIC_MODE_DEFAULT));
+  webrtc_manager_detune();
+  bluetooth_set_mode(BLUETOOTH_MODE_DEFAULT);
+  tuned = false;
+
+  xSemaphoreTake(playback_mutex, portMAX_DELAY);
+  struct playback_entry *ent = NULL;
+  TAILQ_FOREACH(ent, &playbacks, entries) { playback_stop(ent->handle); }
+  xSemaphoreGive(playback_mutex);
+}
+
+static esp_err_t play_audio_internal(const things_attribute_t *param,
+                                     bool duck) {
+  if (!tuned) {
+    return ESP_OK;
+  }
+
+  if (param->type != THINGS_ATTRIBUTE_TYPE_STRING) {
+    return ESP_ERR_INVALID_ARG;
+  }
+
+  return play_announcement(param->value.string, duck);
+}
+
 static esp_err_t play_unducked_audio(const things_attribute_t *param) {
   return play_audio_internal(param, false);
 }
 
 static esp_err_t play_ducked_audio(const things_attribute_t *param) {
   return play_audio_internal(param, true);
+}
+
+esp_err_t station_2pi_need_wifi_announcement(bool need_announcement) {
+  if (!need_announcement) {
+    made_wifi_announcement = false;
+    need_wifi_announcement = false;
+    return ESP_OK;
+  }
+
+  need_wifi_announcement = true;
+  if (!made_wifi_announcement && tuned) {
+    made_wifi_announcement = true;
+    return play_announcement("wifi-not-connected.opus", true);
+  }
+
+  return ESP_OK;
 }
 
 esp_err_t station_2pi_init() {

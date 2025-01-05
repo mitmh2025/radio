@@ -3,6 +3,7 @@
 #include "captive_dns_server.h"
 #include "captive_http_server.h"
 #include "main.h"
+#include "station_2pi.h"
 #include "things.h"
 
 #include <string.h>
@@ -128,13 +129,14 @@ static void set_state(wifi_state_t new_state) {
     xEventGroupClearBits(radio_event_group,
                          RADIO_EVENT_GROUP_WIFI_DISCONNECTED);
     xEventGroupSetBits(radio_event_group, RADIO_EVENT_GROUP_WIFI_CONNECTED);
+    station_2pi_need_wifi_announcement(false);
     if (test_connection_task) {
       xTaskNotify(test_connection_task, 1, eSetValueWithOverwrite);
       test_connection_task = NULL;
     }
     break;
   case WIFI_STATE_FAILED:
-    // TODO: trigger voice announcement
+    station_2pi_need_wifi_announcement(true);
     esp_timer_start_once(watchdog_timer, WIFI_FAILED_RETRY_TIMEOUT);
     break;
   }
