@@ -22,7 +22,6 @@ static nvs_handle_t funaround_nvs_handle;
 
 static frequency_handle_t freq_handle;
 static uint16_t ratchet = 0;
-static bool next_detected = false;
 static bool tuned = false;
 
 static const int8_t threshold = -75;
@@ -48,7 +47,6 @@ static void set_led(bool active) {
 static esp_err_t set_ratchet(uint16_t new_ratchet) {
   ESP_LOGI(RADIO_TAG, "Setting funaround ratchet to %d", new_ratchet);
   ratchet = new_ratchet;
-  next_detected = false;
   ESP_ERROR_CHECK(nvs_set_u16(funaround_nvs_handle, "ratchet", ratchet));
   ESP_ERROR_CHECK(nvs_commit(funaround_nvs_handle));
   things_force_telemetry(telemetry_index);
@@ -73,22 +71,6 @@ static void playback_cb(bool active) {
   }
 }
 
-static void update(bool force_playback) {
-  if (!tuned) {
-    return;
-  }
-
-  bool play = force_playback;
-  if (next_detected) {
-    set_ratchet(ratchet + 1);
-    play = true;
-  }
-
-  if (play) {
-    play_current_beacon();
-  }
-}
-
 static void triangle_button_intr(void *ctx, bool state) {
   if (ratchet != 0) {
     ESP_ERROR_CHECK_WITHOUT_ABORT(playback_queue_pause_toggle());
@@ -103,16 +85,15 @@ static void circle_button_intr(void *ctx, bool state) {
 
 static void beacon_cb(bluetooth_beacon_t *newest, bluetooth_beacon_t *strongest,
                       void *arg) {
-  if (newest && newest->minor == ratchet + 1) {
-    bool new_detected = newest->rssi > threshold;
-    if (new_detected != next_detected) {
-      ESP_LOGD(RADIO_TAG, "%s funaround beacon %d",
-               new_detected ? "Found" : "Lost", newest->minor);
-      next_detected = new_detected;
-    }
+  if (!tuned) {
+    return;
   }
 
-  update(false);
+  if (newest && newest->minor == ratchet + 1 && newest->rssi > threshold) {
+    ESP_LOGD(RADIO_TAG, "Found funaround beacon %d", newest->minor);
+    set_ratchet(ratchet + 1);
+    play_current_beacon();
+  }
 }
 
 static void entune_funaround(void *ctx) {
@@ -133,7 +114,7 @@ static void entune_funaround(void *ctx) {
                            circle_button_intr, NULL, pdMS_TO_TICKS(10)));
   ESP_ERROR_CHECK_WITHOUT_ABORT(playback_queue_subscribe(playback_cb));
   tuned = true;
-  update(true);
+  play_current_beacon();
 }
 
 static void detune_funaround(void *ctx) {
