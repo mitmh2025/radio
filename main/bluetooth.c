@@ -118,8 +118,8 @@ static void telemetry_generator() {
 // Must call while holding beacon_mutex
 static void notify_subscriber(struct bt_subscriber *sub,
                               struct bt_beacon *newest) {
-  if (sub->major != newest->beacon.major) {
-    return;
+  if (newest && sub->major != newest->beacon.major) {
+    newest = NULL;
   }
 
   struct bt_beacon *strongest = NULL;
@@ -131,7 +131,11 @@ static void notify_subscriber(struct bt_subscriber *sub,
       }
     }
   }
-  sub->callback(&newest->beacon, &strongest->beacon, sub->arg);
+
+  if (newest || strongest) {
+    sub->callback(newest ? &newest->beacon : NULL,
+                  strongest ? &strongest->beacon : NULL, sub->arg);
+  }
 }
 
 // Must call while holding beacon_mutex

@@ -82,8 +82,8 @@ static void timer_cb(void *arg) {
   esp_timer_start_once(interrupt_timer, 30000000);
 }
 
-static void playback_empty_cb() {
-  if (entuned && current_strongest_minor) {
+static void playback_cb(bool active) {
+  if (entuned && current_strongest_minor && !active) {
     playback_queue_entry_t cfg = {
         .tuned = true,
     };
@@ -172,13 +172,11 @@ static void entune(void *arg) {
   } else {
     led_set_pixel(1, 64, 25, 0);
   }
-  ESP_ERROR_CHECK_WITHOUT_ABORT(
-      playback_queue_subscribe_empty(playback_empty_cb));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(playback_queue_subscribe(playback_cb));
 }
 
 static void detune(void *arg) {
-  ESP_ERROR_CHECK_WITHOUT_ABORT(
-      playback_queue_unsubscribe_empty(playback_empty_cb));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(playback_queue_unsubscribe(playback_cb));
   stop_playback();
   led_set_pixel(1, 0, 0, 0);
   ESP_ERROR_CHECK_WITHOUT_ABORT(bluetooth_set_mode(BLUETOOTH_MODE_DEFAULT));

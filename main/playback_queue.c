@@ -12,8 +12,8 @@ static QueueHandle_t playback_queue = NULL;
 static SemaphoreHandle_t current_playback_mutex = NULL;
 static playback_handle_t current_playback = NULL;
 
-static SemaphoreHandle_t empty_cb_mutex = NULL;
-static playback_queue_empty_cb_t empty_cb = NULL;
+static SemaphoreHandle_t cb_mutex = NULL;
+static playback_queue_cb_t cb = NULL;
 
 static void playback_task(void *ctx) {
   while (true) {
@@ -35,6 +35,7 @@ static void playback_task(void *ctx) {
       goto next;
     }
 
+    cb(true);
     err = playback_wait_for_completion(current_playback);
     if (err != ESP_OK) {
       ESP_LOGE(RADIO_TAG, "Failed to wait for completion: %d", err);
@@ -47,11 +48,11 @@ static void playback_task(void *ctx) {
 
 next:
     if (uxQueueMessagesWaiting(playback_queue) == 0) {
-      xSemaphoreTake(empty_cb_mutex, portMAX_DELAY);
-      if (empty_cb) {
-        empty_cb();
+      xSemaphoreTake(cb_mutex, portMAX_DELAY);
+      if (cb) {
+        cb(false);
       }
-      xSemaphoreGive(empty_cb_mutex);
+      xSemaphoreGive(cb_mutex);
     }
   }
 }
@@ -69,20 +70,20 @@ esp_err_t playback_queue_add(playback_queue_entry_t *cfg) {
   return ESP_OK;
 }
 
-esp_err_t playback_queue_subscribe_empty(playback_queue_empty_cb_t cb) {
-  xSemaphoreTake(empty_cb_mutex, portMAX_DELAY);
-  empty_cb = cb;
-  xSemaphoreGive(empty_cb_mutex);
+esp_err_t playback_queue_subscribe(playback_queue_cb_t subcb) {
+  xSemaphoreTake(cb_mutex, portMAX_DELAY);
+  cb = subcb;
+  xSemaphoreGive(cb_mutex);
 
   return ESP_OK;
 }
 
-esp_err_t playback_queue_unsubscribe_empty(playback_queue_empty_cb_t cb) {
-  xSemaphoreTake(empty_cb_mutex, portMAX_DELAY);
-  if (empty_cb == cb) {
-    empty_cb = NULL;
+esp_err_t playback_queue_unsubscribe(playback_queue_cb_t subcb) {
+  xSemaphoreTake(cb_mutex, portMAX_DELAY);
+  if (cb == subcb) {
+    cb = NULL;
   }
-  xSemaphoreGive(empty_cb_mutex);
+  xSemaphoreGive(cb_mutex);
 
   return ESP_OK;
 }
@@ -150,8 +151,8 @@ esp_err_t playback_queue_init() {
   ESP_RETURN_ON_FALSE(current_playback_mutex, ESP_ERR_NO_MEM, RADIO_TAG,
                       "Failed to create current playback mutex");
 
-  empty_cb_mutex = xSemaphoreCreateMutex();
-  ESP_RETURN_ON_FALSE(empty_cb_mutex, ESP_ERR_NO_MEM, RADIO_TAG,
+  cb_mutex = xSemaphoreCreateMutex();
+  ESP_RETURN_ON_FALSE(cb_mutex, ESP_ERR_NO_MEM, RADIO_TAG,
                       "Failed to create empty callback mutex");
 
   ESP_RETURN_ON_FALSE(pdPASS == xTaskCreatePinnedToCore(playback_task,

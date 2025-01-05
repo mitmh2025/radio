@@ -92,10 +92,6 @@ static const char *WARNING_MESSAGE[] = {
 static void console_task(void *arg) {
   const char *prompt = LOG_COLOR_I "radio> " LOG_RESET_COLOR;
 
-  if (!force_console) {
-    disable_console();
-  }
-
   while (true) {
     if (warning_required) {
       usb_serial_jtag_write_bytes("\n", 1, portMAX_DELAY);
@@ -1199,13 +1195,13 @@ esp_err_t console_init() {
                       "Failed to register wifi-set-alt-network command: %d",
                       err);
 
-  ESP_RETURN_ON_FALSE(pdPASS == xTaskCreate(console_task, "console", 6144, NULL,
-                                            21, &console_task_handle),
-                      ESP_FAIL, RADIO_TAG, "Failed to create console task");
-
   ESP_RETURN_ON_ERROR(
       things_subscribe_attribute("en_console", things_en_console_cb), RADIO_TAG,
       "Failed to subscribe to en_console attribute: %d", err);
+
+  ESP_RETURN_ON_FALSE(pdPASS == xTaskCreate(console_task, "console", 6144, NULL,
+                                            21, &console_task_handle),
+                      ESP_FAIL, RADIO_TAG, "Failed to create console task");
 
   esp_timer_handle_t timer = NULL;
   ESP_RETURN_ON_ERROR(esp_timer_create(

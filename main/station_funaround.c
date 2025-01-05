@@ -24,7 +24,6 @@ static frequency_handle_t freq_handle;
 static uint16_t ratchet = 0;
 static bool next_detected = false;
 static bool tuned = false;
-static esp_timer_handle_t led_timer;
 
 static const int8_t threshold = -75;
 
@@ -34,12 +33,12 @@ static void telemetry_generator() {
   things_send_telemetry_int("funaround_ratchet", ratchet);
 }
 
-static void set_led() {
+static void set_led(bool active) {
   if (!tuned) {
     led_set_pixel(1, 0, 0, 0);
   }
 
-  if (playback_queue_active()) {
+  if (active) {
     led_set_pixel(1, 0, 64, 0);
   } else {
     led_set_pixel(1, 64, 25, 0);
@@ -57,10 +56,6 @@ static esp_err_t set_ratchet(uint16_t new_ratchet) {
 }
 
 static void play_current_beacon() {
-  if (ratchet == 0) {
-    return;
-  }
-
   playback_queue_entry_t cfg = {
       .tuned = true,
   };
@@ -69,8 +64,13 @@ static void play_current_beacon() {
 
   ESP_ERROR_CHECK_WITHOUT_ABORT(playback_queue_drain());
   ESP_ERROR_CHECK_WITHOUT_ABORT(playback_queue_add(&cfg));
+}
 
-  esp_timer_start_once(led_timer, 1000);
+static void playback_cb(bool active) {
+  set_led(active);
+  if (!active && ratchet == 0) {
+    play_current_beacon();
+  }
 }
 
 static void update(bool force_playback) {
@@ -90,11 +90,16 @@ static void update(bool force_playback) {
 }
 
 static void triangle_button_intr(void *ctx, bool state) {
-  ESP_ERROR_CHECK_WITHOUT_ABORT(playback_queue_pause_toggle());
-  esp_timer_start_once(led_timer, 1000);
+  if (ratchet != 0) {
+    ESP_ERROR_CHECK_WITHOUT_ABORT(playback_queue_pause_toggle());
+  }
 }
 
-static void circle_button_intr(void *ctx, bool state) { play_current_beacon(); }
+static void circle_button_intr(void *ctx, bool state) {
+  if (ratchet != 0) {
+    play_current_beacon();
+  }
+}
 
 static void beacon_cb(bluetooth_beacon_t *newest, bluetooth_beacon_t *strongest,
                       void *arg) {
@@ -126,7 +131,7 @@ static void entune_funaround(void *ctx) {
   ESP_ERROR_CHECK_WITHOUT_ABORT(
       debounce_handler_add(BUTTON_CIRCLE_PIN, GPIO_INTR_POSEDGE,
                            circle_button_intr, NULL, pdMS_TO_TICKS(10)));
-  ESP_ERROR_CHECK_WITHOUT_ABORT(playback_queue_subscribe_empty(set_led));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(playback_queue_subscribe(playback_cb));
   tuned = true;
   update(true);
 }
@@ -134,7 +139,7 @@ static void entune_funaround(void *ctx) {
 static void detune_funaround(void *ctx) {
   ESP_ERROR_CHECK_WITHOUT_ABORT(led_set_pixel(1, 0, 0, 0));
   tuned = false;
-  ESP_ERROR_CHECK_WITHOUT_ABORT(playback_queue_unsubscribe_empty(set_led));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(playback_queue_unsubscribe(playback_cb));
   ESP_ERROR_CHECK_WITHOUT_ABORT(debounce_handler_remove(BUTTON_CIRCLE_PIN));
   ESP_ERROR_CHECK_WITHOUT_ABORT(debounce_handler_remove(BUTTON_TRIANGLE_PIN));
   ESP_ERROR_CHECK_WITHOUT_ABORT(playback_queue_drain());
@@ -193,16 +198,6 @@ esp_err_t rpc_inc_ratchet(const things_attribute_t *param) {
 }
 
 esp_err_t station_funaround_init() {
-  ESP_RETURN_ON_ERROR(esp_timer_create(
-                          &(esp_timer_create_args_t){
-                              .callback = set_led,
-                              .arg = NULL,
-                              .dispatch_method = ESP_TIMER_TASK,
-                              .name = "funaround_led",
-                          },
-                          &led_timer),
-                      RADIO_TAG, "Failed to create funaround LED timer");
-
   ESP_RETURN_ON_ERROR(nvs_open(STATION_FUNAROUND_NVS_NAMESPACE, NVS_READWRITE,
                                &funaround_nvs_handle),
                       RADIO_TAG,

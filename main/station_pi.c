@@ -328,11 +328,13 @@ static void enqueue_playback(const char *path) {
   playback_queue_add(&cfg);
 }
 
-static void playback_empty_cb() {
-  instrument_enabled = true;
-  xTaskNotify(pi_task, 0, eNoAction);
-  update_led();
-  schedule_idle_timer();
+static void playback_cb(bool active) {
+  if (!active) {
+    instrument_enabled = true;
+    xTaskNotify(pi_task, 0, eNoAction);
+    update_led();
+    schedule_idle_timer();
+  }
 }
 
 static void play_on_success(uint8_t stage) {
@@ -946,8 +948,7 @@ static void entune(void *ctx) {
                            circle_button_intr, pi_task, pdMS_TO_TICKS(10)));
   ESP_ERROR_CHECK_WITHOUT_ABORT(touch_register_isr(touch_intr, pi_task));
 
-  ESP_ERROR_CHECK_WITHOUT_ABORT(
-      playback_queue_subscribe_empty(playback_empty_cb));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(playback_queue_subscribe(playback_cb));
   play_on_entune(current_stage);
   entuned = true;
   start_play_tracking();
@@ -958,8 +959,7 @@ static void entune(void *ctx) {
 static void detune(void *ctx) {
   entuned = false;
   xTaskNotify(pi_task, 0, eNoAction);
-  ESP_ERROR_CHECK_WITHOUT_ABORT(
-      playback_queue_unsubscribe_empty(playback_empty_cb));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(playback_queue_unsubscribe(playback_cb));
   ESP_ERROR_CHECK_WITHOUT_ABORT(playback_queue_drain());
   ESP_ERROR_CHECK_WITHOUT_ABORT(touch_deregister_isr(touch_intr, pi_task));
   ESP_ERROR_CHECK_WITHOUT_ABORT(debounce_handler_remove(BUTTON_CIRCLE_PIN));

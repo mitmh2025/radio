@@ -257,8 +257,8 @@ static void beacon_callback(bluetooth_beacon_t *newest,
   }
 
   if (new_minor != 0) {
-    float low_frequency = ((float)newest->minor / 10.0) - 12.0f;
-    float high_frequency = ((float)newest->minor / 10.0) + 12.0f;
+    float low_frequency = ((float)new_minor / 10.0) - 12.0f;
+    float high_frequency = ((float)new_minor / 10.0) + 12.0f;
 
     TAILQ_FOREACH(handle, &fm_frequencies, next) {
       if (fabsf(handle->frequency - high_frequency) < 0.1f ||
@@ -271,16 +271,6 @@ static void beacon_callback(bluetooth_beacon_t *newest,
   }
 
   current_giant_switch_minor = new_minor;
-
-  struct frequency_handle *new_frequency = NULL;
-  if (strongest) {
-    float frequency = ((float)strongest->minor) / 10.0f;
-    TAILQ_FOREACH(new_frequency, &fm_frequencies, next) {
-      if (fabsf(new_frequency->frequency - frequency) < 0.1f) {
-        break;
-      }
-    }
-  }
 
 cleanup:
   xSemaphoreGive(giant_switch_mutex);

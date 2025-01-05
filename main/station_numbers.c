@@ -22,8 +22,8 @@ static bool entuned = false;
 static const char *numbers_file = "diligent-spy/numbers.opus";
 static int64_t numbers_duration = 0;
 
-static void playback_empty_cb() {
-  if (entuned) {
+static void playback_cb(bool active) {
+  if (entuned && !active) {
     playback_queue_entry_t cfg = {
         .tuned = true,
     };
@@ -65,13 +65,11 @@ static void entune(void *arg) {
   ESP_ERROR_CHECK_WITHOUT_ABORT(led_set_pixel(1, 0, 64, 0));
   ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_static(MIXER_STATIC_MODE_NONE));
   start_playback();
-  ESP_ERROR_CHECK_WITHOUT_ABORT(
-      playback_queue_subscribe_empty(playback_empty_cb));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(playback_queue_subscribe(playback_cb));
 }
 
 static void detune(void *arg) {
-  ESP_ERROR_CHECK_WITHOUT_ABORT(
-      playback_queue_unsubscribe_empty(playback_empty_cb));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(playback_queue_unsubscribe(playback_cb));
   stop_playback();
   ESP_ERROR_CHECK_WITHOUT_ABORT(mixer_set_static(MIXER_STATIC_MODE_DEFAULT));
   ESP_ERROR_CHECK_WITHOUT_ABORT(led_set_pixel(1, 0, 0, 0));

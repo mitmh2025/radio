@@ -11,7 +11,7 @@ typedef struct {
   int skip_samples;
 } playback_queue_entry_t;
 
-typedef void (*playback_queue_empty_cb_t)();
+typedef void (*playback_queue_cb_t)(bool active);
 
 #ifdef __cplusplus
 extern "C" {
@@ -19,8 +19,8 @@ extern "C" {
 
 esp_err_t playback_queue_init();
 esp_err_t playback_queue_add(playback_queue_entry_t *cfg);
-esp_err_t playback_queue_subscribe_empty(playback_queue_empty_cb_t cb);
-esp_err_t playback_queue_unsubscribe_empty(playback_queue_empty_cb_t cb);
+esp_err_t playback_queue_subscribe(playback_queue_cb_t cb);
+esp_err_t playback_queue_unsubscribe(playback_queue_cb_t cb);
 esp_err_t playback_queue_skip();
 esp_err_t playback_queue_drain();
 esp_err_t playback_queue_pause();
