@@ -628,6 +628,7 @@ esp_err_t webrtc_connect(webrtc_config_t *config, webrtc_connection_t *handle) {
       .user_data = &http_data,
       .event_handler = webrtc_connect_http_event_handler,
       .crt_bundle_attach = esp_crt_bundle_attach,
+      .buffer_size_tx = 4096,
   };
   http_client = esp_http_client_init(&http_config);
   ESP_GOTO_ON_FALSE(http_client, ESP_FAIL, cleanup, RADIO_TAG,
