@@ -37,6 +37,20 @@ typedef enum {
 // kvswebrtcclient
 typedef struct webrtc_connection *webrtc_connection_t;
 
+struct webrtc_rtp_stats {
+  uint64_t packets_received;
+  uint64_t packets_failed_decryption;
+  uint64_t last_received_packet_timestamp_ms;
+  uint64_t header_bytes_received;
+  uint64_t bytes_received;
+  double jitter_seconds;
+  uint64_t packets_discarded;
+  uint64_t nack_count;
+  double jitter_buffer_delay_seconds;
+  uint64_t jitter_buffer_emitted_count;
+  uint64_t packets_lost;
+};
+
 typedef void (*webrtc_connection_state_change_callback_t)(
     webrtc_connection_t conn, void *user_data, webrtc_connection_state_t state);
 typedef void (*webrtc_connection_buffer_duration_callback_t)(
@@ -62,8 +76,8 @@ esp_err_t webrtc_wait_buffer_duration(webrtc_connection_t connection,
 int webrtc_read_audio_sample(void *context, char *buf, int len,
                              TickType_t ticks_to_wait);
 float webrtc_get_ice_rtt_ms(webrtc_connection_t connection);
-esp_err_t webrtc_get_last_packet_time(webrtc_connection_t connection,
-                                      struct timeval *tv);
+esp_err_t webrtc_get_rtp_stats(webrtc_connection_t connection,
+                               struct webrtc_rtp_stats *stats);
 
 #ifdef __cplusplus
 }

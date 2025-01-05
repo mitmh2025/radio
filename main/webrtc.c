@@ -842,39 +842,52 @@ cleanup:
   return ret;
 }
 
-esp_err_t webrtc_get_last_packet_time(webrtc_connection_t connection,
-                                      struct timeval *tv) {
+esp_err_t webrtc_get_rtp_stats(webrtc_connection_t connection,
+                               struct webrtc_rtp_stats *stats) {
   ESP_RETURN_ON_FALSE(connection, ESP_ERR_INVALID_ARG, RADIO_TAG,
                       "Invalid connection");
-  ESP_RETURN_ON_FALSE(tv, ESP_ERR_INVALID_ARG, RADIO_TAG, "Invalid tv");
+  ESP_RETURN_ON_FALSE(stats, ESP_ERR_INVALID_ARG, RADIO_TAG, "Invalid stats");
 
-  PRtcStats stats = calloc(1, sizeof(RtcStats));
-  if (!stats) {
+  PRtcStats kvsstats = calloc(1, sizeof(RtcStats));
+  if (!kvsstats) {
     ESP_LOGE(RADIO_TAG, "Failed to allocate memory for RTC stats");
     return ESP_FAIL;
   }
 
-  stats->requestedTypeOfStats = RTC_STATS_TYPE_INBOUND_RTP;
+  kvsstats->requestedTypeOfStats = RTC_STATS_TYPE_INBOUND_RTP;
 
   esp_err_t ret = ESP_OK;
 
   STATUS status =
-      rtcPeerConnectionGetMetrics(connection->peer_connection, NULL, stats);
+      rtcPeerConnectionGetMetrics(connection->peer_connection, NULL, kvsstats);
   ESP_GOTO_ON_FALSE(
       status == STATUS_SUCCESS, ESP_FAIL, cleanup, RADIO_TAG,
       "Failed to get inbound RTP metrics with status code %" PRIx32, status);
 
-  // This is in milliseconds
-  DOMHighResTimeStamp last_packet_time =
-      stats->rtcStatsObject.inboundRtpStreamStats.lastPacketReceivedTimestamp;
-  if (last_packet_time > 0) {
-    tv->tv_sec = last_packet_time / 1000;
-    tv->tv_usec = (last_packet_time % 1000) * 1000;
-  } else {
-    *tv = (struct timeval){0};
-  }
+  stats->packets_received =
+      kvsstats->rtcStatsObject.inboundRtpStreamStats.received.packetsReceived;
+  stats->packets_failed_decryption =
+      kvsstats->rtcStatsObject.inboundRtpStreamStats.packetsFailedDecryption;
+  stats->last_received_packet_timestamp_ms =
+      kvsstats->rtcStatsObject.inboundRtpStreamStats
+          .lastPacketReceivedTimestamp;
+  stats->header_bytes_received =
+      kvsstats->rtcStatsObject.inboundRtpStreamStats.headerBytesReceived;
+  stats->bytes_received =
+      kvsstats->rtcStatsObject.inboundRtpStreamStats.bytesReceived;
+  stats->jitter_seconds =
+      kvsstats->rtcStatsObject.inboundRtpStreamStats.received.jitter;
+  stats->packets_discarded =
+      kvsstats->rtcStatsObject.inboundRtpStreamStats.received.packetsDiscarded;
+  stats->nack_count = kvsstats->rtcStatsObject.inboundRtpStreamStats.nackCount;
+  stats->jitter_buffer_delay_seconds =
+      kvsstats->rtcStatsObject.inboundRtpStreamStats.jitterBufferDelay;
+  stats->jitter_buffer_emitted_count =
+      kvsstats->rtcStatsObject.inboundRtpStreamStats.jitterBufferEmittedCount;
+  stats->packets_lost =
+      kvsstats->rtcStatsObject.inboundRtpStreamStats.received.packetsLost;
 
 cleanup:
-  free(stats);
+  free(kvsstats);
   return ret;
 }

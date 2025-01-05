@@ -25,6 +25,7 @@ static EXT_RAM_BSS_ATTR StackType_t
 static TaskHandle_t webrtc_manager_task_handle = NULL;
 static atomic_bool webrtc_entuned = false;
 static atomic_int webrtc_latest_state = WEBRTC_CONNECTION_STATE_NONE;
+static struct webrtc_rtp_stats webrtc_stats = {};
 
 static SemaphoreHandle_t webrtc_manager_lock = NULL;
 static char *webrtc_current_url = NULL;
@@ -37,7 +38,24 @@ static void telemetry_generator() {
       "webrtc_state",
       webrtc_connection_state_to_string(atomic_load(&webrtc_latest_state)));
 
-  // TODO: telemetry
+  if (webrtc_stats.packets_received > 0) {
+    things_send_telemetry_int("webrtc_packets_received",
+                              webrtc_stats.packets_received);
+    things_send_telemetry_int("webrtc_packets_failed_decryption",
+                              webrtc_stats.packets_failed_decryption);
+    things_send_telemetry_int("webrtc_packets_discarded",
+                              webrtc_stats.packets_discarded);
+    things_send_telemetry_int("webrtc_nack_count", webrtc_stats.nack_count);
+    things_send_telemetry_int("webrtc_packets_lost", webrtc_stats.packets_lost);
+    things_send_telemetry_float("webrtc_jitter_seconds",
+                                webrtc_stats.jitter_seconds);
+    things_send_telemetry_float("webrtc_jitter_buffer_delay_seconds",
+                                webrtc_stats.jitter_buffer_delay_seconds);
+    things_send_telemetry_int("webrtc_jitter_buffer_emitted_count",
+                              webrtc_stats.jitter_buffer_emitted_count);
+    things_send_telemetry_int("webrtc_bytes_received",
+                              webrtc_stats.bytes_received);
+  }
 }
 
 #define NOTIFY_URL_CHANGED BIT(1)
@@ -242,20 +260,26 @@ static bool webrtc_loop() {
       goto cleanup;
     }
 
+    esp_err_t err = webrtc_get_rtp_stats(connection, &webrtc_stats);
+    if (err != ESP_OK) {
+      ESP_LOGW(RADIO_TAG, "Failed to get RTP stats: %d", err);
+    }
+
     // Connection gets 10 seconds to get first packet, and then must not go more
     // than 5 seconds without a packet
     if (connection_established_at > 0 &&
         now - connection_established_at > 10000000) {
       // Check if we've received a packet recently
-      struct timeval tv;
-      esp_err_t err = webrtc_get_last_packet_time(connection, &tv);
       struct timeval now_tv;
       int timeret = gettimeofday(&now_tv, NULL);
-      if (err == ESP_OK && timeret == 0) {
-        int64_t last_packet_us = tv.tv_sec * 1000000 + tv.tv_usec;
-        int64_t now_us = now_tv.tv_sec * 1000000 + now_tv.tv_usec;
-        if (now_us - last_packet_us > 5000000) {
-          ESP_LOGW(RADIO_TAG, "No packets received in 5 seconds, reconnecting");
+      if (timeret == 0) {
+        int64_t now_ms = now / 1000;
+        int64_t last_packet_ms = webrtc_stats.last_received_packet_timestamp_ms;
+        int64_t last_packet_age = now_ms - last_packet_ms;
+        if (last_packet_age > 5000) {
+          ESP_LOGW(RADIO_TAG,
+                   "No packets received in %" PRIu64 "ms, reconnecting",
+                   last_packet_age);
           goto cleanup;
         }
       }
@@ -273,6 +297,8 @@ cleanup:
     atomic_store(&webrtc_latest_state, WEBRTC_CONNECTION_STATE_NONE);
   }
   free(url);
+
+  memset(&webrtc_stats, 0, sizeof(webrtc_stats));
 
   if (ret != ESP_OK) {
     // Wait for a bit before trying again
