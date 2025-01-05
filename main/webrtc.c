@@ -70,6 +70,9 @@ void webrtc_free_connection(webrtc_connection_t connection) {
 
   closePeerConnection(connection->peer_connection);
 
+  // Try to avoid race conditions sigh
+  vTaskDelay(pdMS_TO_TICKS(100));
+
   freeTransceiver(&connection->transceiver);
   freePeerConnection(&connection->peer_connection);
 
