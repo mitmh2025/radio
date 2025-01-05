@@ -253,7 +253,9 @@ static void accelerometer_task(void *ctx) {
 
 static void IRAM_ATTR accelerometer_isr(void *arg) {
   BaseType_t higher_priority_task_woken = pdFALSE;
-  xTaskNotifyFromISR(task_handle, 0, eNoAction, &higher_priority_task_woken);
+  if (task_handle) {
+    xTaskNotifyFromISR(task_handle, 0, eNoAction, &higher_priority_task_woken);
+  }
   portYIELD_FROM_ISR(higher_priority_task_woken);
 }
 

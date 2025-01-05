@@ -42,7 +42,9 @@ static bool IRAM_ATTR adc_conv_done_cb(adc_continuous_handle_t handle,
   atomic_store(&last_adc_conv_done, esp_timer_get_time());
 
   BaseType_t must_yield = pdFALSE;
-  xTaskNotifyFromISR(adc_task_handle, 0, eNoAction, &must_yield);
+  if (adc_task_handle) {
+    xTaskNotifyFromISR(adc_task_handle, 0, eNoAction, &must_yield);
+  }
 
   return must_yield == pdTRUE;
 }
@@ -147,7 +149,8 @@ static void adc_task(void *context) {
 }
 
 static void adc_watchdog_cb(TimerHandle_t timer) {
-  if (esp_timer_get_time() - atomic_load(&last_adc_read) > 1500000) {
+  if (esp_timer_get_time() - atomic_load(&last_adc_read) > 1500000 &&
+      adc_task_handle) {
     ESP_LOGW(RADIO_TAG, "ADC watchdog triggered; restarting ADC");
     xTaskNotify(adc_task_handle, NOTIFY_ADC_RESTART, eSetBits);
   }
@@ -218,7 +221,9 @@ esp_err_t adc_subscribe(adc_digi_pattern_config_t *config,
   adc_configs[config->channel].callback = callback;
   adc_configs[config->channel].user_data = user_data;
 
-  xTaskNotify(adc_task_handle, NOTIFY_ADC_RESTART, eSetBits);
+  if (adc_task_handle) {
+    xTaskNotify(adc_task_handle, NOTIFY_ADC_RESTART, eSetBits);
+  }
 
 cleanup:
   xSemaphoreGive(adc_mutex);
@@ -242,7 +247,9 @@ esp_err_t adc_unsubscribe(uint8_t channel) {
   adc_configs[channel].populated = false;
   adc_configs[channel].callback = NULL;
 
-  xTaskNotify(adc_task_handle, NOTIFY_ADC_RESTART, eSetBits);
+  if (adc_task_handle) {
+    xTaskNotify(adc_task_handle, NOTIFY_ADC_RESTART, eSetBits);
+  }
 
 cleanup:
   xSemaphoreGive(adc_mutex);

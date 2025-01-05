@@ -121,7 +121,9 @@ static void url_callback(const char *key, const things_attribute_t *attr) {
     manifest_url = strdup(attr->value.string);
   }
 
-  xTaskNotifyGive(task_handle);
+  if (task_handle) {
+    xTaskNotifyGive(task_handle);
+  }
 
 cleanup:
   xSemaphoreGive(manifest_url_mutex);
