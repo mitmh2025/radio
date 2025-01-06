@@ -44,7 +44,7 @@ typedef enum {
 
 #define WIFI_DEFAULT_CONNECT_TIMEOUT (5 * 1000 * 1000)
 #define WIFI_TARGETED_CONNECT_TIMEOUT (15 * 1000 * 1000)
-#define WIFI_FAILED_RETRY_TIMEOUT (5 * 1000 * 1000)
+#define WIFI_FAILED_RETRY_TIMEOUT (1000 * 1000)
 
 static SemaphoreHandle_t mutex = NULL;
 static wifi_state_t state = WIFI_STATE_DEFAULT_CONNECTION;
@@ -369,6 +369,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
       break;
     }
     case IP_EVENT_STA_LOST_IP:
+      ESP_LOGI(RADIO_TAG, "Lost IP address");
       connection_failed();
       break;
     }
@@ -483,6 +484,7 @@ esp_err_t wifi_init() {
 }
 
 esp_err_t wifi_force_reconnect() {
+  ESP_LOGI(RADIO_TAG, "Forcing wifi reconnect");
   connection_failed();
   return ESP_OK;
 }

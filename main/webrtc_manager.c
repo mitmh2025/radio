@@ -30,6 +30,8 @@ static struct webrtc_rtp_stats webrtc_stats = {};
 static SemaphoreHandle_t webrtc_manager_lock = NULL;
 static char *webrtc_current_url = NULL;
 static atomic_uint_least32_t webrtc_buffer_duration = 0;
+static bool disconnect_failed = false;
+static esp_timer_handle_t disconnect_watchdog = NULL;
 
 static size_t telemetry_index = 0;
 
@@ -55,6 +57,13 @@ static void telemetry_generator() {
                               webrtc_stats.jitter_buffer_emitted_count);
     things_send_telemetry_int("webrtc_bytes_received",
                               webrtc_stats.bytes_received);
+  }
+}
+
+static void disconnect_watchdog_cb(void *arg) {
+  disconnect_failed = true;
+  if (atomic_load(&webrtc_entuned)) {
+    esp_restart();
   }
 }
 
@@ -292,7 +301,9 @@ cleanup:
   }
 
   if (connection) {
+    esp_timer_start_once(disconnect_watchdog, pdMS_TO_TICKS(10000));
     webrtc_free_connection(connection);
+    esp_timer_stop(disconnect_watchdog);
     atomic_store(&webrtc_buffer_duration, 0);
     atomic_store(&webrtc_latest_state, WEBRTC_CONNECTION_STATE_NONE);
   }
@@ -336,10 +347,23 @@ esp_err_t webrtc_manager_init() {
       telemetry_generator, "webrtc", &telemetry_index);
   ESP_RETURN_ON_ERROR(ret, RADIO_TAG, "Failed to register telemetry generator");
 
+  ESP_RETURN_ON_ERROR(esp_timer_create(
+                          &(esp_timer_create_args_t){
+                              .callback = disconnect_watchdog_cb,
+                              .name = "webrtc_disconnect_watchdog",
+                          },
+                          &disconnect_watchdog),
+                      RADIO_TAG, "Failed to create disconnect watchdog");
+
   return ESP_OK;
 }
 
 void webrtc_manager_entune() {
+  if (disconnect_failed) {
+    // We can't easily recover from this because the webrtc task is locked up,
+    // so just reboot
+    esp_restart();
+  }
   atomic_store(&webrtc_entuned, true);
   set_led();
   if (webrtc_manager_task_handle) {
