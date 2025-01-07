@@ -35,7 +35,9 @@ static void playback_task(void *ctx) {
       goto next;
     }
 
-    cb(true);
+    if (cb) {
+      cb(true);
+    }
     err = playback_wait_for_completion(current_playback);
     if (err != ESP_OK) {
       ESP_LOGE(RADIO_TAG, "Failed to wait for completion: %d", err);
