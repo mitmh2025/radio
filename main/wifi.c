@@ -180,10 +180,17 @@ static void connection_failed() {
     }
     set_state(WIFI_STATE_TARGETED_CONNECTION);
     break;
-  case WIFI_STATE_FAILED:
-    // We've been in the failed state for a while so scan
-    set_state(WIFI_STATE_TARGETED_CONNECTION);
+  case WIFI_STATE_FAILED: {
+    wifi_mode_t mode = WIFI_MODE_STA;
+    esp_wifi_get_mode(&mode);
+    if (mode != WIFI_MODE_APSTA) {
+      // We've been in the failed state for a while so scan
+      set_state(WIFI_STATE_TARGETED_CONNECTION);
+    } else {
+      esp_timer_start_once(watchdog_timer, WIFI_FAILED_RETRY_TIMEOUT);
+    }
     break;
+  }
   case WIFI_STATE_DEFAULT_CONNECTION:
     // We timed out, so trigger a scan
     set_state(WIFI_STATE_TARGETED_CONNECTION);

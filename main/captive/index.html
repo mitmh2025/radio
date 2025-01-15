@@ -88,12 +88,12 @@
       }
     }
 
-    async function onSelect() {
+    function onSelect() {
       const ssidSelect = document.getElementById('ssid');
       const pskSection = document.getElementById('psk-section');
       const passwordField = document.getElementById('password');
       const selectedOption = ssidSelect.options[ssidSelect.selectedIndex];
-      if (selectedOption.dataset.security == 'open') {
+      if (selectedOption.dataset.security == 'none') {
         pskSection.classList.add('hidden');
         passwordField.removeAttribute('required');
       } else {
