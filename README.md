@@ -1,7 +1,9 @@
 # Two P.I. Noir Radio Firmware
 
 This project contains the firmware for the 2025 MIT Mystery Hunt radio,
-targeting our custom hardware based on the ESP32-S3-MINI-1-N4R2.
+targeting our custom hardware based on the ESP32-S3-MINI-1-N4R2. Full
+schematics, designs, partslists, and additional details are available in the
+[Mystery Hunt archives][].
 
 ## Setup
 
@@ -95,6 +97,7 @@ The radio has limited ability to generate audio (see `tone_generator.{h,c}`,used
 
 Finally, for Station 2π, `webrtc.{h,c}` wraps our fork of the [Amazon Kinesis Video Streams WebRTC SDK][]. It is responsible for WebRTC signaling (via [WHEP][]) and provides a connection handle interface for the rest of the firmware. That is consumed by `webrtc_manager.c`, which detects connection failure and reconnects as needed.
 
+[Mystery Hunt archives]: https://puzzles.mit.edu/2025/extras/radio
 [ESP-IDF]: https://docs.espressif.com/projects/esp-idf/en/v5.3.1/esp32s3/index.html
 [ESP-ADF]: https://docs.espressif.com/projects/esp-adf/en/latest/
 [ESP-IDF install]: https://docs.espressif.com/projects/esp-idf/en/v5.3.1/esp32/get-started/linux-macos-setup.html
