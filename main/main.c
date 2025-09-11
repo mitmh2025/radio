@@ -206,7 +206,7 @@ static void radio_main() {
   ESP_ERROR_CHECK_WITHOUT_ABORT(station_pi_activation_init());
   ESP_ERROR_CHECK_WITHOUT_ABORT(station_pi_init());
   ESP_ERROR_CHECK_WITHOUT_ABORT(station_rickroll_init());
-  ESP_ERROR_CHECK_WITHOUT_ABORT(station_wifi_init());
+  // ESP_ERROR_CHECK_WITHOUT_ABORT(station_wifi_init());
   ESP_ERROR_CHECK_WITHOUT_ABORT(tuner_init(&calibration));
 
   // Prevent the main task from exiting because we have stack-allocated
