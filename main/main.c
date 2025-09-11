@@ -180,6 +180,7 @@ static void radio_main() {
     ESP_ERROR_CHECK(nvs_set_u8(handle, "en_knocks", 1));
     ESP_ERROR_CHECK(nvs_set_u8(handle, "en_funaround", 1));
     ESP_ERROR_CHECK(nvs_set_u8(handle, "en_numbers", 1));
+    ESP_ERROR_CHECK(nvs_set_u8(handle, "en_rickroll", 1));
     ESP_ERROR_CHECK(nvs_commit(handle));
     nvs_close(handle);
 
