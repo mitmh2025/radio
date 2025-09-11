@@ -33,7 +33,6 @@
 #include "esp_littlefs.h"
 
 static TaskHandle_t console_task_handle = NULL;
-static bool force_console = false;
 
 static bool warning_required = true;
 
@@ -41,35 +40,6 @@ static void jtag_poll_timer_cb() {
   if (!usb_serial_jtag_is_connected()) {
     // print a warning the next time we receive a command
     warning_required = true;
-  }
-}
-
-static void disable_console() {
-  REG_SET_BIT(USB_SERIAL_JTAG_CONF0_REG, USB_SERIAL_JTAG_PHY_SEL);
-}
-
-static void enable_console() {
-  REG_CLR_BIT(USB_SERIAL_JTAG_CONF0_REG, USB_SERIAL_JTAG_PHY_SEL);
-}
-
-static void things_en_console_cb(const char *key,
-                                 const things_attribute_t *attr) {
-  bool enable = false;
-  switch (attr->type) {
-  case THINGS_ATTRIBUTE_TYPE_UNSET:
-    break;
-  case THINGS_ATTRIBUTE_TYPE_BOOL:
-    enable = attr->value.b;
-    break;
-  default:
-    ESP_LOGW(RADIO_TAG, "Invalid type for en_console (defaulting to false): %d",
-             attr->type);
-  }
-
-  if (enable) {
-    enable_console();
-  } else if (!force_console) {
-    disable_console();
   }
 }
 
@@ -872,28 +842,6 @@ static int wifi_set_alt_network_cmd(int argc, char **argv) {
 }
 
 esp_err_t console_init() {
-  // Check for debug mode (forced console)
-#ifdef CONFIG_RADIO_GIANT_SWITCH
-  force_console = true;
-#else
-  gpio_config_t button_config = {
-      .pin_bit_mask = BIT64(BUTTON_CIRCLE_PIN) | BIT64(BUTTON_TRIANGLE_PIN),
-      .mode = GPIO_MODE_INPUT,
-      .pull_up_en = GPIO_PULLUP_ENABLE,
-      .pull_down_en = GPIO_PULLDOWN_DISABLE,
-      .intr_type = GPIO_INTR_DISABLE,
-  };
-  ESP_RETURN_ON_ERROR(gpio_config(&button_config), RADIO_TAG,
-                      "Failed to configure buttons");
-  if (gpio_get_level(BUTTON_CIRCLE_PIN) == 0 &&
-      gpio_get_level(BUTTON_TRIANGLE_PIN) == 0) {
-    led_set_pixel(1, 255, 100, 0);
-    vTaskDelay(pdMS_TO_TICKS(500));
-    led_set_pixel(1, 0, 0, 0);
-    force_console = true;
-  }
-#endif
-
   usb_serial_jtag_driver_config_t usb_serial_jtag_config =
       USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
   usb_serial_jtag_config.tx_buffer_size = 1024;
@@ -1194,10 +1142,6 @@ esp_err_t console_init() {
   ESP_RETURN_ON_ERROR(err, RADIO_TAG,
                       "Failed to register wifi-set-alt-network command: %d",
                       err);
-
-  ESP_RETURN_ON_ERROR(
-      things_subscribe_attribute("en_console", things_en_console_cb), RADIO_TAG,
-      "Failed to subscribe to en_console attribute: %d", err);
 
   ESP_RETURN_ON_FALSE(pdPASS == xTaskCreate(console_task, "console", 6144, NULL,
                                             21, &console_task_handle),
