@@ -123,87 +123,32 @@ static int64_t sequence_check_timeout = 500000;
 static esp_timer_handle_t sequence_check_timer = NULL;
 
 static uint8_t current_stage = 0;
-static bool alt_mode = false;
-#define STAGE_COUNT 5
-#define ALT_MODE_THRESHOLD (40ULL * 60ULL * 1000ULL * 1000ULL)
+#define STAGE_COUNT 2
 
 static const char *intros[STAGE_COUNT] = {
     [0] = "practical-fighter/stage-0-intro.opus",
-    [1] = "practical-fighter/stage-1-intro.opus",
-    [2] = "practical-fighter/stage-2-intro.opus",
-    [3] = "practical-fighter/stage-3-intro.opus",
-    [4] = "practical-fighter/stage-4-intro.opus",
+    [1] = "practical-fighter/stage-4-intro.opus",
 };
 
 static const char *examples[STAGE_COUNT] = {
     [0] = "practical-fighter/stage-0-example.opus",
-    [1] = "practical-fighter/stage-1-example.opus",
-    [2] = "practical-fighter/stage-2-example.opus",
-    [3] = "practical-fighter/stage-3-example.opus",
-    [4] = "practical-fighter/stage-4-example.opus",
-};
-
-static const char *alt_examples[STAGE_COUNT] = {
-    [0] = "practical-fighter/stage-0-example.opus",
-    [1] = "practical-fighter/stage-1-example.opus",
-    [2] = "practical-fighter/stage-2-example.opus",
-    [3] = "practical-fighter/stage-3-example.opus",
-    [4] = "practical-fighter/stage-4-example-alt.opus",
+    [1] = "practical-fighter/stage-4-example-alt.opus",
 };
 
 static const char *completions[STAGE_COUNT] = {
     [0] = "practical-fighter/stage-0-completion.opus",
-    [1] = "practical-fighter/stage-1-completion.opus",
-    [2] = "practical-fighter/stage-2-completion.opus",
-    [3] = "practical-fighter/stage-3-completion.opus",
-    [4] = "practical-fighter/stage-4-completion.opus",
+    [1] = "practical-fighter/stage-4-completion-alt.opus",
 };
 
-static const char *alt_completions[STAGE_COUNT] = {
-    [0] = "practical-fighter/stage-0-completion.opus",
-    [1] = "practical-fighter/stage-1-completion.opus",
-    [2] = "practical-fighter/stage-2-completion.opus",
-    [3] = "practical-fighter/stage-3-completion.opus",
-    [4] = "practical-fighter/stage-4-completion-alt.opus",
-};
-
-static const char *final_completion = "practical-fighter/completion.opus";
-static const char *final_alt_completion =
-    "practical-fighter/completion-alt.opus";
+static const char *final_completion = "practical-fighter/completion-alt.opus";
 
 // Mary Had a Little Lamb - 7 notes
 static const float note_sequence_0[] = {
     FREQUENCY_B_4, FREQUENCY_A_4, FREQUENCY_G_4, FREQUENCY_A_4,
     FREQUENCY_B_4, FREQUENCY_B_4, FREQUENCY_B_4,
 };
-// Never Gonna Give You Up - 7 notes
-static const float note_sequence_1[] = {
-    FREQUENCY_D_4, FREQUENCY_E_4, FREQUENCY_G_4, FREQUENCY_E_4,
-    FREQUENCY_B_4, FREQUENCY_B_4, FREQUENCY_A_4,
-};
-// Somewhere Over the Rainbow - 10 notes
-static const float note_sequence_2[] = {
-    FREQUENCY_G_4, FREQUENCY_G_5,       FREQUENCY_F_SHARP_5, FREQUENCY_D_5,
-    FREQUENCY_E_5, FREQUENCY_F_SHARP_5, FREQUENCY_G_5,       FREQUENCY_G_4,
-    FREQUENCY_E_5, FREQUENCY_D_5,
-};
-// Hot To Go - 16 notes
-static const float note_sequence_3[] = {
-    FREQUENCY_B_4, FREQUENCY_D_5, FREQUENCY_D_5, FREQUENCY_D_5,
-    FREQUENCY_E_5, FREQUENCY_D_5, FREQUENCY_E_5, FREQUENCY_D_5,
-    FREQUENCY_B_4, FREQUENCY_D_5, FREQUENCY_G_5, FREQUENCY_A_5,
-    FREQUENCY_A_5, FREQUENCY_B_5, FREQUENCY_A_5, FREQUENCY_G_5,
-};
-// Final Countdown - 20 notes
-static const float note_sequence_4[] = {
-    FREQUENCY_B_4, FREQUENCY_A_4,       FREQUENCY_B_4, FREQUENCY_E_4,
-    FREQUENCY_C_5, FREQUENCY_B_4,       FREQUENCY_C_5, FREQUENCY_B_4,
-    FREQUENCY_A_4, FREQUENCY_C_5,       FREQUENCY_B_4, FREQUENCY_C_5,
-    FREQUENCY_E_4, FREQUENCY_A_4,       FREQUENCY_G_4, FREQUENCY_A_4,
-    FREQUENCY_G_4, FREQUENCY_F_SHARP_4, FREQUENCY_A_4, FREQUENCY_G_4,
-};
 // Final Countdown alt - 9 notes
-static const float note_sequence_4_alt[] = {
+static const float note_sequence_1[] = {
     FREQUENCY_B_4, FREQUENCY_A_4, FREQUENCY_B_4, FREQUENCY_E_4, FREQUENCY_C_5,
     FREQUENCY_B_4, FREQUENCY_C_5, FREQUENCY_B_4, FREQUENCY_A_4,
 };
@@ -339,7 +284,7 @@ static void playback_cb(bool active) {
 
 static void play_on_success(uint8_t stage) {
   if (stage < STAGE_COUNT) {
-    const char *completion = (alt_mode ? alt_completions : completions)[stage];
+    const char *completion = (completions)[stage];
     enqueue_playback(completion);
   }
 }
@@ -348,10 +293,10 @@ static void play_on_start_new_stage(uint8_t stage) {
   if (stage < STAGE_COUNT) {
     const char *intro = intros[stage];
     enqueue_playback(intro);
-    const char *example = (alt_mode ? alt_examples : examples)[stage];
+    const char *example = (examples)[stage];
     enqueue_playback(example);
   } else {
-    enqueue_playback(alt_mode ? final_alt_completion : final_completion);
+    enqueue_playback(final_completion);
   }
 }
 
@@ -359,7 +304,7 @@ static void play_on_entune(uint8_t stage) {
   if (stage < STAGE_COUNT) {
     const char *intro = intros[stage];
     enqueue_playback(intro);
-    const char *example = (alt_mode ? alt_examples : examples)[stage];
+    const char *example = (examples)[stage];
     enqueue_playback(example);
   }
 }
@@ -368,10 +313,10 @@ static void play_on_button(uint8_t stage) {
   if (stage < STAGE_COUNT) {
     const char *intro = intros[stage];
     enqueue_playback(intro);
-    const char *example = (alt_mode ? alt_examples : examples)[stage];
+    const char *example = (examples)[stage];
     enqueue_playback(example);
   } else {
-    enqueue_playback(alt_mode ? final_alt_completion : final_completion);
+    enqueue_playback(final_completion);
   }
 }
 
@@ -400,24 +345,6 @@ static void check_sequence(void *arg) {
   case 1:
     sequence = &note_sequence_1[0];
     sequence_size = sizeof(note_sequence_1) / sizeof(note_sequence_1[0]);
-    break;
-  case 2:
-    sequence = &note_sequence_2[0];
-    sequence_size = sizeof(note_sequence_2) / sizeof(note_sequence_2[0]);
-    break;
-  case 3:
-    sequence = &note_sequence_3[0];
-    sequence_size = sizeof(note_sequence_3) / sizeof(note_sequence_3[0]);
-    break;
-  case 4:
-    if (alt_mode) {
-      sequence = &note_sequence_4_alt[0];
-      sequence_size =
-          sizeof(note_sequence_4_alt) / sizeof(note_sequence_4_alt[0]);
-    } else {
-      sequence = &note_sequence_4[0];
-      sequence_size = sizeof(note_sequence_4) / sizeof(note_sequence_4[0]);
-    }
     break;
   default:
     return;
@@ -449,15 +376,7 @@ static void check_sequence(void *arg) {
     ESP_LOGE(RADIO_TAG, "Failed to save stage time: %d", err);
   }
 
-  // Check for alt/adaptive difficulty mode - trigger if stage 1 takes more than
-  // 40 minutes
-  if (current_stage == 1 && completion_total_play_time > ALT_MODE_THRESHOLD) {
-    alt_mode = true;
-    ESP_LOGI(RADIO_TAG, "Entering alt mode");
-    current_stage = 4;
-  } else {
-    current_stage++;
-  }
+  current_stage++;
 
   err = nvs_set_u8(pi_nvs_handle, "stage", current_stage);
   if (err != ESP_OK) {
@@ -764,8 +683,7 @@ static void station_pi_task(void *ctx) {
       last_headphone_state = gpio;
       last_headphone_change = esp_timer_get_time();
     }
-    if (gpio || current_stage < 2 ||
-        (current_stage < STAGE_COUNT && alt_mode)) {
+    if (gpio || current_stage < 2) {
       shift_state &= ~SHIFT_HEADPHONE;
     } else {
       shift_state |= SHIFT_HEADPHONE;
@@ -1092,17 +1010,6 @@ esp_err_t station_pi_init() {
     ESP_RETURN_ON_ERROR(ret, RADIO_TAG, "Failed to get stage from NVS");
   }
 
-  // Check if we need to enable alt mode
-  if (current_stage > 1) {
-    int64_t stage_1_time = 0;
-    ret = nvs_get_i64(pi_nvs_handle, "stage_1_time", &stage_1_time);
-    if (ret != ESP_OK) {
-      ESP_LOGW(RADIO_TAG, "Failed to get stage 1 time: %d", ret);
-    } else if (stage_1_time > ALT_MODE_THRESHOLD) {
-      alt_mode = true;
-    }
-  }
-
   frequency_config_t config = {
       .frequency = M_PI,
       .enabled = frequency_enabled,
@@ -1182,9 +1089,6 @@ esp_err_t station_pi_set_stage(uint8_t stage) {
                           RADIO_TAG, "Failed to save stage time: %d", err_rc_);
     }
   }
-
-  // Unset alt mode any time we're manually setting the stage
-  alt_mode = false;
 
   ESP_RETURN_ON_ERROR(nvs_commit(pi_nvs_handle), RADIO_TAG,
                       "Failed to commit stage");
