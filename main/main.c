@@ -176,11 +176,13 @@ static void radio_main() {
     ESP_LOGI(RADIO_TAG, "Performing reset sequence");
 
     nvs_handle_t handle;
-    ESP_ERROR_CHECK(nvs_open("radio:things", NVS_READWRITE, &handle));
+    ESP_ERROR_CHECK(nvs_open("radio:tbattrs", NVS_READWRITE, &handle));
     ESP_ERROR_CHECK(nvs_set_u8(handle, "en_knocks", 1));
     ESP_ERROR_CHECK(nvs_set_u8(handle, "en_funaround", 1));
     ESP_ERROR_CHECK(nvs_set_u8(handle, "en_numbers", 1));
     ESP_ERROR_CHECK(nvs_set_u8(handle, "en_rickroll", 1));
+    ESP_ERROR_CHECK(
+        nvs_set_str(handle, "whep_url", "http://10.42.0.1:8889/music/whep"));
     ESP_ERROR_CHECK(nvs_commit(handle));
     nvs_close(handle);
 
