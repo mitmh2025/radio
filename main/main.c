@@ -157,46 +157,6 @@ static void radio_main() {
   }
   ESP_ERROR_CHECK(err);
 
-  // Check for state reset indicator. Do this before anything else initializes
-  // and has a chance to read NVS
-  gpio_config_t button_config = {
-      .pin_bit_mask = BIT64(BUTTON_CIRCLE_PIN) | BIT64(BUTTON_TRIANGLE_PIN),
-      .mode = GPIO_MODE_INPUT,
-      .pull_up_en = GPIO_PULLUP_ENABLE,
-      .pull_down_en = GPIO_PULLDOWN_DISABLE,
-      .intr_type = GPIO_INTR_DISABLE,
-  };
-  ESP_ERROR_CHECK(gpio_config(&button_config));
-  if (gpio_get_level(BUTTON_CIRCLE_PIN) == 0 &&
-      gpio_get_level(BUTTON_TRIANGLE_PIN) == 0) {
-    led_set_pixel(1, 255, 100, 0);
-    vTaskDelay(pdMS_TO_TICKS(500));
-    led_set_pixel(1, 0, 0, 0);
-
-    ESP_LOGI(RADIO_TAG, "Performing reset sequence");
-
-    nvs_handle_t handle;
-    ESP_ERROR_CHECK(nvs_open("radio:tbattrs", NVS_READWRITE, &handle));
-    ESP_ERROR_CHECK(nvs_set_u8(handle, "en_knocks", 1));
-    ESP_ERROR_CHECK(nvs_set_u8(handle, "en_funaround", 1));
-    ESP_ERROR_CHECK(nvs_set_u8(handle, "en_numbers", 1));
-    ESP_ERROR_CHECK(nvs_set_u8(handle, "en_rickroll", 1));
-    ESP_ERROR_CHECK(
-        nvs_set_str(handle, "whep_url", "http://10.42.0.1:8889/music/whep"));
-    ESP_ERROR_CHECK(nvs_commit(handle));
-    nvs_close(handle);
-
-    ESP_ERROR_CHECK(nvs_open("radio:pi", NVS_READWRITE, &handle));
-    ESP_ERROR_CHECK(nvs_erase_all(handle));
-    ESP_ERROR_CHECK(nvs_commit(handle));
-    nvs_close(handle);
-
-    ESP_ERROR_CHECK(nvs_open("radio:funaround", NVS_READWRITE, &handle));
-    ESP_ERROR_CHECK(nvs_erase_all(handle));
-    ESP_ERROR_CHECK(nvs_commit(handle));
-    nvs_close(handle);
-  }
-
   ESP_ERROR_CHECK_WITHOUT_ABORT(captive_http_server_init());
   ESP_ERROR_CHECK_WITHOUT_ABORT(audio_volume_init(&calibration));
   ESP_ERROR_CHECK_WITHOUT_ABORT(audio_output_init());
@@ -284,6 +244,48 @@ void app_main(void) {
   // anything. At this point, we've brought up most of the hardware subsystems,
   // so we're in a good place to mark the firmware as good.
   ESP_ERROR_CHECK_WITHOUT_ABORT(esp_ota_mark_app_valid_cancel_rollback());
+
+  // Check for state reset indicator. Do this before anything else initializes
+  // and has a chance to read NVS
+  gpio_config_t button_config = {
+      .pin_bit_mask = BIT64(BUTTON_CIRCLE_PIN) | BIT64(BUTTON_TRIANGLE_PIN),
+      .mode = GPIO_MODE_INPUT,
+      .pull_up_en = GPIO_PULLUP_ENABLE,
+      .pull_down_en = GPIO_PULLDOWN_DISABLE,
+      .intr_type = GPIO_INTR_DISABLE,
+  };
+  ESP_ERROR_CHECK(gpio_config(&button_config));
+  if (gpio_get_level(BUTTON_CIRCLE_PIN) == 0 &&
+      gpio_get_level(BUTTON_TRIANGLE_PIN) == 0) {
+    led_set_pixel(1, 255, 100, 0);
+    vTaskDelay(pdMS_TO_TICKS(500));
+    led_set_pixel(1, 0, 0, 0);
+
+    ESP_LOGI(RADIO_TAG, "Performing reset sequence");
+
+    nvs_handle_t handle;
+    ESP_ERROR_CHECK(nvs_open("radio:tbattrs", NVS_READWRITE, &handle));
+    ESP_ERROR_CHECK(nvs_set_u8(handle, "en_knocks", 1));
+    ESP_ERROR_CHECK(nvs_set_u8(handle, "en_funaround", 1));
+    ESP_ERROR_CHECK(nvs_set_u8(handle, "en_numbers", 1));
+    ESP_ERROR_CHECK(nvs_set_u8(handle, "en_rickroll", 1));
+    ESP_ERROR_CHECK(
+        nvs_set_str(handle, "whep_url", "http://10.42.0.1:8889/music/whep"));
+    ESP_ERROR_CHECK(nvs_set_str(handle, "file_manifest",
+                                "http://10.42.0.1:8000/manifest.json"));
+    ESP_ERROR_CHECK(nvs_commit(handle));
+    nvs_close(handle);
+
+    ESP_ERROR_CHECK(nvs_open("radio:pi", NVS_READWRITE, &handle));
+    ESP_ERROR_CHECK(nvs_erase_all(handle));
+    ESP_ERROR_CHECK(nvs_commit(handle));
+    nvs_close(handle);
+
+    ESP_ERROR_CHECK(nvs_open("radio:funaround", NVS_READWRITE, &handle));
+    ESP_ERROR_CHECK(nvs_erase_all(handle));
+    ESP_ERROR_CHECK(nvs_commit(handle));
+    nvs_close(handle);
+  }
 
   ESP_ERROR_CHECK_WITHOUT_ABORT(things_init());
   ESP_ERROR_CHECK_WITHOUT_ABORT(file_cache_init());
