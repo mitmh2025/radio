@@ -321,15 +321,8 @@ cleanup:
 
 static void webrtc_manager_task(void *ctx) {
   things_subscribe_attribute("whep_url", whep_url_callback);
-  int attempt_count = 0;
   while (true) {
-    attempt_count++;
-    bool success = webrtc_loop();
-    if (success) {
-      attempt_count = 0;
-    } else if (attempt_count > 3) {
-      wifi_force_reconnect();
-    }
+    webrtc_loop();
   }
 }
 
