@@ -544,9 +544,6 @@ esp_err_t webrtc_connect(webrtc_config_t *config, webrtc_connection_t *handle) {
   rtc_cfg = calloc(1, sizeof(RtcConfiguration));
   ESP_GOTO_ON_FALSE(rtc_cfg, ESP_ERR_NO_MEM, cleanup, RADIO_TAG,
                     "Failed to allocate memory for RTC configuration");
-  rtc_cfg->iceTransportPolicy = ICE_TRANSPORT_POLICY_ALL;
-  strlcpy(rtc_cfg->iceServers[0].urls, "stun:stun.l.google.com:19302",
-          sizeof(rtc_cfg->iceServers[0].urls));
   rtc_cfg->kvsRtcConfiguration.disableSenderSideBandwidthEstimation = TRUE;
 
   STATUS status = createPeerConnection(rtc_cfg, &connection->peer_connection);
