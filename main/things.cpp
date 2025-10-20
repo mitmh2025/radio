@@ -822,13 +822,7 @@ static void things_task(void *arg) {
 
   // Main loop is around wifi connection. If we get disconnected from wifi, wait
   // until we reconnect and then reconnect to ThingsBoard too
-  int connection_attempt_count = 0;
   while (true) {
-    if (connection_attempt_count++ > 5) {
-      wifi_force_reconnect();
-      connection_attempt_count = 0;
-    }
-
     uint32_t wait = 4000 + esp_random() % 2000;
     xEventGroupWaitBits(radio_event_group, RADIO_EVENT_GROUP_WIFI_CONNECTED,
                         pdFALSE, pdTRUE, portMAX_DELAY);
@@ -963,10 +957,7 @@ static void things_task(void *arg) {
       }
     }
 
-    bool successful_healthcheck = things_main_loop(conn);
-    if (successful_healthcheck) {
-      connection_attempt_count = 0;
-    }
+    things_main_loop(conn);
 
     ESP_LOGW(RADIO_TAG, "ThingsBoard healthcheck failed. Reconnecting...");
   }
