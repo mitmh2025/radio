@@ -50,6 +50,8 @@ esp_err_t things_set_updates_blocked(bool blocked);
 
 esp_err_t things_subscribe_attribute(const char *key,
                                      things_attribute_callback_t callback);
+esp_err_t things_force_set_attribute(const char *key,
+                                     const things_attribute_t *attr);
 esp_err_t things_register_rpc(const char *method, things_rpc_handler_t handler);
 
 #ifdef __cplusplus

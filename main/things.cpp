@@ -1144,6 +1144,46 @@ esp_err_t things_subscribe_attribute(const char *key,
   return ESP_OK;
 }
 
+esp_err_t things_force_set_attribute(const char *key,
+                                     const things_attribute_t *attr) {
+  ESP_RETURN_ON_FALSE(key != NULL, ESP_ERR_INVALID_ARG, RADIO_TAG,
+                      "Key must not be NULL");
+  ESP_RETURN_ON_FALSE(attr != NULL, ESP_ERR_INVALID_ARG, RADIO_TAG,
+                      "attr must not be NULL");
+  ESP_RETURN_ON_FALSE(strlen(key) <= 15, ESP_ERR_INVALID_ARG, RADIO_TAG,
+                      "Key must be less than 15 characters");
+
+  std::lock_guard<std::mutex> lock(things_attribute_mutex);
+
+  things_attribute_cache_entry_t cacheent;
+  switch (attr->type) {
+  case THINGS_ATTRIBUTE_TYPE_UNSET:
+    cacheent = std::monostate{};
+    break;
+  case THINGS_ATTRIBUTE_TYPE_FLOAT:
+    cacheent = attr->value.f;
+    break;
+  case THINGS_ATTRIBUTE_TYPE_BOOL:
+    cacheent = attr->value.b;
+    break;
+  case THINGS_ATTRIBUTE_TYPE_INT:
+    cacheent = attr->value.i;
+    break;
+  case THINGS_ATTRIBUTE_TYPE_STRING:
+    cacheent = attr->value.string;
+    break;
+  default:
+    ESP_RETURN_ON_FALSE(false, ESP_ERR_INVALID_ARG, RADIO_TAG,
+                        "invalid attr type");
+  }
+
+  update_attr_cache(key, cacheent);
+  update_attr_nvs(key, cacheent);
+  update_attr_subscribers(key, cacheent);
+
+  return ESP_OK;
+}
+
 esp_err_t things_register_rpc(const char *method,
                               things_rpc_handler_t handler) {
   ESP_RETURN_ON_FALSE(method != NULL, ESP_ERR_INVALID_ARG, RADIO_TAG,

@@ -1095,5 +1095,16 @@ esp_err_t station_pi_set_stage(uint8_t stage) {
 
   force_telemetry();
 
+  if (stage >= STAGE_COUNT) {
+    things_attribute_t val = {
+        .type = THINGS_ATTRIBUTE_TYPE_BOOL,
+        .value =
+            {
+                .b = true,
+            },
+    };
+    things_force_set_attribute("en_numbers", &val);
+  }
+
   return ESP_OK;
 }
