@@ -240,6 +240,20 @@ cleanup:
 }
 
 esp_err_t battery_init() {
+  i2c_master_bus_handle_t i2c_bus = board_i2c_get_handle();
+  if (i2c_bus == NULL) {
+    ESP_LOGE(RADIO_TAG, "I2C bus is not initialized");
+    return ESP_FAIL;
+  }
+
+  BOARD_I2C_MUTEX_LOCK();
+  esp_err_t err = i2c_master_probe(i2c_bus, IP5306_I2C_ADDR, 100);
+  BOARD_I2C_MUTEX_UNLOCK();
+  if (err != ESP_OK) {
+    // No battery chip, that's fine
+    return ESP_OK;
+  }
+
   status_mutex = xSemaphoreCreateMutex();
   ESP_RETURN_ON_FALSE(status_mutex != NULL, ESP_ERR_NO_MEM, RADIO_TAG,
                       "Failed to create status mutex");
@@ -283,17 +297,6 @@ esp_err_t battery_init() {
       break;
     }
   }
-
-  i2c_master_bus_handle_t i2c_bus = board_i2c_get_handle();
-  if (i2c_bus == NULL) {
-    ESP_LOGE(RADIO_TAG, "I2C bus is not initialized");
-    return ESP_FAIL;
-  }
-
-  BOARD_I2C_MUTEX_LOCK();
-  esp_err_t err = i2c_master_probe(i2c_bus, IP5306_I2C_ADDR, 100);
-  BOARD_I2C_MUTEX_UNLOCK();
-  ESP_RETURN_ON_ERROR(err, RADIO_TAG, "i2c_master_probe failed");
 
   i2c_device_config_t i2c_cfg = {
       .dev_addr_length = I2C_ADDR_BIT_LEN_7,
